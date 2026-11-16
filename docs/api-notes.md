@@ -112,7 +112,7 @@
 
 | 항목 | 계약 |
 | --- | --- |
-| 출력 | 실행별 `output/<실행시각-UTC>/`에 `report-<타임스탬프>.xlsx`, `EASM-report-<타임스탬프>.pptx`, `raw-data-<타임스탬프>.json` 3개. JSON은 raw + evidence + meta 통합. PPT는 같은 판정에서 생성하는 경영진 요약이며 manifest에 해시를 기록 |
+| 출력 | 실행별 `output/<실행시각-UTC>/`에 `report-<타임스탬프>.xlsx`, `EASM-report-<타임스탬프>.pptx`, `raw-data-<타임스탬프>.json` 3개. JSON은 raw + evidence + meta 통합. PPT는 Excel 6번 시트의 System Evidence·인터뷰 점수에서 생성하며(영역 점수는 5번 시트 규칙: 관점 평균, 인터뷰-실측 1.5점 이상 괴리 시 보정), manifest에는 자동 생성 시점의 파일 해시를 기록. 인터뷰 기입 후 `easm-agent deck`으로 PPT 재생성 |
 | 실행 시각 | 마이크로초 포함 UTC·충돌 접미사를 폴더와 새 파일명에 동일 적용. 실제 수집 시각은 `collection.collected_at` 유지 |
 | 시트 1~5 | 평가 템플릿의 기존 수식 캐시·메타데이터·사용자 강조·스타일·입력 점수·메모·민감도 레이블 보존. 시트 4 점수 자동 덮어쓰기 안 함 |
 | 6. 수집 결과 | 시트 4의 A~F·서식·행 순서를 복사. G 수집 상태, I Level·평가기준, J 수집 내용·판정 근거, K 수집결과 링크, L 다음조치, M 평가 점수(1~5), N 검토메모. 판정 불가는 M 빈칸 |

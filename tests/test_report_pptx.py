@@ -1,55 +1,99 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from pathlib import Path
+from unittest.mock import patch
 
-import pytest
+from openpyxl import load_workbook
 from pptx import Presentation
 
-from easm_agent.models import AssessmentMeasurement, Collection, Finding
-from easm_agent.report_pptx import TITLE, write_presentation
+from easm_agent.cli import main
+from easm_agent.deck_model import Item, compute_scores, level_of, read_assessment
+from easm_agent.report_pptx import TEMPLATE_NAME, presentation_template_path, write_presentation
+from easm_agent.report_template import RESULT_SHEET
 
-NOW = datetime(2026, 11, 16, tzinfo=UTC)
+ROOT = Path(__file__).parents[1]
+FIXTURE = ROOT / "tests" / "fixtures" / "three_subscriptions.json"
 
 
-def finding(code: str, level: str, numerator: float | None = None, denominator: float | None = None,
-            reason: str | None = None) -> Finding:
-    ratio = None if numerator is None else numerator / denominator
-    return Finding(
-        se_code=code, scope="partial", level=level, metric_value=ratio, reason=reason, rationale="fixture",
-        level_criterion=None if level == "N/A" else f"{code} 충족 비율",
-        next_step="다음 단계 조건: 80% 이상" if level in ("L1", "L2") else None,
-        measurement=AssessmentMeasurement(numerator=numerator, denominator=denominator, complete=ratio is not None),
+def item(code: str, score: int | None) -> Item:
+    return Item(code=code, area=code[:2], kind=code[3:5], row=5, text=code, levels=[""] * 5,
+                evidence="", score=score, status="", detail="", memo="")
+
+
+def area_items(prefix: str, interview: int | None, system: int | None) -> list[Item]:
+    return [item(f"{prefix}-PR-01", interview), item(f"{prefix}-PE-02", interview),
+            item(f"{prefix}-DA-03", interview), item(f"{prefix}-TE-04", interview),
+            item(f"{prefix}-SY-05", system)]
+
+
+def deck_text(path: Path) -> str:
+    return "\n".join(
+        shape.text_frame.text for slide in Presentation(path).slides for shape in slide.shapes
+        if shape.has_text_frame
     )
 
 
-def texts(path: Path) -> list[str]:
-    deck = Presentation(path)
-    return [shape.text_frame.text for slide in deck.slides for shape in slide.shapes if shape.has_text_frame]
+def collect(tmp_path: Path) -> Path:
+    with patch("easm_agent.cli.DefaultAzureCredential", side_effect=AssertionError("No Azure calls")):
+        assert main(["collect", "--config", str(ROOT / "config" / "custom-config.yaml"),
+                     "--fixture", str(FIXTURE), "--output-dir", str(tmp_path)]) == 0
+    return next(tmp_path.rglob("report-*.xlsx"))
 
 
-def test_deck_uses_fixed_title_without_subtitle_and_reports_counts(tmp_path: Path) -> None:
-    rows = [
-        finding("DS-SY-05", "L5", 9, 9), finding("DS-SY-07", "L2", 1, 3), finding("BI-SY-10", "L1", 0, 1),
-        finding("DM-SY-01", "N/A", reason="permission_denied"),
-    ]
-    path = tmp_path / "deck.pptx"
-    write_presentation(Collection(collected_at=NOW), rows, path)
-    content = texts(path)
-    assert content[0] == TITLE == "EASM (Enterprise Agent Service Management) 점검 결과 보고서"
-    assert "경영진 보고" not in "\n".join(content)
-    joined = "\n".join(content)
-    assert "4개 점검 항목 중 3개를 진단했고, 1개가 최고 수준(L5)입니다" in joined
-    assert "권한 또는 라이선스 문제로 조회 거부" in joined and "1/3" in joined
-    assert not any(token in joined for token in ("Lorem", "Click to", "Label"))
+def test_scores_follow_sheet5_rules_for_correction_and_provisional_values() -> None:
+    items = area_items("DM", 4, 2) + area_items("DS", 3, 3) + area_items("BI", None, 2) + area_items("DP", 4, None)
+    areas, overall, status = compute_scores(items)
+    assert (areas["DM"].final, areas["DM"].status) == (3.0, "인터뷰-실측 괴리")
+    assert (areas["DS"].final, areas["DS"].status) == (3.0, "미보정")
+    assert (areas["BI"].final, areas["BI"].status) == (2.0, "실측 기준 잠정(인터뷰 미입력)")
+    assert (areas["DP"].final, areas["DP"].status) == (4.0, "인터뷰 기준(실측 없음)")
+    assert areas["OT"].final is None and areas["OT"].status == "판정 보류"
+    assert overall == 3.0 and status.startswith("잠정") and level_of(overall) == 3
 
 
-@pytest.mark.parametrize("rows", [
-    [],
-    [finding("DM-SY-01", "N/A", reason="error")],
-    [finding("DS-SY-05", "L5", 3, 3)],
-])
-def test_deck_is_written_for_empty_pending_only_and_all_strong_results(tmp_path: Path, rows: list[Finding]) -> None:
-    path = tmp_path / "deck.pptx"
-    write_presentation(Collection(collected_at=NOW), rows, path)
-    assert len(Presentation(path).slides) >= 8
+def test_unavailable_scores_are_not_zero() -> None:
+    areas, overall, status = compute_scores([item("DM-PR-01", None), item("DM-SY-02", None)])
+    assert overall is None and status == "판정 보류"
+    assert all(area.final is None for area in areas.values())
+
+
+def test_packaged_template_is_available() -> None:
+    assert presentation_template_path().name == TEMPLATE_NAME
+
+
+def test_run_creates_deck_that_marks_interviews_as_not_entered(tmp_path: Path) -> None:
+    workbook = collect(tmp_path)
+    deck = workbook.parent / workbook.name.replace("report-", "EASM-report-").replace(".xlsx", ".pptx")
+    assert deck.is_file() and len(Presentation(deck).slides) == 15
+    text = deck_text(deck)
+    assert "점검 결과 보고서" in text and "<고객사>" in text
+    assert "인터뷰 54개 중 0개 입력" in text
+    assert not any(word in text for word in ("Contoso", "AI READINESS", "Lorem", "Click to"))
+
+
+def test_deck_command_uses_interview_scores_entered_in_the_workbook(tmp_path: Path) -> None:
+    workbook = collect(tmp_path)
+    book = load_workbook(workbook)
+    sheet = book[RESULT_SHEET]
+    for row in range(5, sheet.max_row + 1):
+        code = str(sheet.cell(row, 2).value or "")
+        if code and "-SY-" not in code:
+            sheet.cell(row, 13).value = 4
+    book.save(workbook)
+    assert sum(i.score == 4 for i in read_assessment(workbook).interview_items) == 54
+    assert main(["deck", "--output-dir", str(tmp_path), "--customer", "Fabrikam"]) == 0
+    text = deck_text(next(tmp_path.rglob("EASM-report-*.pptx")))
+    assert "Fabrikam" in text and "인터뷰 54개 중 54개 입력" in text and "<고객사>" not in text
+
+
+def test_deck_command_reports_missing_workbook(tmp_path: Path) -> None:
+    workbook = collect(tmp_path)
+    workbook.unlink()
+    assert main(["deck", "--output-dir", str(tmp_path)]) == 1
+
+
+def test_write_presentation_accepts_a_workbook_path(tmp_path: Path) -> None:
+    workbook = collect(tmp_path)
+    output = tmp_path / "again.pptx"
+    write_presentation(workbook, output)
+    assert len(Presentation(output).slides) == 15

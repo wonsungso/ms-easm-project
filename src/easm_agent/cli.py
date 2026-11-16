@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import logging
 import re
 import sys
+import tempfile
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -31,6 +33,7 @@ from easm_agent.models import (
 )
 from easm_agent.proposals import evaluate_proposals
 from easm_agent.report import latest_raw, load_result, write_reports
+from easm_agent.report_pptx import DEFAULT_CUSTOMER, context_from_workbook, write_presentation
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -54,8 +57,10 @@ def main(argv: list[str] | None = None) -> int:
     command.add_argument("--output-dir", type=Path, default=Path("output"))
     command.add_argument("--fixture", type=Path)
     command.add_argument("--dry-run", action="store_true")
-    package = subparsers.add_parser("package", help="raw-data-<타임스탬프>.json을 읽어 Excel 보고서 재생성")
+    command.add_argument("--customer", default=DEFAULT_CUSTOMER, help="PPT 표지의 고객사명")
+    package = subparsers.add_parser("package", help="raw-data-<타임스탬프>.json을 읽어 Excel·PPT 보고서 재생성")
     package.add_argument("--output-dir", type=Path, default=Path("output"))
+    package.add_argument("--customer", default=DEFAULT_CUSTOMER, help="PPT 표지의 고객사명")
     package.add_argument("--mode", choices=["live", "fixture"])
     package.add_argument("--admin-evidence-file", action="append", type=Path, default=[])
     package.add_argument("--tenant-id")
@@ -66,10 +71,29 @@ def main(argv: list[str] | None = None) -> int:
     package.add_argument("--config", type=Path, default=Path("config") / "custom-config.yaml",
                          help="재평가에 사용할 고객별 선택 설정 파일")
     package.add_argument("--criteria", type=Path, help="재평가 기준 YAML 경로 - 기본값 config/criteria.yaml")
+    deck = subparsers.add_parser(
+        "deck", help="인터뷰 점수를 기입한 Excel 보고서에서 PPT 보고서(EASM-report-<타임스탬프>.pptx) 생성",
+    )
+    deck.add_argument("--output-dir", type=Path, default=Path("output"), help="실행 폴더 또는 그 상위 output 폴더")
+    deck.add_argument("--workbook", type=Path, help="기입이 끝난 Excel 보고서 - 기본값은 실행 폴더의 report-*.xlsx")
+    deck.add_argument("--customer", default=DEFAULT_CUSTOMER, help="PPT 표지의 고객사명")
     args = parser.parse_args(argv)
     logging.getLogger("azure").setLevel(logging.WARNING)
     logging.getLogger("azure.identity").setLevel(logging.ERROR)
+    scratch = contextlib.ExitStack()
     try:
+        if args.command == "deck":
+            source = latest_raw(args.output_dir)
+            if source is None:
+                raise ValueError("수집 결과 raw-data JSON을 찾을 수 없습니다.")
+            stamp = source.stem.removeprefix("raw-data-")
+            workbook = args.workbook or source.parent / f"report-{stamp}.xlsx"
+            if not workbook.is_file():
+                raise FileNotFoundError(f"Excel 보고서를 찾을 수 없습니다: {workbook}")
+            deck_path = source.parent / f"EASM-report-{stamp}.pptx"
+            write_presentation(workbook, deck_path, context_from_workbook(workbook, args.customer))
+            print(f"PPT 보고서: {deck_path}")
+            return 0
         if args.command == "package":
             source = latest_raw(args.output_dir)
             if source is None:
@@ -94,7 +118,8 @@ def main(argv: list[str] | None = None) -> int:
                 tenant = tenants.pop()
                 recorded_directory = data.facts["evidence_directory"]
                 if recorded_directory == "embedded:evidence":
-                    directory = source.parent / "evidence"
+                    # Attached evidence is embedded in the raw JSON, so keep it out of the run folder.
+                    directory = Path(scratch.enter_context(tempfile.TemporaryDirectory(prefix="easm-evidence-")))
                 else:
                     directory = Path(recorded_directory)
                     if not directory.is_dir():
@@ -128,7 +153,7 @@ def main(argv: list[str] | None = None) -> int:
                     provenance_origin="saved_snapshot_reassessment",
                 )
                 data.assessment_provenance.source_result_data_sha256 = result.get("manifest", {}).get("data_sha256")
-            write_reports(data, findings, source.parent, mode, new_run=False)
+            write_reports(data, findings, source.parent, mode, new_run=False, customer=args.customer)
             return 0
         settings = load_settings(args.config)
         if args.admin_evidence_file:
@@ -191,7 +216,8 @@ def main(argv: list[str] | None = None) -> int:
             data, criteria, allowed_models(settings),
             load_conventions(settings), settings.policy_facts, settings.interview_levels,
         )
-        workbook = write_reports(data, findings, args.output_dir, "fixture" if args.fixture else "live")
+        workbook = write_reports(data, findings, args.output_dir, "fixture" if args.fixture else "live",
+                                 customer=args.customer)
         print(f"수집 완료: 구독={len(data.subscriptions)}, Agent/후보={len(data.agents)}, "
               f"이슈={len(data.issues)}, 결과={workbook.parent}")
         return 2 if data.issues else 0
@@ -203,6 +229,8 @@ def main(argv: list[str] | None = None) -> int:
                 detail += " (" + code.group(0) + ")"
         print(f"실행 중단: {detail}. 원문·비밀값·토큰은 출력하지 않았습니다.", file=sys.stderr)
         return 1
+    finally:
+        scratch.close()
 
 
 if __name__ == "__main__":

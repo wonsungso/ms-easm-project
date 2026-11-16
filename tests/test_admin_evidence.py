@@ -206,7 +206,11 @@ def test_package_enriches_portable_embedded_evidence_without_regrading(tmp_path:
     assert after["findings"] == before["findings"]
     assert len(after["collection"]["admin_evidence"]) == len(after["evidence"]) == 1
     assert after["provenance"]["unattached_evidence"] == []
-    assert (workbook.parent / "evidence").is_dir()
+    assert not (workbook.parent / "evidence").exists()
+    assert sorted(path.name for path in workbook.parent.iterdir()) == sorted(
+        [workbook.name, f"EASM-report-{workbook.parent.name}.pptx", f"raw-data-{workbook.parent.name}.json"])
+    assert main(["package", "--output-dir", str(workbook.parent)]) == 0
+    assert len(load_result(workbook.parent)["evidence"]) == 1
 
 
 def test_package_reassess_grades_defender_protection_from_saved_collection(tmp_path: Path) -> None:

@@ -197,7 +197,8 @@ easm-agent collect --setup-file .easm-agent/setup.json --output-dir output
 
 ![Codespaces 점검·수집 완료 예시](docs/imgs/21-codespaces-collection-success.png)
 
-- 결과는 실행별 `output/<실행시각-UTC>/`에 `raw-data-<타임스탬프>.json`(원본), `report-<타임스탬프>.xlsx`(상세 보고서), `EASM-report-<타임스탬프>.pptx`(경영진 요약) 3개로 저장됩니다.
+- 결과는 실행별 `output/<실행시각-UTC>/`에 `raw-data-<타임스탬프>.json`(원본), `report-<타임스탬프>.xlsx`(상세 보고서), `EASM-report-<타임스탬프>.pptx`(PPT 보고서) 3개로 저장됩니다. 점검 직후 PPT는 인터뷰 미입력 상태의 실측 기준 잠정 결과입니다.
+- 인터뷰 점수는 Excel **6. 수집 결과** 시트 M열(1~5 또는 N/A)에 기입한 뒤 `easm-agent deck --output-dir output --customer "<고객사명>"`을 실행하면 인터뷰와 System Evidence를 함께 반영한 PPT가 다시 만들어집니다. 점수 산정은 Excel 5번 시트 규칙(관점 평균, 실측과 1.5점 이상 괴리 시 보정, 종합 평균)을 따릅니다.
 - `NOT_CHECKED`는 대상 없음·프로젝트 미지정으로 미점검이며 수집은 계속 진행됩니다.
 - 권한·인증 점검이 실패하면 고객 관리자에게 보완을 요청합니다.
 - Power Platform 증적은 별도 관리자의 [읽기 내보내기](docs/api-notes.md#관리자-읽기-내보내기)로 반영합니다. 진단 앱에 관리자 권한을 추가하지 않습니다.
@@ -313,7 +314,7 @@ Level 문장과 규칙을 변경한 경우 평가 템플릿도 함께 갱신합�
 <details>
 <summary>Excel·PPT 보고서만 다시 만들기</summary>
 
-`easm-agent package --output-dir output`을 실행합니다. 최신 실행 폴더의 `raw-data-<타임스탬프>.json`에서 `report-<타임스탬프>.xlsx`와 `EASM-report-<타임스탬프>.pptx`를 재생성합니다. PPT 템플릿은 `docs/assessment-report-template.pptx`입니다.
+`easm-agent package --output-dir output`을 실행합니다. 최신 실행 폴더의 `raw-data-<타임스탬프>.json`에서 `report-<타임스탬프>.xlsx`와 `EASM-report-<타임스탬프>.pptx`를 재생성합니다. `package`는 Excel을 새로 만들므로 인터뷰 점수를 기입한 뒤에는 `package` 대신 `easm-agent deck`을 사용합니다. PPT 템플릿은 `docs/assessment-report-template.pptx`이며 표지의 고객사명은 `--customer`로 지정합니다(기본 `<고객사>`).
 
 </details>
 

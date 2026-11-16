@@ -13,9 +13,10 @@ from urllib.parse import unquote
 from easm_agent.assessment_codes import ASSESSMENT_REVISION, migrate_revision_4_codes
 from easm_agent.azure import redact
 from easm_agent.models import Collection, Finding
+from easm_agent.proposals import azure_agents
 from easm_agent.provenance import digest
 from easm_agent.report_excel import write_workbook
-from easm_agent.report_pptx import write_presentation
+from easm_agent.report_pptx import DEFAULT_CUSTOMER, DeckContext, write_presentation
 
 RAW_PATTERN = "raw-data-*.json"
 RUN_PATTERN = re.compile(r"(?P<stamp>\d{8}T\d{12}Z)(?:-(?P<sequence>\d+))?")
@@ -314,7 +315,7 @@ def normalize_result(
 
 def write_reports(
     data: Collection, findings: list[Finding], output: Path, mode: str = "live",
-    *, new_run: bool = True,
+    *, new_run: bool = True, customer: str = DEFAULT_CUSTOMER,
 ) -> Path:
     """Write a unique run folder, or rebuild an explicitly selected existing run."""
     output.mkdir(parents=True, exist_ok=True)
@@ -335,7 +336,10 @@ def write_reports(
     deck_staging = output / f".report.{uuid.uuid4().hex}.pending.pptx"
     try:
         write_workbook(normalized, rows, staging, mode, result["provenance"]["references"])
-        write_presentation(normalized, rows, deck_staging)
+        write_presentation(staging, deck_staging, DeckContext(
+            customer=customer, collected_at=normalized.collected_at,
+            subscriptions=len(normalized.subscriptions), agents=len(azure_agents(normalized)),
+        ))
         payload = staging.read_bytes()
         deck_payload = deck_staging.read_bytes()
         result["manifest"] = {
