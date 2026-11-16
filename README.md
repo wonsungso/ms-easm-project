@@ -197,11 +197,48 @@ easm-agent collect --setup-file .easm-agent/setup.json --output-dir output
 
 ![Codespaces 점검·수집 완료 예시](docs/imgs/21-codespaces-collection-success.png)
 
-- 결과는 실행별 `output/<실행시각-UTC>/`에 `raw-data-<타임스탬프>.json`(원본), `report-<타임스탬프>.xlsx`(상세 보고서), `EASM-report-<타임스탬프>.pptx`(PPT 보고서) 3개로 저장됩니다. 점검 직후 PPT는 인터뷰 미입력 상태의 실측 기준 잠정 결과입니다.
-- 인터뷰 점수는 Excel **6. 수집 결과** 시트 M열(1~5 또는 N/A)에 기입한 뒤 `easm-agent deck --output-dir output --customer "<고객사명>"`을 실행하면 인터뷰와 System Evidence를 함께 반영한 PPT가 다시 만들어집니다. 점수 산정은 Excel 5번 시트 규칙(관점 평균, 실측과 1.5점 이상 괴리 시 보정, 종합 평균)을 따릅니다.
+- 결과는 실행별 `output/<실행시각-UTC>/`에 `raw-data-<타임스탬프>.json`(원본), `report-<타임스탬프>.xlsx`(상세 보고서), `EASM-report-<타임스탬프>.pptx`(PPT 보고서) 3개로 저장됩니다. 
+- 점검 직후 PPT는 인터뷰 미입력 상태의 실측 기준 잠정 결과입니다.
 - `NOT_CHECKED`는 대상 없음·프로젝트 미지정으로 미점검이며 수집은 계속 진행됩니다.
 - 권한·인증 점검이 실패하면 고객 관리자에게 보완을 요청합니다.
-- Power Platform 증적은 별도 관리자의 [읽기 내보내기](docs/api-notes.md#관리자-읽기-내보내기)로 반영합니다. 진단 앱에 관리자 권한을 추가하지 않습니다.
+- 점검 직후 PPT는 잠정본이므로 아래 **인터뷰 점수 기입과 PPT 재생성**을 반드시 수행합니다.
+
+### <span style='background-color: #00b7ff'>[중요]</span> 인터뷰 점수 기입과 PPT 재생성
+
+- 점검 직후의 PPT는 **인터뷰 미입력 상태의 잠정본**입니다. 
+- 인터뷰 54개 항목은 자동 수집이 아니므로 담당자가 인터뷰·문서 확인 후 Excel에 점수를 기입하고, 그 파일에서 PPT를 다시 생성해야 종합 성숙도가 확정됩니다.
+
+| 순서 | 작업 | 상세 |
+| --- | --- | --- |
+| 1 | 파일 내려받기 | 탐색기에서 `output/<실행시각-UTC>/report-<타임스탬프>.xlsx`를 우클릭해 **다운로드**하거나 로컬 터미널에서 `gh codespace cp -e "remote:/workspaces/ms-internal-easm-project/output/<실행시각-UTC>/report-<타임스탬프>.xlsx" .`를 실행합니다. 내려받은 파일을 로컬 Excel로 엽니다. |
+| 2 | 질문 확인 | **6. 수집 결과** 시트에서 G열 **확인상태**가 `인터뷰 필요`인 행이 입력 대상입니다. F열이 질문이며 행 번호는 **4. 질문별 평가 기준** 시트와 같습니다. |
+| 3 | 레벨 판정 | 같은 행의 **4. 질문별 평가 기준** 시트 G~K열(Level 1~5 기준)과 L열(확인 증적)을 보고 인터뷰 답변과 증적에 가장 부합하는 레벨을 정합니다. |
+| 4 | 점수 기입 | **6. 수집 결과** 시트 **M열(평가 점수)** 에 `1`~`5` 정수를 입력합니다. 확인할 수 없거나 대상이 아니면 `N/A`를 입력하거나 비워 둡니다. 근거는 N열 **검토메모**에 남깁니다. |
+| 5 | 저장 후 Codespaces에 올리기 | 저장하고 Excel을 **닫습니다**. 같은 이름의 파일을 Codespaces 탐색기의 `output/<실행시각-UTC>/` 폴더로 끌어다 놓아 **덮어씁니다**(또는 `gh codespace cp 로컬파일 "remote:/workspaces/ms-internal-easm-project/output/<실행시각-UTC>/report-<타임스탬프>.xlsx"`). 파일명을 바꾸지 마세요. |
+| 6 | PPT 재생성 | Codespaces 터미널에서 `cd /workspaces/ms-internal-easm-project` 후 `easm-agent deck --output-dir output --customer "<고객사명>"`을 실행합니다. 같은 폴더의 `EASM-report-<타임스탬프>.pptx`가 덮어써집니다. |
+| 7 | 결과 내려받기·확인 | 갱신된 `EASM-report-<타임스탬프>.pptx`를 다운로드해 PPT 3번 슬라이드의 "인터뷰 진행 현황"에서 `인터뷰 54개 중 n개 입력`을 확인하고 종합 성숙도의 **(잠정)** 표시가 사라졌는지 봅니다. |
+
+로컬에서 바로 재생성할 수도 있습니다. `output/<실행시각-UTC>/` 폴더(json·xlsx)를 내려받아 저장소를 설치한 환경에서 `easm-agent deck --output-dir <내려받은 폴더의 상위 경로>`를 실행합니다. `deck`은 Azure에 접속하지 않으며 json과 xlsx만 읽습니다.
+
+**입력 규칙**
+
+- 점수는 1~5 정수만 허용합니다. 0.5 단위는 허용하지 않으며 다른 값은 입력 오류로 표시됩니다.
+- **증적 상한**: 문서 증적이 없으면 최대 2점, 시스템 증적이 없으면 최대 3점입니다. 인터뷰 답변만으로는 Level 3 이상을 주지 않습니다(Excel 3번 시트 증적 원칙).
+- 빈칸과 `N/A`는 평균에서 제외하며 0점으로 취급하지 않습니다.
+- System Evidence 항목(`-SY-`)의 M열은 점검 결과가 이미 채웁니다. 수정하지 않습니다.
+- 일부만 입력해도 PPT를 만들 수 있습니다. 입력하지 않은 영역은 실측 기준 잠정값이며 PPT 부록에 영역별 미입력 개수가 표시됩니다.
+
+**PPT 점수 산정(Excel 5번 시트 규칙)**
+
+- 관점 점수는 해당 질문 점수의 평균(소수 첫째 자리 반올림)입니다.
+- 영역 점수는 인터뷰 4개 관점(Process·People·Data·Technology) 평균입니다. 영역의 System Evidence 점수보다 **1.5점 이상 높으면** 영역 점수를 System Evidence 점수 + 1.0으로 보정하고 "인터뷰-실측 괴리"로 표시합니다.
+- 종합 점수는 6개 영역의 평균이며, 6개 영역이 모두 확정되어야 잠정 표시가 없어집니다. 목표는 Level 3입니다.
+
+**주의**
+
+- 인터뷰 기입 후에는 `easm-agent package`를 실행하지 마세요. `package`는 Excel을 새로 만들어 기입한 점수가 사라집니다. 점수를 보존하려면 파일을 따로 복사해 두고, 점수가 사라진 경우 복사본으로 `--workbook <파일경로>`를 지정해 PPT를 만듭니다.
+- 다른 위치의 파일로 만들려면 `easm-agent deck --output-dir output --workbook <기입한-xlsx> --customer "<고객사명>"`을 사용합니다. PPT는 최신 실행 폴더에 저장됩니다.
+- 인터뷰 점수는 원본 JSON에 저장되지 않고 Excel에만 있습니다. 기입한 Excel을 PPT와 함께 보관하세요.
 
 ## Step 5. <span style='background-color: #e5dcf7'>[고객/MS 공동]</span> 결과 확인과 종료
 
