@@ -4,6 +4,7 @@ grading_profile: api_configuration_v1
 interview_gap: 1.5
 inactivity_days: 90
 cost_window_days: 30
+new_agent_window_days: 183
 usage_window_days: 30
 workspace_retention_target_days: 90
 version_upgrade_options:
@@ -16,6 +17,193 @@ overprivileged_permission_patterns:
 - '*FullControl*'
 model_policy_definition_ids: []
 items:
+  DM-SY-01:
+    title: Agent 제작 허용 유형의 거버넌스 분류
+    scope: partial
+    metric: governed_agent_type_ratio
+    denominator: Agent 365 등록 패키지 수
+    evidence: copilotPackages의 governanceMetadata(PromptAgent·HostedAgent·WorkflowAgent·ManagedAgent·Unmanaged·AIApp)
+    limit: 등록부의 분류값이며 제작 허용 사용자 범위 설정 자체나 실제 제작 통제 효과를 뜻하지 않음. Agent 365 라이선스와 CopilotPackages.Read.All이 필요
+    product: Microsoft 365 관리 센터(Agent 365)
+    requires: tenant
+    collectors:
+    - agent365_registry
+    complete_flags:
+    - agent365_registry_complete
+    complete_subscriptions: []
+    levels:
+      L1: 거버넌스 분류가 Unmanaged가 아닌 패키지 비율 0%
+      L2: 거버넌스 분류가 Unmanaged가 아닌 패키지 비율 0% 초과~80% 미만
+      L3: 거버넌스 분류가 Unmanaged가 아닌 패키지 비율 80% 이상~90% 미만
+      L4: 거버넌스 분류가 Unmanaged가 아닌 패키지 비율 90% 이상~100% 미만
+      L5: 거버넌스 분류가 Unmanaged가 아닌 패키지 비율 100%
+    rules: &coverage_rules
+    - level: L5
+      when:
+        coverage:
+          eq: 1
+    - level: L4
+      when:
+        coverage:
+          gte: 0.9
+          lt: 1
+    - level: L3
+      when:
+        coverage:
+          gte: 0.8
+          lt: 0.9
+    - level: L2
+      when:
+        coverage:
+          gt: 0
+          lt: 0.8
+    - level: L1
+      when:
+        coverage:
+          eq: 0
+  DM-SY-02:
+    title: Power Platform 환경의 역할 할당 현황
+    scope: partial
+    metric: environment_role_ratio
+    denominator: 관리자에게 보이는 Power Platform 환경 수
+    evidence: 환경 목록 API와 Get-AdminPowerAppEnvironmentRoleAssignment의 환경별 역할 할당 건수(별도 관리자 읽기 증적)
+    limit: 역할 할당 건수가 고유 Maker 사용자 수나 권한의 적정성을 뜻하지 않으며 비 Dataverse 환경의 관리자 접근 범위로 한정됨
+    product: Power Platform 관리 센터
+    requires: tenant
+    collectors: []
+    complete_flags: []
+    complete_subscriptions: []
+    levels:
+      L1: 역할 할당이 확인된 환경 비율 0%
+      L2: 역할 할당이 확인된 환경 비율 0% 초과~80% 미만
+      L3: 역할 할당이 확인된 환경 비율 80% 이상~90% 미만
+      L4: 역할 할당이 확인된 환경 비율 90% 이상~100% 미만
+      L5: 역할 할당이 확인된 환경 비율 100%
+    rules: *coverage_rules
+  DM-SY-03:
+    title: 신규 생성 Agent의 게시 요청 승인
+    scope: partial
+    metric: new_agent_approval_ratio
+    denominator: 최근 기간에 생성된 Agent 365 등록 패키지 수
+    evidence: copilotPackages의 createdDateTime과 requestStatus(approved·pending·rejected). 요청이 없으면 null로 미승인 처리
+    limit: 등록부 패키지 기준이며 Azure·Copilot Studio 등에서 등록 없이 만든 Agent의 생성 추이는 포함하지 않음
+    product: Microsoft 365 관리 센터(Agent 365)
+    requires: tenant
+    collectors:
+    - agent365_registry
+    complete_flags:
+    - agent365_registry_complete
+    complete_subscriptions: []
+    levels:
+      L1: 신규 생성 패키지의 승인 비율 0%
+      L2: 신규 생성 패키지의 승인 비율 0% 초과~80% 미만
+      L3: 신규 생성 패키지의 승인 비율 80% 이상~90% 미만
+      L4: 신규 생성 패키지의 승인 비율 90% 이상~100% 미만
+      L5: 신규 생성 패키지의 승인 비율 100%
+    rules: *coverage_rules
+  DS-SY-04:
+    title: 데이터 정책(DLP) 적용 환경
+    scope: partial
+    metric: data_policy_environment_ratio
+    denominator: 관리자에게 보이는 Power Platform 환경 수
+    evidence: 환경 목록 API와 Get-AdminDlpPolicy의 정책 적용 범위(AllEnvironments·OnlyEnvironments·ExceptEnvironments)와 대상 환경 ID
+    limit: 정책의 적용 범위만 확인하며 커넥터 분류·차단 내용이나 정책의 실효성은 확인하지 않음
+    product: Power Platform 관리 센터
+    requires: tenant
+    collectors: []
+    complete_flags: []
+    complete_subscriptions: []
+    levels:
+      L1: 데이터 정책이 적용되는 환경 비율 0%
+      L2: 데이터 정책이 적용되는 환경 비율 0% 초과~80% 미만
+      L3: 데이터 정책이 적용되는 환경 비율 80% 이상~90% 미만
+      L4: 데이터 정책이 적용되는 환경 비율 90% 이상~100% 미만
+      L5: 데이터 정책이 적용되는 환경 비율 100%
+    rules: *coverage_rules
+  BI-SY-10:
+    title: 관리형 환경 적용
+    scope: partial
+    metric: managed_environment_ratio
+    denominator: 관리자에게 보이는 Power Platform 환경 수
+    evidence: 환경 목록 API의 protectionLevel(Standard는 관리형 환경으로 해석, Basic은 비관리형으로 관측)
+    limit: 환경 유형·보호 수준의 원본 값만 확인하며 개발·테스트·운영 분리나 배포 경로 통제는 확인하지 않음
+    product: Power Platform 관리 센터
+    requires: tenant
+    collectors: []
+    complete_flags: []
+    complete_subscriptions: []
+    levels:
+      L1: 관리형 환경 비율 0%
+      L2: 관리형 환경 비율 0% 초과~80% 미만
+      L3: 관리형 환경 비율 80% 이상~90% 미만
+      L4: 관리형 환경 비율 90% 이상~100% 미만
+      L5: 관리형 환경 비율 100%
+    rules: *coverage_rules
+  DP-SY-17:
+    title: Agent 등록 정보의 소유자·배포 범위 확인
+    scope: partial
+    metric: registry_metadata_ratio
+    denominator: Agent 365 등록 패키지 수
+    evidence: copilotPackages의 owners 개수, deployedTo, isBlocked
+    limit: 등록부 기준이며 미등록 Agent 탐지나 소유자의 재직·적정성은 확인하지 않음. 소유자 식별 정보는 저장하지 않고 개수만 기록
+    product: Microsoft 365 관리 센터(Agent 365)
+    requires: tenant
+    collectors:
+    - agent365_registry
+    complete_flags:
+    - agent365_registry_complete
+    complete_subscriptions: []
+    levels:
+      L1: 소유자·배포 범위·차단 상태가 확인된 패키지 비율 0%
+      L2: 소유자·배포 범위·차단 상태가 확인된 패키지 비율 0% 초과~80% 미만
+      L3: 소유자·배포 범위·차단 상태가 확인된 패키지 비율 80% 이상~90% 미만
+      L4: 소유자·배포 범위·차단 상태가 확인된 패키지 비율 90% 이상~100% 미만
+      L5: 소유자·배포 범위·차단 상태가 확인된 패키지 비율 100%
+    rules: *coverage_rules
+  DP-SY-18:
+    title: Agent 공유·설치 범위 제한
+    scope: partial
+    metric: restricted_sharing_ratio
+    denominator: Agent 365 등록 패키지 수
+    evidence: copilotPackages의 availableTo(allowedForAll·allowedForSome·allowedForNone)와 deployedTo(acquiredForAll·acquiredForSome·acquiredForNone)
+    limit: 전체 사용자 대상이 아닌 제한 범위를 충족으로 해석하며 승인된 대상과의 일치나 테넌트 설치 정책은 확인하지 않음
+    product: Microsoft 365 관리 센터(Agent 365)
+    requires: tenant
+    collectors:
+    - agent365_registry
+    complete_flags:
+    - agent365_registry_complete
+    complete_subscriptions: []
+    levels:
+      L1: 접근·배포 범위가 제한된 패키지 비율 0%
+      L2: 접근·배포 범위가 제한된 패키지 비율 0% 초과~80% 미만
+      L3: 접근·배포 범위가 제한된 패키지 비율 80% 이상~90% 미만
+      L4: 접근·배포 범위가 제한된 패키지 비율 90% 이상~100% 미만
+      L5: 접근·배포 범위가 제한된 패키지 비율 100%
+    rules: *coverage_rules
+  OT-SY-27:
+    title: Azure Agent의 Agent 365 등록
+    scope: partial
+    metric: registered_agent_ratio
+    denominator: Azure에서 발견한 Agent 수
+    evidence: Azure Agent의 Blueprint 태그와 Entra Agent ID, Agent 365 등록부 agentIdentityId 대조
+    limit: 등록부에 없는 Agent를 Shadow AI로 단정하지 않으며 Azure 밖에서 실행되는 Agent는 포함하지 않음
+    product: Microsoft 365 관리 센터(Agent 365)
+    collectors:
+    - agent365_registry
+    complete_flags:
+    - agent365_registry_complete
+    - entra_agents_complete
+    - entra_blueprints_complete
+    complete_subscriptions: []
+    levels:
+      L1: Agent 365에 등록된 Azure Agent 비율 0%
+      L2: Agent 365에 등록된 Azure Agent 비율 0% 초과~80% 미만
+      L3: Agent 365에 등록된 Azure Agent 비율 80% 이상~90% 미만
+      L4: Agent 365에 등록된 Azure Agent 비율 90% 이상~100% 미만
+      L5: Agent 365에 등록된 Azure Agent 비율 100%
+    rules: *coverage_rules
+    agent_denominator: true
   DS-SY-05:
     title: Agent ID의 Blueprint 연결
     scope: in_scope

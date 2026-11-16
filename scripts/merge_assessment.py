@@ -34,66 +34,9 @@ NOTE = (
     "미확보·조회 실패·대상 없음은 N/A이며 L1 또는 0점으로 환산하지 않음"
 )
 ROW_HEIGHT = "25.05"
+SYSTEM_EVIDENCE_ROW_HEIGHT = "150"
 FIRST_DATA_ROW = 5
 SHEET_SCORING = "xl/worksheets/sheet5.xml"
-MANUAL_LEVELS = {
-    "DM-SY-01": (
-        "제작 허용 주체·Agent 유형의 통제 기준이 없음을 확인",
-        "일부 제한은 있으나 승인 주체·유형 기준 또는 적용 범위 미흡",
-        "승인 제작 주체·Agent 유형 기준과 실제 허용 범위 일치",
-        "L3 충족, 지원 설정·승인 절차로 미승인 제작 통제와 변경 추적",
-        "L4 충족, 위험·변경 이력으로 허용 범위 지속 개선",
-    ),
-    "DM-SY-02": (
-        "제작 권한·환경 관리 기준이 없음을 확인",
-        "환경·권한 일부 관리, 승인 대장과 미대사 또는 편차 존재",
-        "승인 제작자와 유효 권한 대사, 용도별 환경·접근 분리",
-        "L3 충족, 생성·권한 변경 승인과 편차 탐지·회수 운영",
-        "L4 충족, 실제 사용·위반 이력으로 환경·권한 지속 개선",
-    ),
-    "DM-SY-03": (
-        "생성 승인·요청 관리 절차가 없음을 확인",
-        "최근 6개월 신규 Agent와 승인 요청 매칭률 80% 미만",
-        "신규 Agent 80% 이상 승인 요청 매칭, 누락·중복 대사",
-        "매칭률 95% 이상, 미승인 생성 자동 탐지·통보",
-        "매칭률 100%, L4 충족과 추세 기반 수요 계획 개선",
-    ),
-    "DS-SY-04": (
-        "대상 환경 확인 완료, 유효 데이터 정책 적용률 0%",
-        "유효 데이터 정책 적용률 0% 초과~80% 미만",
-        "대상 환경 80% 이상 승인 커넥터 분류·차단 정책 검증",
-        "적용률 100%, 신규 환경 편입과 정책 편차 통제 자동화",
-        "L4 충족, 위반·우회 시험으로 분류·정책 지속 개선",
-    ),
-    "BI-SY-10": (
-        "개발·테스트와 운영의 접근·변경 분리 통제가 없음",
-        "환경 일부 분리, 운영 접근·변경 또는 관리 기준 미흡",
-        "개발·테스트·운영 분리, 라이선스·지원 범위 내 관리 기준 충족",
-        "L3 충족, 지원 배포 경로·권한 통제로 미승인 운영 반영 차단",
-        "L4 충족, 환경 이용·위반 이력으로 분리 통제 개선",
-    ),
-    "DP-SY-17": (
-        "Agent 자산·배포 등록 절차가 없음을 확인",
-        "승인 등록부·실제 Agent 정합률 90% 미만",
-        "Agent·책임자·배포 범위·상태 정합률 90% 이상",
-        "정합률 98% 이상, 등록 편차·변경 자동 탐지·추적",
-        "정합률 100%, L4 충족과 대사·변경 관리 개선 이력",
-    ),
-    "DP-SY-18": (
-        "Agent 공유·설치의 승인 범위 통제 기준이 없음",
-        "공유·설치 일부 제한, 승인 대상·범위와 불일치",
-        "지원 제품별 공유·설치 범위가 승인 대상과 일치",
-        "L3 충족, 지원 설정·승인 경로로 편차 통제와 감사 추적",
-        "L4 충족, 설치·공유·위반 이력으로 허용 기준 개선",
-    ),
-    "OT-SY-27": (
-        "승인되지 않은 Agent 탐지·대사 절차가 없음을 확인",
-        "미승인 비율 5% 이상 또는 탐지 건 조치율 80% 미만",
-        "관측 범위·기간 명시, 미승인 비율 5% 미만과 조치율 80% 이상",
-        "미승인 비율 1% 미만, L3 충족과 지원 경로별 자동 통보·통제",
-        "관측 범위 내 미승인 0건, L4 충족과 탐지·수요 전환 개선",
-    ),
-}
 
 
 def xml_bytes(root: ET.Element, original: bytes) -> bytes:
@@ -379,6 +322,8 @@ def review_parts(archive: ZipFile, patched: dict[str, bytes]) -> dict[str, bytes
     for index, row in enumerate(system_rows, 1):
         previous = value(row.find(f"{Q}c[@r='B{row.get('r')}']"))
         replace_text(row, "B", f"{previous[:2]}-SY-{index:02}")
+        row.set("ht", SYSTEM_EVIDENCE_ROW_HEIGHT)
+        row.set("customHeight", "1")
     for row in data:
         title = value(row.find(f"{Q}c[@r='F{row.get('r')}']"))
         for code in TITLES:
@@ -399,20 +344,18 @@ def review_parts(archive: ZipFile, patched: dict[str, bytes]) -> dict[str, bytes
                 if code not in ITEM_DETAILS:
                     raise ValueError(f"수집 항목 설명이 없습니다: {code}")
                 replace_question(row, criteria[code]["title"], ITEM_DETAILS[code])
-        if code not in criteria and code not in MANUAL_LEVELS:
+        if code not in criteria:
             continue
         seen.add(code)
-        if code in criteria:
-            replace_text(row, "L", criteria[code]["evidence"])
-        levels = criteria[code]["levels"].values() if code in criteria else MANUAL_LEVELS[code]
-        for column, text in zip("GHIJK", levels, strict=True):
+        replace_text(row, "L", criteria[code]["evidence"])
+        for column, text in zip("GHIJK", criteria[code]["levels"].values(), strict=True):
             replace_text(row, column, text)
         if code in DOMAINS:
             replace_text(row, "L", criteria[code]["evidence"])
             memo = row.find(f"{Q}c[@r='N{number}']")
             if value(memo) == "초안 - 점수 산정 제외":
                 replace_text(row, "N", "")
-    if seen != criteria.keys() | MANUAL_LEVELS.keys():
+    if seen != criteria.keys():
         raise ValueError("System Evidence 31개 코드가 정확히 일치하지 않습니다.")
     rows = {int(row.get("r")): row for row in data}
     replace_text(rows[3], "B", "인터뷰 54개 + SE 31개 = 85개. 1~5 정수 또는 N/A. 미확보·대상 없음은 N/A, L1은 확인된 부재. 비율 임계값은 본 진단 기준이며 Microsoft 인증 기준 아님")
@@ -463,9 +406,6 @@ def review_parts(archive: ZipFile, patched: dict[str, bytes]) -> dict[str, bytes
                     "Microsoft Entra Agent ID" if criteria[code].get("requires") else "Azure API"
                 )
                 summaries.append(f"▸ {code} {criteria[code]['title']}\n  [{product}]")
-            elif code in MANUAL_LEVELS and value(row.find(f"{Q}c[@r='C{number}']")) == domain:
-                title = value(row.find(f"{Q}c[@r='F{number}']")).split("\n", 1)[0]
-                summaries.append(f"▸ {code} {title}")
         if summaries and summary_row is not None:
             replace_text(summary_row, column, "\n\n".join(summaries))
     notes_row = root.find(f"{Q}sheetData/{Q}row[@r='10']")

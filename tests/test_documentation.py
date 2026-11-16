@@ -160,7 +160,7 @@ def test_summary_table_links_resolve_to_checklist_sections_with_images() -> None
     assert len(links) == 31
     assert {target for _, target in links} == anchors
     implemented = re.findall(r"^- \*\*구현:\*\* (?!❌)", detail, re.M)
-    assert len(implemented) == 28
+    assert len(implemented) == 31
     assert len(re.findall(r"^!\[[^\]]+\]\(portal/imgs/[^)]+\.png\)$", detail, re.M)) == 22
     assert "<img" not in readme and not re.search(r"^\|.*!\[", readme, re.M)
     assert "## Agent 365 등록부 교차 확인" in detail

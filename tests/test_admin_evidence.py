@@ -16,7 +16,6 @@ from easm_agent.azure import EvidenceStore
 from easm_agent.cli import main
 from easm_agent.collect_admin_evidence import (
     ENVIRONMENTS_URL,
-    admin_observations,
     read_admin_evidence,
 )
 from easm_agent.models import AdminEvidenceExport, Collection, Finding
@@ -52,32 +51,65 @@ def ingest(tmp_path: Path, payload: dict) -> Collection:
     return read_admin_evidence(path, TENANT, NOW, EvidenceStore(tmp_path / "evidence", NOW))
 
 
-def test_admin_receipt_records_scope_and_provenance_without_assigning_grades(tmp_path: Path) -> None:
-    data = ingest(tmp_path, packet())
-    read = data.admin_evidence[0]
-    assert read.completed and read.object_count == 1
-    assert Path(read.evidence_refs[0]).is_file()
-    observations = {item.code: item for item in admin_observations(data)}
-    assert observations["DM-SY-02"].status == observations["BI-SY-10"].status == "일부 수집"
-    assert all(item.evidence_only for item in observations.values())
+def power_platform_packet() -> dict:
+    value = packet()
+    value["reads"][0].update(object_count=3, environments=[
+        {"environment_id": "Default-" + TENANT, "environment_type": "Default", "protection_level": "Basic"},
+        {"environment_id": "env-prod", "environment_type": "Production", "protection_level": "Standard"},
+        {"environment_id": "env-dev", "environment_type": "Sandbox", "protection_level": "Standard"},
+    ])
+    value["reads"].append({
+        "source": "powerplatform.environment_roles", "command": "Get-AdminPowerAppEnvironmentRoleAssignment",
+        "module_version": "2.0.220", "scope": "role assignments", "completed": True,
+        "observed_at": NOW.isoformat(), "object_count": 3,
+        "role_counts": {"env-prod": 2, "ENV-DEV": 1}, "detail": "counts only",
+    })
+    value["reads"].append({
+        "source": "powerplatform.dlp_policies", "command": "Get-AdminDlpPolicy",
+        "module_version": "2.0.220", "scope": "policies", "completed": True,
+        "observed_at": NOW.isoformat(), "object_count": 2, "detail": "scopes only",
+        "policies": [
+            {"scope_type": "OnlyEnvironments", "environment_ids": ["env-prod"]},
+            {"scope_type": "ExceptEnvironments", "environment_ids": ["env-dev"]},
+        ],
+    })
+    return value
+
+
+def graded(data: Collection) -> dict:
+    from easm_agent.evaluation import evaluate
+    from easm_agent.models import DEFAULT_TAGS, load_criteria
+
+    return {row.se_code: row for row in evaluate(data, load_criteria(), {}, DEFAULT_TAGS)}
+
+
+def test_admin_receipt_records_provenance_and_scores_power_platform_environments(tmp_path: Path) -> None:
+    data = ingest(tmp_path, power_platform_packet())
+    assert all(Path(read.evidence_refs[0]).is_file() for read in data.admin_evidence)
+    rows = graded(data)
+    assert (rows["BI-SY-10"].level, rows["BI-SY-10"].measurement.numerator) == ("L2", 2)
+    assert (rows["DM-SY-02"].level, rows["DM-SY-02"].measurement.numerator) == ("L2", 2)
+    assert (rows["DS-SY-04"].level, rows["DS-SY-04"].measurement.numerator) == ("L2", 2)
+    assert rows["DS-SY-04"].measurement.targets[0].observed["environment_type"] == "Default"
     path = tmp_path / "report.xlsx"
-    original = Finding(se_code="DS-SY-06", level="L5", scope="partial", metric_value=1, rationale="original")
-    write_workbook(data, [original], path)
+    write_workbook(data, list(rows.values()), path)
     book = load_workbook(path)
     sheet = book["6. 수집 결과"]
-    rows = {sheet.cell(row, 2).value: row for row in range(5, 90)}
-    for code in ("DM-SY-02", "BI-SY-10"):
-        assert sheet.cell(rows[code], 7).value == "일부 수집"
-        assert sheet.cell(rows[code], 9).value == "판정 보류" and sheet.cell(rows[code], 13).value is None
-    assert sheet.cell(rows["DS-SY-06"], 13).value == 5 and original.level == "L5"
+    sheet_rows = {sheet.cell(row, 2).value: row for row in range(5, 90)}
+    for code in ("DM-SY-02", "DS-SY-04", "BI-SY-10"):
+        assert sheet.cell(sheet_rows[code], 7).value == "수집됨"
+        assert sheet.cell(sheet_rows[code], 13).value == 2
     assert len(book["8. 수집 Raw 데이터"].tables) == 16
-    assert data.proposals == []
 
 
-@pytest.mark.parametrize("change", ["tenant", "unverified", "command", "duplicate", "count", "future"])
+@pytest.mark.parametrize("change", ["tenant", "unverified", "command", "duplicate", "count", "future", "role_sum", "policy_count"])
 def test_admin_receipts_fail_closed(tmp_path: Path, change: str) -> None:
-    value = packet()
-    if change == "tenant":
+    value = power_platform_packet() if change in ("role_sum", "policy_count") else packet()
+    if change == "role_sum":
+        value["reads"][1]["object_count"] = 5
+    elif change == "policy_count":
+        value["reads"][2]["object_count"] = 5
+    elif change == "tenant":
         value["tenant_id"] = OTHER
     elif change == "unverified":
         value["tenant_verified"] = False
@@ -120,9 +152,11 @@ def test_failed_read_keeps_null_not_zero_and_does_not_hide_other_success(tmp_pat
         "detail": "official module unavailable",
     })
     data = ingest(tmp_path, value)
-    row = next(item for item in admin_observations(data) if item.code == "DM-SY-02")
-    assert row.status == "일부 수집" and row.reason == "feature_unavailable"
-    assert row.metrics["powerplatform.environment_roles"]["object_count"] is None
+    rows = graded(data)
+    assert rows["BI-SY-10"].level == "L1" and rows["BI-SY-10"].metric_value == 0
+    assert rows["DM-SY-02"].level == "N/A" and rows["DM-SY-02"].metric_value is None
+    assert rows["DM-SY-02"].reason == "feature_unavailable"
+    assert rows["DS-SY-04"].level == "N/A" and rows["DS-SY-04"].reason == "not_found"
 
 
 @pytest.mark.parametrize("recorded_mode,requested_mode", [("fixture", "fixture"), ("live", "fixture")])
@@ -264,8 +298,16 @@ def run_ps_export(tmp_path: Path, *, login: str = "Interactive") -> tuple[subpro
         [CmdletBinding()] param($Endpoint, $TenantID, $UseSystemBrowser)
         if ([bool]$UseSystemBrowser -ne ('{login}' -eq 'Browser')) {{ throw 'unexpected login mode' }}
     }}
-    function Get-AdminPowerAppEnvironmentRoleAssignment {{ [pscustomobject]@{{ RoleName = 'fixture-role' }} }}
-    function Get-AdminDlpPolicy {{ [pscustomobject]@{{ DisplayName = 'fixture-policy' }}, [pscustomobject]@{{ DisplayName = 'second' }} }}
+    function Get-AdminPowerAppEnvironmentRoleAssignment {{
+        [pscustomobject]@{{ RoleName = 'fixture-role'; EnvironmentName = 'env-a' }},
+        [pscustomobject]@{{ RoleName = 'fixture-role'; EnvironmentName = 'env-a' }},
+        [pscustomobject]@{{ RoleName = 'fixture-role'; EnvironmentName = 'env-b' }}
+    }}
+    function Get-AdminDlpPolicy {{
+        [pscustomobject]@{{ DisplayName = 'fixture-policy'; FilterType = 'include'; Environments = @(
+            [pscustomobject]@{{ name = 'env-a'; id = '/providers/Microsoft.BusinessAppPlatform/scopes/admin/environments/env-a' }}) }},
+        [pscustomobject]@{{ DisplayName = 'second'; FilterType = 'none'; Environments = $null }}
+    }}
     & '{script}' -TenantId '{TENANT}' -Service PowerPlatform -OutputPath '{output}' -Login {login}
     exit $LASTEXITCODE
     """
@@ -278,13 +320,18 @@ def run_ps_export(tmp_path: Path, *, login: str = "Interactive") -> tuple[subpro
 
 
 @pytest.mark.parametrize("login", ["Interactive", "Browser"])
-def test_power_platform_export_keeps_only_object_counts(tmp_path: Path, login: str) -> None:
+def test_power_platform_export_keeps_only_counts_and_policy_scopes(tmp_path: Path, login: str) -> None:
     completed, value = run_ps_export(tmp_path, login=login)
     assert completed.returncode == 0, completed.stderr
     export = AdminEvidenceExport.model_validate(value)
-    assert export.tenant_verified and {read.source: read.object_count for read in export.reads} == {
-        "powerplatform.environment_roles": 1, "powerplatform.dlp_policies": 2,
+    reads = {read.source: read for read in export.reads}
+    assert export.tenant_verified and {source: read.object_count for source, read in reads.items()} == {
+        "powerplatform.environment_roles": 3, "powerplatform.dlp_policies": 2,
     }
+    assert reads["powerplatform.environment_roles"].role_counts == {"env-a": 2, "env-b": 1}
+    assert [(row.scope_type, row.environment_ids) for row in reads["powerplatform.dlp_policies"].policies] == [
+        ("OnlyEnvironments", ["env-a"]), ("AllEnvironments", []),
+    ]
     assert "fixture-role" not in json.dumps(value) and "fixture-policy" not in json.dumps(value)
 
 

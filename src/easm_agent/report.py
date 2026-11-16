@@ -15,6 +15,7 @@ from easm_agent.azure import redact
 from easm_agent.models import Collection, Finding
 from easm_agent.provenance import digest
 from easm_agent.report_excel import write_workbook
+from easm_agent.report_pptx import write_presentation
 
 RAW_PATTERN = "raw-data-*.json"
 RUN_PATTERN = re.compile(r"(?P<stamp>\d{8}T\d{12}Z)(?:-(?P<sequence>\d+))?")
@@ -44,6 +45,10 @@ def report_name(data: Collection, run_stamp: str | None = None) -> str:
 
 def raw_name(data: Collection, run_stamp: str | None = None) -> str:
     return f"raw-data-{run_stamp or _stamp(data)}.json"
+
+
+def presentation_name(data: Collection, run_stamp: str | None = None) -> str:
+    return f"EASM-report-{run_stamp or _stamp(data)}.pptx"
 
 
 def latest_raw(output: Path) -> Path | None:
@@ -325,16 +330,21 @@ def write_reports(
     normalized = Collection.model_validate(result["collection"])
     rows = [Finding.model_validate(row) for row in result["findings"]]
     workbook = output / report_name(normalized, run_stamp)
+    presentation = output / presentation_name(normalized, run_stamp)
     staging = output / f".report.{uuid.uuid4().hex}.pending.xlsx"
+    deck_staging = output / f".report.{uuid.uuid4().hex}.pending.pptx"
     try:
         write_workbook(normalized, rows, staging, mode, result["provenance"]["references"])
+        write_presentation(normalized, rows, deck_staging)
         payload = staging.read_bytes()
+        deck_payload = deck_staging.read_bytes()
         result["manifest"] = {
             "product": "EASM", "mode": mode, "collected_at": normalized.collected_at.isoformat(),
-            "files": [{
-                "path": workbook.name, "bytes": len(payload),
-                "sha256": hashlib.sha256(payload).hexdigest(),
-            }],
+            "files": [
+                {"path": workbook.name, "bytes": len(payload), "sha256": hashlib.sha256(payload).hexdigest()},
+                {"path": presentation.name, "bytes": len(deck_payload),
+                 "sha256": hashlib.sha256(deck_payload).hexdigest()},
+            ],
             "credentials_included": False,
             "data_hash_scope": "UTF-8 JSON with indent=2, excluding manifest",
             "data_sha256": hashlib.sha256(json_bytes({
@@ -342,10 +352,12 @@ def write_reports(
             })).hexdigest(),
         }
         os.replace(staging, workbook)
+        os.replace(deck_staging, presentation)
         atomic_write(output / raw_name(normalized, run_stamp), json_bytes(result))
     finally:
         staging.unlink(missing_ok=True)
+        deck_staging.unlink(missing_ok=True)
         if new_run and not any(output.iterdir()):
             output.rmdir()
-    print(f"결과 파일: {workbook} / {output / raw_name(normalized, run_stamp)}")
+    print(f"결과 파일: {workbook} / {presentation} / {output / raw_name(normalized, run_stamp)}")
     return workbook

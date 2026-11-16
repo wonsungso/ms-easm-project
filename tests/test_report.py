@@ -30,6 +30,7 @@ from easm_agent.report import (
     json_bytes,
     latest_raw,
     load_result,
+    presentation_name,
     raw_name,
     report_name,
     write_reports,
@@ -183,12 +184,14 @@ def test_fixture_cli_is_offline_and_writes_only_workbook_and_raw_data(tmp_path: 
     assert len(runs) == 1 and runs[0].is_dir()
     assert re.fullmatch(r"\d{8}T\d{12}Z(?:-\d+)?", runs[0].name)
     names = sorted(path.name for path in runs[0].iterdir())
-    assert len(names) == 2
-    assert names == [f"raw-data-{runs[0].name}.json", f"report-{runs[0].name}.xlsx"]
+    assert len(names) == 3
+    assert names == sorted([
+        f"raw-data-{runs[0].name}.json", f"report-{runs[0].name}.xlsx", f"EASM-report-{runs[0].name}.pptx",
+    ])
     result = load_result(tmp_path)
     assert result["mode"] == "fixture"
     agents = result["collection"]["agents"]
-    assert len(agents) == 3 and len(result["findings"]) == 23
+    assert len(agents) == 3 and len(result["findings"]) == 31
     assert {
         "collected_at", "tenant_id", "subscription_id", "resource_group", "platform",
         "agent_id", "agent_name", "resource_id", "hosting_type", "owner", "sponsor",
@@ -202,7 +205,10 @@ def test_raw_data_keeps_machine_contract_and_manifest_matches_files(tmp_path: Pa
     data, output, source, workbook = prepared(tmp_path)
     before = data.model_dump(mode="json")
     assert workbook.parent.parent == output and workbook.name == report_name(data, workbook.parent.name)
-    assert {path.name for path in workbook.parent.iterdir()} == {workbook.name, raw_name(data, workbook.parent.name)}
+    deck = workbook.parent / presentation_name(data, workbook.parent.name)
+    assert {path.name for path in workbook.parent.iterdir()} == {
+        workbook.name, deck.name, raw_name(data, workbook.parent.name),
+    }
     assert workbook.stem.removeprefix("report-") == workbook.parent.name
     assert latest_raw(output).stem.removeprefix("raw-data-") == workbook.parent.name
     assert load_result(output)["collection"]["collected_at"] == data.model_dump(mode="json")["collected_at"]
@@ -214,10 +220,11 @@ def test_raw_data_keeps_machine_contract_and_manifest_matches_files(tmp_path: Pa
     assert (row["level"], row["reason"], row["scope"]) == ("N/A", "permission_denied", "partial")
     manifest = result["manifest"]
     assert manifest["credentials_included"] is False and manifest["mode"] == "live"
-    payload = workbook.read_bytes()
-    assert manifest["files"] == [{
-        "path": workbook.name, "bytes": len(payload), "sha256": hashlib.sha256(payload).hexdigest(),
-    }]
+    payload, deck_payload = workbook.read_bytes(), deck.read_bytes()
+    assert manifest["files"] == [
+        {"path": workbook.name, "bytes": len(payload), "sha256": hashlib.sha256(payload).hexdigest()},
+        {"path": deck.name, "bytes": len(deck_payload), "sha256": hashlib.sha256(deck_payload).hexdigest()},
+    ]
     rest = {key: value for key, value in result.items() if key != "manifest"}
     assert manifest["data_sha256"] == hashlib.sha256(json_bytes(rest)).hexdigest()
     assert data.model_dump(mode="json") == before and source.exists()
@@ -404,7 +411,9 @@ def test_package_cli_rebuilds_workbook_from_raw_data_without_azure_or_evidence(t
     after = load_result(output)
     for key in ("collection", "findings", "evidence", "provenance", "mode"):
         assert after[key] == before[key]
-    assert {path.name for path in workbook.parent.iterdir()} == {workbook.name, latest_raw(output).name}
+    assert {path.name for path in workbook.parent.iterdir()} == {
+        workbook.name, latest_raw(output).name, presentation_name(before["collection"], workbook.parent.name),
+    }
     assert list(output.iterdir()) == [workbook.parent]
     assert latest_raw(output).name == f"raw-data-{workbook.parent.name}.json"
     assert after["manifest"]["files"][0]["sha256"] == hashlib.sha256(workbook.read_bytes()).hexdigest()
@@ -509,7 +518,9 @@ def test_package_rebuilds_explicit_legacy_directory_without_nesting(tmp_path: Pa
     path = write_reports(sample(), [], tmp_path, new_run=False)
     with NO_AZURE:
         assert main(["package", "--output-dir", str(tmp_path)]) == 0
-    assert set(tmp_path.iterdir()) == {path, tmp_path / raw_name(sample())}
+    assert set(tmp_path.iterdir()) == {
+        path, tmp_path / raw_name(sample()), tmp_path / presentation_name(sample()),
+    }
 
 
 # --- workbook structure ---
@@ -566,8 +577,8 @@ def test_workbook_sheets_tables_borders_and_validation(tmp_path: Path) -> None:
     assert checklist.freeze_panes == "G5" and checklist.auto_filter.ref == "B4:N89"
     assert all(checklist.cell(row, 13).alignment.horizontal == "center" for row in range(4, 90))
     for row in range(5, checklist.max_row + 1):
-        if checklist.cell(row, 7).value == "수집됨":
-            assert checklist.row_dimensions[row].height == 120
+        if "-SY-" in str(checklist.cell(row, 2).value):
+            assert checklist.row_dimensions[row].height == 150
     proposals = book[TITLES["수집결과 근거"]]
     assert proposals.row_dimensions[4].height == 60 and proposals["F4"].fill.patternType is None
     assert "수집된 설정·값·건수" in proposals["A1"].value

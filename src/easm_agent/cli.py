@@ -14,10 +14,9 @@ from azure.identity import DefaultAzureCredential
 
 from easm_agent.azure import AccessError, EvidenceStore
 from easm_agent.collect import collect
-from easm_agent.collect_admin_evidence import admin_observations, read_admin_evidence
+from easm_agent.collect_admin_evidence import read_admin_evidence
 from easm_agent.collect_agent365 import (
     Agent365Collector,
-    agent365_observations,
     crosscheck_agent365,
 )
 from easm_agent.collect_entra import EntraCollector
@@ -111,10 +110,6 @@ def main(argv: list[str] | None = None) -> int:
                     seen_sources.update(sources)
                     data.admin_evidence = [read for read in data.admin_evidence if read.source not in sources]
                     data.admin_evidence.extend(incoming.admin_evidence)
-                data.proposals = [
-                    proposal for proposal in data.proposals
-                    if proposal.code not in {item.code for item in admin_observations(data)}
-                ] + admin_observations(data)
             data.facts["data_mode"] = mode
             if args.reassess:
                 settings = load_settings(args.config)
@@ -192,8 +187,6 @@ def main(argv: list[str] | None = None) -> int:
             )
         data.facts["data_mode"] = "fixture" if args.fixture else "live"
         data.proposals = evaluate_proposals(data, load_conventions(settings))
-        data.proposals.extend(agent365_observations(data))
-        data.proposals.extend(admin_observations(data))
         findings = evaluate(
             data, criteria, allowed_models(settings),
             load_conventions(settings), settings.policy_facts, settings.interview_levels,

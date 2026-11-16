@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -13,10 +13,11 @@ from easm_agent.azure import AccessError, EvidenceStore, ReaderHTTP
 from easm_agent.collect_agent365 import (
     REGISTRY_URL,
     Agent365Collector,
-    agent365_observations,
     crosscheck_agent365,
 )
+from easm_agent.evaluation import evaluate
 from easm_agent.models import (
+    DEFAULT_TAGS,
     Agent365Package,
     AgentEvidence,
     Collection,
@@ -82,7 +83,8 @@ def test_registry_uses_documented_get_and_saves_only_minimal_fields(tmp_path: Pa
     assert json.loads(text)["response"]["value"] == [{
         "id": "package", "agentIdentityId": IDENTITY, "version": "99",
         "displayName": "resource-agent", "platform": None, "availableTo": None,
-        "deployedTo": None, "isBlocked": None,
+        "deployedTo": None, "isBlocked": None, "createdDateTime": None, "requestStatus": None,
+        "governanceMetadata": None, "ownerCount": None,
     }]
     assert package.field_status["available_to"].reason == "not_found"
 
@@ -161,7 +163,7 @@ def test_invalid_registry_pagination_is_an_explicit_failure(next_link: object) -
 
 def test_partial_id_crosschecks_do_not_compare_unrelated_fields_or_same_graph_source() -> None:
     result = checks(snapshot())
-    assert len(result) == 23
+    assert len(result) == 31
     for code in ("DS-SY-05", "DP-SY-19"):
         assert result[code].status == "partial_match"
         assert result[code].matched == result[code].compared == 1
@@ -244,38 +246,42 @@ def test_report_keeps_grades_and_separates_crosscheck_details(tmp_path: Path) ->
     assert finding.level == "L5"
 
 
-def test_package_metadata_is_partial_evidence_not_automatic_scoring(tmp_path: Path) -> None:
+def graded(data: Collection) -> dict:
+    return {row.se_code: row for row in evaluate(data, load_criteria(), {}, DEFAULT_TAGS)}
+
+
+def test_registry_fields_grade_governance_approval_ownership_scope_and_registration() -> None:
     data = snapshot()
-    data.agent365_packages[0].display_name = "registered-agent"
-    data.agent365_packages[0].available_to = "allowedForAll"
-    data.agent365_packages[0].deployed_to = "acquiredForSome"
-    data.agent365_packages[0].is_blocked = False
-    records = agent365_observations(data)
-    assert {row.code for row in records} == {"DP-SY-17", "DP-SY-18"}
-    assert all(row.status == "일부 수집" for row in records)
-    assert records[1].metrics["available_to"] == {"allowedForAll": 1}
-    path = tmp_path / "partial.xlsx"
-    write_workbook(data, [], path)
-    sheet = load_workbook(path)["6. 수집 결과"]
-    rows = {sheet.cell(row, 2).value: row for row in range(5, 90)}
-    for code in ("DP-SY-17", "DP-SY-18"):
-        assert sheet.cell(rows[code], 7).value == "일부 수집"
-        assert sheet.cell(rows[code], 9).value == "판정 보류"
-        assert sheet.cell(rows[code], 13).value is None
-    assert data.proposals == []
-    assert not {"DP-SY-17", "DP-SY-18"} & load_criteria()["items"].keys()
+    data.facts["inventory_complete"] = True
+    data.agent365_packages = [
+        Agent365Package(
+            package_id="managed", agent_identity_id=IDENTITY, governance="ManagedAgent", owner_count=1,
+            available_to="allowedForSome", deployed_to="acquiredForSome", is_blocked=False,
+            created_at=NOW - timedelta(days=3), request_status="approved",
+        ),
+        Agent365Package(
+            package_id="open", governance="Unmanaged", owner_count=0, available_to="allowedForAll",
+            deployed_to="acquiredForAll", is_blocked=False, created_at=NOW - timedelta(days=400),
+        ),
+    ]
+    rows = graded(data)
+    for code, level, ratio in (
+        ("DM-SY-01", "L2", 0.5), ("DM-SY-03", "L5", 1), ("DP-SY-17", "L2", 0.5),
+        ("DP-SY-18", "L2", 0.5), ("OT-SY-27", "L5", 1),
+    ):
+        assert (rows[code].level, rows[code].metric_value) == (level, ratio), code
+    assert rows["DM-SY-03"].measurement.denominator == 1
+    data.agent365_packages[0].request_status = None
+    assert graded(data)["DM-SY-03"].level == "L1"
+    data.agent365_packages[0].created_at = None
+    assert graded(data)["DM-SY-03"].level == "N/A"
 
 
-def test_package_metadata_failure_cannot_be_reported_as_partial_success(tmp_path: Path) -> None:
+def test_registry_items_stay_ungraded_with_the_original_reason_when_registry_is_denied() -> None:
     source = http()
-    source.list_graph.side_effect = AccessError("permission_denied", "HTTP 403")
+    source.list_graph.side_effect = AccessError("license_missing", "Agent 365 license required")
     data = Agent365Collector(source, NOW).discover()
-    records = agent365_observations(data)
-    assert all(row.status == "수집 불가" and row.reason == "permission_denied" for row in records)
-    assert all(row.metrics["packages"] is None for row in records)
-    path = tmp_path / "denied.xlsx"
-    write_workbook(data, [], path)
-    sheet = load_workbook(path)["6. 수집 결과"]
-    rows = {sheet.cell(row, 2).value: row for row in range(5, 90)}
-    for code in ("DP-SY-17", "DP-SY-18"):
-        assert sheet.cell(rows[code], 8).value == "확인 자료 없음"
+    rows = graded(data)
+    for code in ("DM-SY-01", "DM-SY-03", "DP-SY-17", "DP-SY-18", "OT-SY-27"):
+        assert rows[code].level == "N/A" and rows[code].metric_value is None, code
+        assert rows[code].reason == "license_missing", code

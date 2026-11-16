@@ -22,8 +22,7 @@ from openpyxl.worksheet.worksheet import Worksheet
 from pydantic import BaseModel
 
 from easm_agent.azure import redact
-from easm_agent.collect_admin_evidence import admin_observations
-from easm_agent.collect_agent365 import OBSERVATION_ONLY, STATUS_LABELS, agent365_observations
+from easm_agent.collect_agent365 import STATUS_LABELS
 from easm_agent.models import (
     AdminReadResult,
     Agent365Crosscheck,
@@ -107,6 +106,7 @@ RATIOS = set(SE_NAMES)
 EMPTY = "수집된 데이터 없음 - 미수행 또는 0건으로 확정하지 않음"
 ORIGINAL = "원본 JSON"
 FONT_SIZE = 10
+SYSTEM_EVIDENCE_ROW_HEIGHT = 150
 HEADER_FILL = "D9D9D9"
 EVIDENCE_FILL = "EAF3FB"
 _SIDE = Side(style="thin", color="000000")
@@ -211,10 +211,6 @@ def _wrapped_height(text: str, width: float, font_size: float) -> float:
         for line in text.splitlines()
     )
     return lines * font_size * 1.35
-
-
-def _evidence_needs_expansion(text: str, width: float, original_height: float, font_size: float) -> bool:
-    return _wrapped_height(text, width, font_size) > original_height
 
 
 def _fit_audit_rows(sheet: Worksheet, first: int, last: int, columns: int) -> None:
@@ -346,6 +342,14 @@ def collection_summary(data: Collection, finding: Finding) -> tuple[str, str | N
         summary = f"Azure Agent {len(agents)}개 중 최근 사용일 확인 {sum(item.last_used_at is not None for item in agents)}개"
     elif code == "OT-SY-29" and (data.costs or data.budgets):
         summary = f"비용 행 {len(data.costs)}건, 예산 {len(data.budgets)}개"
+    elif code in ("DM-SY-01", "DM-SY-03", "DP-SY-17", "DP-SY-18") and data.agent365_packages:
+        summary = f"Agent 365 등록 패키지 {len(data.agent365_packages)}개"
+    elif code == "OT-SY-27" and data.agent365_packages:
+        summary = f"Azure Agent {len(agents)}개, Agent 365 등록 패키지 {len(data.agent365_packages)}개"
+    elif code in ("DM-SY-02", "DS-SY-04", "BI-SY-10"):
+        reads = [row for row in data.admin_evidence if row.source == "powerplatform.environments" and row.completed]
+        if reads:
+            summary = f"Power Platform 환경 {len(reads[0].environments)}개"
     elif code == "OT-SY-30" and data.defender_plans:
         summary = (
             f"Defender 플랜 {len(data.defender_plans)}건, AI 위협 방지 Standard "
@@ -496,7 +500,7 @@ def _result_sheet(
     book: Workbook, data: Collection, findings: list[Finding], resources: dict[str, list[ResourceName]],
 ) -> dict[str, int]:
     source = book[CRITERIA_SHEET]
-    evidence_only_codes = {proposal.code for proposal in data.proposals if proposal.evidence_only} | OBSERVATION_ONLY.keys()
+    evidence_only_codes = {proposal.code for proposal in data.proposals if proposal.evidence_only}
     sheet = book.copy_worksheet(source)
     sheet.title = RESULT_SHEET
     sheet.delete_cols(10)
@@ -597,18 +601,8 @@ def _result_sheet(
             evidence.font = font
         sheet.cell(number, 11).alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
         sheet.cell(number, 13).alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-        if sheet.cell(number, 7).value == "수집됨":
-            sheet.row_dimensions[number].height = 120
-        elif sheet.cell(number, 7).value == "수집하지 않음" and _evidence_needs_expansion(
-            str(evidence.value or ""), sheet.column_dimensions["J"].width,
-            source.row_dimensions[number].height or source.sheet_format.defaultRowHeight or 15,
-            evidence.font.sz or FONT_SIZE,
-        ):
-            sheet.row_dimensions[number].height = 120
-        elif sheet.cell(number, 7).value == "일부 수집" or (
-            finding is not None and finding.se_code in evidence_only_codes
-        ):
-            sheet.row_dimensions[number].height = 110
+        if "-SY-" in str(code):
+            sheet.row_dimensions[number].height = SYSTEM_EVIDENCE_ROW_HEIGHT
     sheet.cell(4, 11).alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
     sheet.cell(4, 13).alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
     if rows.keys() != by_code.keys():
@@ -633,8 +627,6 @@ def write_workbook(
 ) -> None:
     """Extend the assessment template with a masked collected-evidence snapshot."""
     proposals = {proposal.code: proposal for proposal in data.proposals}
-    for proposal in [*agent365_observations(data), *admin_observations(data)]:
-        proposals.setdefault(proposal.code, proposal)
     data = data.model_copy(update={"proposals": list(proposals.values())})
     original_codes = {finding.se_code for finding in findings}
     findings = [*findings, *[
@@ -644,7 +636,7 @@ def write_workbook(
             next_step="원래 평가 기준을 충족할 증거가 부족해 점수 보류",
         )
         for code, proposal in proposals.items()
-        if (code in OBSERVATION_ONLY or proposal.evidence_only) and code not in original_codes
+        if proposal.evidence_only and code not in original_codes
     ]]
     book, template = load_report_template()
     resources = {
@@ -719,13 +711,6 @@ def write_workbook(
                 "기존 Azure/Graph API로 평가하는 항목 - 평가 제외 아님\n"
                 "Agent 365 등록부에 같은 판정 정보 미제공\n" + check.detail
             )
-        if detail["SE 코드"] in OBSERVATION_ONLY:
-            proposal = proposals[detail["SE 코드"]]
-            detail["Agent 365 교차검증"] = (
-                "원천 일부 수집" if proposal.status == "일부 수집" else "원천 조회 미확인"
-            )
-            detail["교차검증 범위·결과"] = "추가 대조가 아닌 등록부 원천 자료 수집. " + proposal.limit
-            detail["교차검증 증적"] = proposal.evidence_refs
         detail["교차검증 증적"] = check.evidence_refs if check else []
     proposals_sheet = _table(book, DETAILS_TITLE, [
         "SE 코드", "진단 영역", "점검 항목", "조회 상태", "조회 제한 사유",

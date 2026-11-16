@@ -15,7 +15,7 @@ from openpyxl.utils import range_boundaries
 from easm_agent import report_template
 from easm_agent.models import DEFAULT_TAGS, Collection, Finding, load_criteria
 from easm_agent.proposals import evaluate_proposals
-from easm_agent.report_excel import _emphasize_evidence, _evidence_needs_expansion, write_workbook
+from easm_agent.report_excel import _emphasize_evidence, write_workbook
 from easm_agent.report_template import (
     COLLECTION_METHODS,
     CRITERIA_SHEET,
@@ -67,7 +67,8 @@ def test_result_preserves_source_columns_and_inserts_collection_methods(output: 
         assert sheet.title.startswith(f"{index}. ")
     for row in range(1, source.max_row + 1):
         assert result.row_dimensions[row].height == (
-            45 if row in (2, 3) else 120 if result.cell(row, 7).value == "수집됨" else source.row_dimensions[row].height
+            45 if row in (2, 3) else 150 if "-SY-" in str(result.cell(row, 2).value)
+            else source.row_dimensions[row].height
         )
         for column in range(1, 7):
             old, new = source.cell(row, column), result.cell(row, column)
@@ -132,28 +133,18 @@ def test_collection_methods_match_all_readme_rows() -> None:
     assert COLLECTION_METHODS == methods
 
 
-@pytest.mark.parametrize(("text", "expanded"), [
-    ("짧은 근거", False), ("a" * 180, False), ("a" * 181, True),
-    ("가" * 90, False), ("가" * 91, True), ("첫 줄\n둘째 줄\n셋째 줄", True),
-])
-def test_long_evidence_uses_wrapping_and_explicit_newlines(text: str, expanded: bool) -> None:
-    assert _evidence_needs_expansion(text, 90, 33.75, 10) is expanded
-
-
-def test_uncollected_long_evidence_is_height120_without_changing_short_rows(tmp_path: Path) -> None:
-    path = tmp_path / "long-uncollected.xlsx"
+def test_every_system_evidence_row_is_height150_in_criteria_and_result_sheets(tmp_path: Path) -> None:
+    path = tmp_path / "heights.xlsx"
     write_workbook(Collection(collected_at=datetime.now(UTC)), [Finding(
         se_code="DS-SY-06", scope="partial", level="N/A", reason="permission_denied",
         rationale="조회 실패의 상세 근거입니다. " * 20,
     )], path)
-    sheet = load_workbook(path)[RESULT_SHEET]
-    rows = {sheet.cell(row, 2).value: row for row in range(5, 90)}
-    row = rows["DS-SY-06"]
-    assert sheet.cell(row, 7).value == "수집하지 않음"
-    assert sheet.row_dimensions[row].height == 120
-    source = load_workbook(assessment_template_path())[CRITERIA_SHEET]
-    short = rows["DM-SY-01"]
-    assert sheet.row_dimensions[short].height == source.row_dimensions[short].height
+    book = load_workbook(path)
+    for name in (RESULT_SHEET, CRITERIA_SHEET):
+        sheet = book[name]
+        rows = [row for row in range(5, sheet.max_row + 1) if "-SY-" in str(sheet.cell(row, 2).value)]
+        assert len(rows) == 31
+        assert all(sheet.row_dimensions[row].height == 150 for row in rows)
 
 
 def test_unknown_result_code_fails_explicitly_without_writing(tmp_path: Path) -> None:
@@ -212,7 +203,7 @@ def test_all_findings_link_to_the_matching_detail_row_and_preserve_existing_metr
     table = next(table for table in details.tables.values() if table.ref.startswith("A3:"))
     last_detail = range_boundaries(table.ref)[3]
     detail_rows = {details.cell(row, 1).value: row for row in range(4, last_detail + 1)}
-    assert len(detail_rows) == len(findings) == 23
+    assert len(detail_rows) == len(findings) == 31
     expected_metrics = {item.code: item.metrics for item in data.proposals}
     for code, row in detail_rows.items():
         if code in expected_metrics:
@@ -236,7 +227,7 @@ def test_all_findings_link_to_the_matching_detail_row_and_preserve_existing_metr
         assert link.hyperlink.target is None and link.hyperlink.id is None
         assert link.hyperlink.location == f"'7. 수집결과 근거'!A{detail_rows[code]}"
         linked += 1
-    assert linked == 23
+    assert linked == 31
 
 
 @pytest.mark.parametrize("level", ["L1", "L2", "L3", "L4", "L5", "N/A"])

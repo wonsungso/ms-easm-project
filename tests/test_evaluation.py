@@ -6,10 +6,14 @@ from functools import cache
 import pytest
 
 from easm_agent.api_grading import Measurement, measurements, targets
+from easm_agent.collect_admin_evidence import ENVIRONMENTS_URL
 from easm_agent.evaluation import evaluate, matches
 from easm_agent.models import (
     DEFAULT_TAGS,
+    AdminEnvironment,
+    AdminPolicyScope,
     AdminReadResult,
+    Agent365Package,
     AgentEvidence,
     Budget,
     Collection,
@@ -39,6 +43,7 @@ ACCOUNT = f"/subscriptions/{SID}/resourceGroups/rg/providers/Microsoft.Cognitive
 PROJECT = ACCOUNT + "/projects/p"
 BLUEPRINT = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 CODES = list(load_criteria()["items"])
+POWER_PLATFORM_CODES = ("DM-SY-02", "DS-SY-04", "BI-SY-10")
 
 
 def grade(data: Collection, criteria: dict | None = None, facts: dict | None = None) -> dict:
@@ -158,7 +163,8 @@ def data() -> Collection:
         facts={
             "inventory_complete": True, "agent_inventory_complete": True,
             "deployment_inventory_complete": True, "entra_blueprints_complete": True,
-            "entra_agents_complete": True, "evaluation_complete_projects": [PROJECT], "foundry_project_ids": [PROJECT],
+            "entra_agents_complete": True, "agent365_registry_complete": True,
+            "evaluation_complete_projects": [PROJECT], "foundry_project_ids": [PROJECT],
             "resource_metrics": [{"resource_id": ACCOUNT, "metrics": [{"timeseries": [{"data": [{"total": 0}]}]}]}],
         },
     )
@@ -166,6 +172,8 @@ def data() -> Collection:
 
     value.costs = [CostRecord(subscription_id=SID, resource_id=ACCOUNT, amount=10, currency="USD", usage_date="20261109")]
     value.defender_plans = defender_plans()
+    value.agent365_packages = [registry_package(IDENTITY_ID)]
+    value.admin_evidence = power_platform_reads()
     value.security = [SecurityRecommendation(subscription_id=SID, resource_id=ACCOUNT,
                                             assessment_id="/assessment", severity="Low", status="Healthy")]
     entries = [
@@ -194,6 +202,33 @@ def data() -> Collection:
     return value
 
 
+IDENTITY_ID = "identity"
+
+
+def registry_package(identity: str | None = None, name: str = "package", **changes: object) -> Agent365Package:
+    values = {
+        "package_id": name, "agent_identity_id": identity, "governance": "ManagedAgent", "owner_count": 1,
+        "available_to": "allowedForSome", "deployed_to": "acquiredForSome", "is_blocked": False,
+        "created_at": NOW - timedelta(days=5), "request_status": "approved", "evidence_refs": ["fixture://registry"],
+    }
+    return Agent365Package(**{**values, **changes})
+
+
+def power_platform_reads(*, managed: bool = True, with_role: bool = True, covered: bool = True) -> list[AdminReadResult]:
+    base = {"module_version": "2.0.220", "scope": "fixture", "completed": True, "observed_at": NOW,
+            "detail": "fixture", "evidence_refs": ["fixture://admin"]}
+    return [
+        AdminReadResult(source="powerplatform.environments", command=ENVIRONMENTS_URL, object_count=1,
+                        environments=[AdminEnvironment(environment_id="env-1", environment_type="Production",
+                                                       protection_level="Standard" if managed else "Basic")], **base),
+        AdminReadResult(source="powerplatform.environment_roles", command="Get-AdminPowerAppEnvironmentRoleAssignment",
+                        object_count=1 if with_role else 0, role_counts={"env-1": 1} if with_role else {}, **base),
+        AdminReadResult(source="powerplatform.dlp_policies", command="Get-AdminDlpPolicy", object_count=1,
+                        policies=[AdminPolicyScope(scope_type="AllEnvironments" if covered else "OnlyEnvironments",
+                                                   environment_ids=[] if covered else ["other"])], **base),
+    ]
+
+
 def defender_plans(
     sid: str = SID, *, ai_tier: str | None = "Standard", cspm_tier: str | None = "Standard",
     discovery: bool | None = True,
@@ -207,39 +242,59 @@ def defender_plans(
     ]
 
 
-def test_complete_api_snapshot_grades_all_23_controls_without_qualitative_inputs(data: Collection) -> None:
+def test_complete_api_snapshot_grades_all_31_controls_without_qualitative_inputs(data: Collection) -> None:
     rows = grade(data)
-    assert len(rows) == 23
-    assert all(row.level == "L5" and row.metric_value == 1 for row in rows.values())
+    assert len(rows) == 31
+    assert all(row.level == "L5" and row.metric_value == 1 for row in rows.values()), {
+        code: (row.level, row.reason) for code, row in rows.items() if row.level != "L5"
+    }
     assert all(row.reason is None and row.assessment_basis == "criteria" for row in rows.values())
     assert data.facts["grading_profile"] == "api_configuration_v1"
 
 
+REGISTRY_CODES = ("DM-SY-01", "DM-SY-03", "DP-SY-17", "DP-SY-18", "OT-SY-27")
+
+
 @pytest.mark.parametrize("reason", ["permission_denied", "license_missing", "error"])
-def test_agent365_crosscheck_failures_do_not_change_primary_grades(data: Collection, reason: str) -> None:
+def test_agent365_registry_failures_only_leave_registry_items_ungraded(data: Collection, reason: str) -> None:
     from easm_agent.collect_agent365 import crosscheck_agent365
     from easm_agent.models import Issue
 
     before = {code: row.model_dump() for code, row in grade(data).items()}
     data.issues.append(Issue(
-        collector="agent365_registry", target="tenant", reason=reason, detail="crosscheck unavailable",
+        collector="agent365_registry", target="tenant", reason=reason, detail="registry unavailable",
     ))
     data.facts["agent365_registry_complete"] = False
     data.agent365_crosschecks = crosscheck_agent365(data, load_criteria())
-    assert {code: row.model_dump() for code, row in grade(data).items()} == before
+    after = grade(data)
+    assert {c: r.model_dump() for c, r in after.items() if c not in REGISTRY_CODES} == {
+        c: r for c, r in before.items() if c not in REGISTRY_CODES
+    }
+    for code in REGISTRY_CODES:
+        assert after[code].level == "N/A" and after[code].metric_value is None
 
 
-def test_administrator_evidence_for_other_controls_never_changes_primary_grades(data: Collection) -> None:
-    from easm_agent.collect_admin_evidence import admin_observations
+def test_power_platform_and_registry_items_use_their_own_ratios(data: Collection) -> None:
+    data.admin_evidence = power_platform_reads(managed=False, with_role=False, covered=False)
+    data.agent365_packages = [
+        registry_package(IDENTITY_ID, "a"),
+        registry_package(None, "b", governance="Unmanaged", owner_count=0, available_to="allowedForAll",
+                         request_status="pending"),
+    ]
+    rows = grade(data)
+    for code in ("BI-SY-10", "DM-SY-02", "DS-SY-04"):
+        assert (rows[code].level, rows[code].measurement.numerator, rows[code].measurement.denominator) == ("L1", 0, 1)
+    for code in ("DM-SY-01", "DM-SY-03", "DP-SY-17", "DP-SY-18"):
+        assert (rows[code].level, rows[code].measurement.numerator, rows[code].measurement.denominator) == ("L2", 1, 2)
+    assert rows["OT-SY-27"].level == "L5"
 
-    before = {code: row.model_dump() for code, row in grade(data).items()}
-    data.admin_evidence.append(AdminReadResult(
-        source="powerplatform.dlp_policies", command="Get-AdminDlpPolicy",
-        module_version="2.0.220", scope="tenant DLP policy objects",
-        completed=True, observed_at=data.collected_at, object_count=3, detail="completed policy count",
-    ))
-    data.proposals.extend(admin_observations(data))
-    assert {code: row.model_dump() for code, row in grade(data).items()} == before
+
+def test_registry_items_are_not_graded_when_registry_was_unavailable(data: Collection) -> None:
+    data.agent365_packages = []
+    data.facts["agent365_registry_complete"] = False
+    rows = grade(data)
+    for code in ("DM-SY-01", "DM-SY-03", "DP-SY-17", "DP-SY-18", "OT-SY-27"):
+        assert rows[code].level == "N/A" and rows[code].metric_value is None
 
 
 @pytest.mark.parametrize("changes,level", [
@@ -345,9 +400,31 @@ def test_real_api_field_combinations_reach_every_level_for_all23_controls(
                 field_values.update({"enabled": complete, "target_ids": [account], "action_group_resolved": complete})
             row.values = field_values
             snapshot.proposal_observations.append(row)
+    snapshot.agent365_packages = [
+        registry_package(
+            f"identity-{index}" if index < good else None, f"package-{index}",
+            **({} if index < good else {
+                "governance": "Unmanaged", "owner_count": 0, "available_to": "allowedForAll",
+                "request_status": "pending",
+            }),
+        )
+        for index in range(10)
+    ]
+    env_ids = [f"env-{index}" for index in range(10)]
+    reads = power_platform_reads()
+    reads[0].environments = [
+        AdminEnvironment(environment_id=env, environment_type="Production",
+                         protection_level="Standard" if index < good else "Basic")
+        for index, env in enumerate(env_ids)
+    ]
+    reads[0].object_count = 10
+    reads[1].role_counts = {env: 1 for env in env_ids[:good]}
+    reads[1].object_count = good
+    reads[2].policies = [AdminPolicyScope(scope_type="OnlyEnvironments", environment_ids=env_ids[:good])]
+    snapshot.admin_evidence = reads
     snapshot.facts = {
         "inventory_complete": True, "agent_inventory_complete": True, "deployment_inventory_complete": True,
-        "entra_blueprints_complete": True, "entra_agents_complete": True,
+        "entra_blueprints_complete": True, "entra_agents_complete": True, "agent365_registry_complete": True,
         "foundry_project_ids": [run.project_id for run in snapshot.evaluations],
         "evaluation_complete_projects": [run.project_id for run in snapshot.evaluations],
         "resource_metrics": [
@@ -357,10 +434,10 @@ def test_real_api_field_combinations_reach_every_level_for_all23_controls(
         ],
     }
     for config in load_criteria()["items"].values():
-        for key in config["complete_subscriptions"]:
+        for key in config.get("complete_subscriptions", []):
             snapshot.facts[key] = snapshot.subscriptions
     rows = grade(snapshot)
-    assert len(rows) == 23
+    assert len(rows) == 31
     for code, row in rows.items():
         assert row.metric_value == pytest.approx(good / 10), (code, row.rationale)
         assert row.level == level, (code, row.rationale)
@@ -384,7 +461,7 @@ def test_exact_thresholds_for_every_control(
     assert row.level_criterion == load_criteria()["items"][code]["levels"][level]
 
 
-@pytest.mark.parametrize("code", CODES)
+@pytest.mark.parametrize("code", [code for code in CODES if load_criteria()["items"][code].get("collectors")])
 def test_related_collection_error_prevents_any_level(data: Collection, code: str) -> None:
     collector = load_criteria()["items"][code]["collectors"][0]
     data.issues.append(Issue(collector=collector, target="fixture", reason="permission_denied", detail="Denied API"))
@@ -408,8 +485,16 @@ def test_empty_denominator_is_not_success_or_l1(
 @pytest.mark.parametrize("code", CODES)
 def test_completeness_markers_cannot_be_omitted(data: Collection, code: str) -> None:
     config = load_criteria()["items"][code]
+    if code in POWER_PLATFORM_CODES:
+        data.admin_evidence = [row.model_copy(update={"completed": False, "reason": "error", "object_count": None,
+                                                      "environments": [], "role_counts": {}, "policies": []})
+                               for row in data.admin_evidence]
+        assert grade(data)[code].level == "N/A"
+        return
     data.facts["inventory_complete"] = False
     data.facts["entra_agents_complete"] = data.facts["entra_blueprints_complete"] = False
+    for flag in config.get("complete_flags", []):
+        data.facts[flag] = False
     assert grade(data)[code].level == "N/A"
     if config.get("complete_subscriptions"):
         data.facts["inventory_complete"] = True
@@ -542,7 +627,7 @@ def test_rules_reject_unknown_operator_and_missing_values() -> None:
 
 def test_all_criteria_have_exactly_api_metrics_and_exhaustive_level_definitions() -> None:
     criteria = load_criteria()
-    assert len(criteria["items"]) == 23
+    assert len(criteria["items"]) == 31
     assert "configuration_grading" not in criteria
     for config in criteria["items"].values():
         assert list(config["levels"]) == ["L1", "L2", "L3", "L4", "L5"]

@@ -277,6 +277,10 @@ class Agent365Package(EvidenceModel):
     available_to: str | None = None
     deployed_to: str | None = None
     is_blocked: bool | None = None
+    created_at: AwareDatetime | None = None
+    request_status: str | None = None
+    governance: str | None = None
+    owner_count: int | None = Field(default=None, ge=0)
     field_status: dict[str, FieldStatus] = Field(default_factory=dict)
     evidence_refs: list[str] = Field(default_factory=list)
 
@@ -312,6 +316,11 @@ class AdminEnvironment(EvidenceModel):
         return self
 
 
+class AdminPolicyScope(EvidenceModel):
+    scope_type: str | None = None
+    environment_ids: list[str] = Field(default_factory=list)
+
+
 class AdminReadResult(EvidenceModel):
     source: Literal[
         "powerplatform.environments", "powerplatform.environment_roles", "powerplatform.dlp_policies",
@@ -323,6 +332,8 @@ class AdminReadResult(EvidenceModel):
     observed_at: AwareDatetime
     object_count: StrictInt | None = Field(default=None, ge=0)
     environments: list[AdminEnvironment] = Field(default_factory=list)
+    role_counts: dict[str, StrictInt] = Field(default_factory=dict)
+    policies: list[AdminPolicyScope] = Field(default_factory=list)
     reason: Reason | None = None
     detail: str
     evidence_refs: list[str] = Field(default_factory=list)
@@ -333,8 +344,14 @@ class AdminReadResult(EvidenceModel):
             raise ValueError("완료된 관리자 조회에는 확인된 건수와 오류 없음이 필요합니다.")
         if not self.completed and (self.reason is None or self.object_count is not None):
             raise ValueError("실패한 관리자 조회는 사유와 null 건수를 유지해야 합니다.")
-        if not self.completed and self.environments:
+        if not self.completed and (self.environments or self.role_counts or self.policies):
             raise ValueError("미완료 조회를 완전한 집계나 목록으로 사용할 수 없습니다.")
+        if self.role_counts and self.source != "powerplatform.environment_roles":
+            raise ValueError("환경별 역할 건수를 다른 명령 결과로 사용할 수 없습니다.")
+        if self.policies and self.source != "powerplatform.dlp_policies":
+            raise ValueError("정책 범위를 다른 명령 결과로 사용할 수 없습니다.")
+        if any(value < 0 for value in self.role_counts.values()):
+            raise ValueError("역할 할당 건수는 음수일 수 없습니다.")
         return self
 
 

@@ -41,7 +41,7 @@ def resource_names(data: Collection, code: str) -> list[ResourceName]:
         add(category, identifier, row.agent_name, row.subscription_id)
 
     agents = [row for row in data.agents if row.platform in AZURE_AGENT_PLATFORMS]
-    if code in ("DM-SY-02", "BI-SY-10"):
+    if code in ("DM-SY-02", "DS-SY-04", "BI-SY-10"):
         for read in data.admin_evidence:
             if read.source == "powerplatform.environments" and read.completed:
                 for environment in read.environments:
@@ -52,9 +52,12 @@ def resource_names(data: Collection, code: str) -> list[ResourceName]:
         if code == "DS-SY-05":
             for blueprint in data.entra_blueprints:
                 add("Blueprint", blueprint.blueprint_id, blueprint.display_name)
-    elif code in ("DP-SY-17", "DP-SY-18"):
+    elif code in ("DM-SY-01", "DM-SY-03", "DP-SY-17", "DP-SY-18"):
         for package in data.agent365_packages:
             add("Agent 365 패키지", package.package_id, package.display_name)
+    elif code == "OT-SY-27":
+        for row in agents:
+            agent(row)
     elif code in ("DS-SY-06", "BI-SY-13"):
         for deployment in data.deployments:
             add("모델 배포", deployment.resource_id, deployment.name, deployment.subscription_id)

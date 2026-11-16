@@ -10,7 +10,6 @@ from easm_agent.assessment_codes import REVISION_4_CODES
 from easm_agent.models import load_criteria
 from easm_agent.report import load_result
 from easm_agent.report_template import CRITERIA_SHEET, assessment_template_path
-from scripts.merge_assessment import MANUAL_LEVELS
 
 
 def test_codes_follow_approved_continuous_sequence() -> None:
@@ -23,7 +22,7 @@ def test_codes_follow_approved_continuous_sequence() -> None:
         for number in range(start, end + 1)
     ]
     assert list(REVISION_4_CODES.values()) == expected
-    assert set(load_criteria()["items"]) | MANUAL_LEVELS.keys() == set(expected)
+    assert set(load_criteria()["items"]) == set(expected)
     sheet = load_workbook(assessment_template_path())[CRITERIA_SHEET]
     actual = [row[1].value for row in sheet if "-SY-" in str(row[1].value)]
     assert actual == expected

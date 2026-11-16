@@ -81,6 +81,43 @@ try {
         Failed-Read $pair[0] $pair[1] "feature_unavailable" ("Official module unavailable: " + $_.Exception.GetType().Name)
     }
 }
+function Environment-Key($Value) {
+    $text = [string]$Value
+    if ($text -match "/environments/([^/]+)") { return $Matches[1] }
+    return $text
+}
+
+function Role-Counts($Rows) {
+    $counts = [ordered]@{}
+    foreach ($row in $Rows) {
+        $key = Environment-Key (Read-Property $row "EnvironmentName")
+        if ([string]::IsNullOrWhiteSpace($key)) { throw "Role assignment without environment name." }
+        if ($counts.Contains($key)) { $counts[$key] = [int]$counts[$key] + 1 } else { $counts[$key] = 1 }
+    }
+    return $counts
+}
+
+function Policy-Scopes($Rows) {
+    $scopes = [Collections.Generic.List[object]]::new()
+    foreach ($row in $Rows) {
+        $filter = [string](Read-Property $row "FilterType")
+        $type = switch ($filter.ToLowerInvariant()) {
+            "none" { "AllEnvironments" }
+            "include" { "OnlyEnvironments" }
+            "exclude" { "ExceptEnvironments" }
+            default { throw "Unknown DLP environment filter type." }
+        }
+        $ids = @()
+        foreach ($environment in @(Read-Property $row "Environments")) {
+            $identifier = Read-Property $environment "name"
+            if ([string]::IsNullOrWhiteSpace([string]$identifier)) { $identifier = Environment-Key (Read-Property $environment "id") }
+            if (-not [string]::IsNullOrWhiteSpace([string]$identifier)) { $ids += [string]$identifier }
+        }
+        $scopes.Add([ordered]@{ scope_type = $type; environment_ids = @($ids) })
+    }
+    return $scopes
+}
+
 if ($ready) {
     try {
         $mode = Resolve-LoginMode $Login
@@ -99,15 +136,21 @@ if ($ready) {
             try {
                 $command = $pair[1]
                 $rows = @(Invoke-Read { & $command -ErrorAction Stop })
-                $scope = if ($pair[0] -eq "powerplatform.environment_roles") {
-                    "administrator-visible non-Dataverse environment role assignments; not unique Maker users"
-                } else { "DLP policy objects returned by the official tenant administrator cmdlet" }
-                $reads.Add([ordered]@{
+                $read = [ordered]@{
                     source = $pair[0]; command = $command; module_version = $version
-                    scope = $scope; completed = $true; object_count = $rows.Count
+                    completed = $true; object_count = $rows.Count
                     observed_at = [datetimeoffset]::UtcNow.ToString("o")
-                    detail = "Object count only; connector classifications, group members and policy effectiveness not inferred. No people or policy content exported."
-                })
+                }
+                if ($pair[0] -eq "powerplatform.environment_roles") {
+                    $read.scope = "administrator-visible non-Dataverse environment role assignments; not unique Maker users"
+                    $read.role_counts = Role-Counts $rows
+                    $read.detail = "Per-environment assignment counts only; no people exported. Environments with a Dataverse database are not returned by this cmdlet."
+                } else {
+                    $read.scope = "DLP policy objects returned by the official tenant administrator cmdlet"
+                    $read.policies = @(Policy-Scopes $rows)
+                    $read.detail = "Environment filter scope only; connector classifications and policy content not exported."
+                }
+                $reads.Add($read)
             } catch {
                 Failed-Read $pair[0] $pair[1] (Error-Reason $_) ("Official read failed: " + $_.Exception.GetType().Name)
             }

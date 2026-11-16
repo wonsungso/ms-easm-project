@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import uuid
-from collections import Counter
 from datetime import datetime
 from typing import Any
 
@@ -13,14 +12,9 @@ from easm_agent.models import (
     Agent365Package,
     Collection,
     FieldStatus,
-    ProposalFinding,
 )
 
 REGISTRY_URL = MSGRAPH + "/v1.0/copilot/admin/catalog/packages"
-OBSERVATION_ONLY = {
-    "DP-SY-17": "등록 Agent 패키지 목록·게시·배포 상태",
-    "DP-SY-18": "등록 Agent 패키지 접근·배포 허용 범위",
-}
 STATUS_LABELS = {
     "partial_match": "일부 일치",
     "mismatch": "불일치",
@@ -95,13 +89,33 @@ class Agent365Collector:
                         raise AccessError("error", f"Agent 365 {source} 형식 오류")
                 if row.get("isBlocked") is not None and type(row["isBlocked"]) is not bool:
                     raise AccessError("error", "Agent 365 isBlocked 형식 오류")
+                if row.get("requestStatus") is not None and not isinstance(row["requestStatus"], str):
+                    raise AccessError("error", "Agent 365 requestStatus 형식 오류")
+                if row.get("governanceMetadata") is not None and not isinstance(row["governanceMetadata"], str):
+                    raise AccessError("error", "Agent 365 governanceMetadata 형식 오류")
+                owners = row.get("owners")
+                if owners is not None and not isinstance(owners, list):
+                    raise AccessError("error", "Agent 365 owners 형식 오류")
+                created = row.get("createdDateTime")
+                if created is not None:
+                    try:
+                        created = datetime.fromisoformat(created.replace("Z", "+00:00")) if isinstance(created, str) else None
+                    except ValueError:
+                        created = None
+                    if created is None or created.tzinfo is None:
+                        raise AccessError("error", "Agent 365 createdDateTime 형식 오류")
                 package = Agent365Package(
                     package_id=identifier, agent_identity_id=identity, version=version,
                     display_name=row.get("displayName"), platform=row.get("platform"),
                     available_to=row.get("availableTo"), deployed_to=row.get("deployedTo"),
-                    is_blocked=row.get("isBlocked"),
+                    is_blocked=row.get("isBlocked"), created_at=created, request_status=row.get("requestStatus"),
+                    governance=row.get("governanceMetadata"),
+                    owner_count=len(owners) if owners is not None else None,
                 )
-                for field in ("agent_identity_id", "version", *text_fields, "is_blocked"):
+                for field in (
+                    "agent_identity_id", "version", *text_fields, "is_blocked", "created_at", "request_status",
+                    "governance", "owner_count",
+                ):
                     if getattr(package, field) is None:
                         package.field_status[field] = FieldStatus(reason="not_found", detail="등록부 응답에 필드 없음")
                 packages.append(package)
@@ -113,12 +127,16 @@ class Agent365Collector:
                             "id": p.package_id, "agentIdentityId": p.agent_identity_id, "version": p.version,
                             "displayName": p.display_name, "platform": p.platform, "availableTo": p.available_to,
                             "deployedTo": p.deployed_to, "isBlocked": p.is_blocked,
+                            "createdDateTime": p.created_at.isoformat() if p.created_at else None,
+                            "requestStatus": p.request_status, "governanceMetadata": p.governance,
+                            "ownerCount": p.owner_count,
                         }
                         for p in packages
                     ],
                     "pagination_complete": True,
-                    "projection": "package identity/name/version/platform/access/deployment/block state only; "
-                    "people, publisher, descriptions, member IDs and agent content omitted",
+                    "projection": "package identity/name/version/platform/access/deployment/block/request/"
+                    "governance state, owner count and creation time only; owner identities, publisher, "
+                    "descriptions, member IDs and agent content omitted",
                 })]
             for package in packages:
                 package.evidence_refs = refs
@@ -134,48 +152,6 @@ class Agent365Collector:
                 self.http, "agent365_registry", REGISTRY_URL, exc, self.required_roles,
             ))
         return result
-
-
-def agent365_observations(data: Collection) -> list[ProposalFinding]:
-    if not data.facts.get("agent365_requested") and not data.agent365_packages:
-        return []
-    packages = data.agent365_packages
-    complete = data.facts.get("agent365_registry_complete") is True
-    failure = next((item for item in data.issues if item.collector == "agent365_registry"), None)
-    reason = failure.reason if failure else "not_found"
-    refs = sorted({
-        *data.facts.get("agent365_registry_refs", []),
-        *(ref for package in packages for ref in package.evidence_refs),
-        *(failure.evidence_refs if failure else []),
-    })
-    available = dict(Counter(package.available_to or "미확인" for package in packages))
-    deployed = dict(Counter(package.deployed_to or "미확인" for package in packages))
-    limits = {
-        "DP-SY-17": "등록 패키지 목록이며 미등록 Agent 탐지·승인 등록부 정합성·운영 소유자 검증은 아님",
-        "DP-SY-18": "패키지 접근·배포 상태이며 테넌트 제작·설치 정책이나 승인 대상과의 일치를 입증하지 않음",
-    }
-    results = []
-    for code, title in OBSERVATION_ONLY.items():
-        results.append(ProposalFinding(
-            code=code, title=title, area="4. Deploy",
-            status="일부 수집" if complete and packages else "수집 불가",
-            metrics={
-                "packages": len(packages) if complete else None,
-                "available_to": available if complete else None,
-                "deployed_to": deployed if complete else None,
-                "blocked": sum(package.is_blocked is True for package in packages) if complete else None,
-                "unknown_blocked": sum(package.is_blocked is None for package in packages) if complete else None,
-            },
-            observation=(
-                f"등록 패키지 {len(packages)}개; 접근 범위 {available}; 배포 범위 {deployed}"
-                if complete and packages else "등록부 조회 미완료 또는 등록 패키지 없음"
-            ),
-            limit=limits[code] + ". 기존 평가 기준은 유지하며 점수 보류",
-            reason=None if complete and packages else reason,
-            evidence_refs=refs,
-            evidence_only=True,
-        ))
-    return results
 
 
 def crosscheck_agent365(data: Collection, criteria: dict[str, Any]) -> list[Agent365Crosscheck]:

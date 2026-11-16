@@ -39,7 +39,7 @@ def readiness(data: Collection, config: dict[str, Any]) -> str | None:
     for key in config.get("complete_subscriptions", []):
         if set(data.subscriptions) - set(data.facts.get(key, [])):
             return f"일부 구독의 API 목록 수집 미완료: {key}"
-    if config.get("requires") != "entra":
+    if config.get("requires") not in ("entra", "tenant"):
         if not data.facts.get("inventory_complete"):
             return "구독 인벤토리 수집 미완료"
         if config.get("agent_denominator") and not data.facts.get("agent_inventory_complete"):
@@ -77,7 +77,7 @@ def evaluate(
         elif incomplete:
             reason = "error"
         elif measurement.unavailable:
-            reason = "not_found"
+            reason = measurement.reason_code or "not_found"
             incomplete = measurement.unavailable
         if incomplete:
             ratio = None

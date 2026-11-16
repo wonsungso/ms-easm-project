@@ -1,6 +1,14 @@
-"""수집 대상 System Evidence 23개의 F열 설명."""
+"""수집 대상 System Evidence 31개의 F열 설명."""
 
 ITEM_DETAILS = {
+    "DM-SY-01": "Agent 365 등록 패키지의 거버넌스 분류(governanceMetadata) 조회\nUnmanaged가 아닌 관리 대상으로 분류된 패키지 비율 산출\n제작 허용 사용자 범위 설정 자체는 제외",
+    "DM-SY-02": "관리자에게 보이는 Power Platform 환경과 환경별 역할 할당 건수 조회\n역할 할당이 1건 이상 확인된 환경 비율 산출\n고유 Maker 수 제외",
+    "DM-SY-03": "Agent 365 등록 패키지 중 최근 6개월 신규 생성 패키지 확인\n게시 요청이 승인(approved)된 패키지 비율 산출\n등록 없이 만든 Agent 제외",
+    "DS-SY-04": "Power Platform 데이터 정책(DLP)의 적용 범위와 대상 환경 ID 조회\n정책 범위에 포함된 환경 비율 산출\n커넥터 분류·차단 내용 제외",
+    "BI-SY-10": "Power Platform 환경의 유형·보호 수준 조회\n보호 수준이 Standard(관리형 환경)인 환경 비율 산출\n개발·운영 분리 통제 제외",
+    "DP-SY-17": "Agent 365 등록 패키지의 소유자 수·배포 범위·차단 상태 조회\n소유자가 있고 배포 범위·차단 상태가 확인된 패키지 비율 산출\n소유자 식별 정보 저장 제외",
+    "DP-SY-18": "Agent 365 등록 패키지의 접근 범위(availableTo)와 배포 범위(deployedTo) 조회\n전체 사용자 대상이 아닌 제한 범위 패키지 비율 산출\n승인 대상 일치 여부 제외",
+    "OT-SY-27": "Azure에서 발견한 Agent의 Blueprint 태그와 Entra Agent ID 연결 확인\nAgent 365 등록부 agentIdentityId에 등록된 Agent 비율 산출\n등록부 부재를 Shadow AI로 단정하지 않음",
     "DS-SY-05": "Entra Agent ID의 Blueprint 참조 ID와 실제 Blueprint 목록 대조\n존재하는 Blueprint에 연결된 Agent ID 비율 산출",
     "DS-SY-06": "모델 배포별 모델명·버전·형식·업데이트 옵션 조회\n필수 버전 정보와 인식 가능한 업데이트 옵션을 갖춘 배포 비율 산출",
     "DS-SY-07": "AI 계정의 공용 네트워크 비활성화 및 승인된 Private Endpoint 확인\n자체 호스트의 비공개 진입 또는 기본 거부 접근 제한 확인",

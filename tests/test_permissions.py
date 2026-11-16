@@ -310,4 +310,4 @@ def test_preflight_distinguishes_unchecked_targets_from_actual_failures(
         assert raw is not None
         result = load_result(raw.parent)
         assert (raw.parent / result["manifest"]["files"][0]["path"]).is_file()
-        assert len(result["findings"]) == 23
+        assert len(result["findings"]) == 31
