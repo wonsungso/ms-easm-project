@@ -70,7 +70,7 @@ def test_admin_receipt_records_scope_and_provenance_without_assigning_grades(tmp
         assert sheet.cell(rows[code], 7).value == "일부 수집"
         assert sheet.cell(rows[code], 9).value == "판정 보류" and sheet.cell(rows[code], 13).value is None
     assert sheet.cell(rows["DS-SY-06"], 13).value == 5 and original.level == "L5"
-    assert len(book["8. 수집 Raw 데이터"].tables) == 15
+    assert len(book["8. 수집 Raw 데이터"].tables) == 16
     assert data.proposals == []
 
 
@@ -175,6 +175,37 @@ def test_package_enriches_portable_embedded_evidence_without_regrading(tmp_path:
     assert (workbook.parent / "evidence").is_dir()
 
 
+def test_package_reassess_grades_defender_protection_from_saved_collection(tmp_path: Path) -> None:
+    from easm_agent.models import DefenderPlan
+
+    sid = "11111111-1111-4111-8111-111111111111"
+    data = Collection(
+        collected_at=NOW, subscriptions=[sid], facts={
+            "evidence_directory": str(tmp_path / "old-evidence"), "inventory_complete": True,
+            "defender_plans_complete_subscriptions": [sid],
+        },
+        defender_plans=[
+            DefenderPlan(subscription_id=sid, plan="AI", tier="Standard", extensions={"AIPromptEvidence": True}),
+            DefenderPlan(subscription_id=sid, plan="CloudPosture", tier="Standard",
+                         extensions={"SensitiveDataDiscovery": True}),
+        ],
+    )
+    workbook = write_reports(data, [], tmp_path / "output")
+    assert main([
+        "package", "--output-dir", str(workbook.parent), "--tenant-id", TENANT, "--reassess",
+    ]) == 0
+    after = load_result(workbook.parent)
+    row = next(item for item in after["findings"] if item["se_code"] == "OT-SY-30")
+    assert row["level"] == "L5" and row["metric_value"] == 1
+    assert after["collection"]["assessment_provenance"]["origin"] == "saved_snapshot_reassessment"
+    assert after["collection"]["assessment_provenance"]["source_result_data_sha256"]
+    sheet = load_workbook(next(workbook.parent.glob("report-*.xlsx")))["6. 수집 결과"]
+    rows = {sheet.cell(row, 2).value: row for row in range(5, 90)}
+    assert sheet.cell(rows["OT-SY-30"], 7).value == "수집됨"
+    assert "민감 데이터 검색 활성 1개 구독" in sheet.cell(rows["OT-SY-30"], 10).value
+    assert sheet.cell(rows["OT-SY-30"], 13).value == 5
+
+
 def token(tenant: str = TENANT, app: bool = False) -> str:
     claims = {"tid": tenant, "idtyp": "app" if app else "user"}
     if not app:
@@ -220,47 +251,47 @@ def test_environment_export_rejects_wrong_tenant_or_diagnostic_app(tenant: str, 
             export_environments(TENANT)
 
 
-def run_ps_export(tmp_path: Path, *, incomplete: bool = False, wrong_tenant: bool = False) -> tuple[subprocess.CompletedProcess, dict]:
+def run_ps_export(tmp_path: Path, *, login: str = "Interactive") -> tuple[subprocess.CompletedProcess, dict]:
     executable = shutil.which("pwsh") or shutil.which("powershell")
     if not executable:
         pytest.skip("PowerShell unavailable")
     script = str(ROOT / "scripts" / "export_admin_evidence.ps1").replace("'", "''")
-    output = str(tmp_path / "purview.json").replace("'", "''")
-    tenant = OTHER if wrong_tenant else TENANT
-    last = "$false" if incomplete else "$true"
+    output = str(tmp_path / "powerplatform.json").replace("'", "''")
     code = f"""
     function Import-Module {{}}
-    function Get-Module {{ [pscustomobject]@{{ Version = [version]'3.9.0' }} }}
-    function Connect-IPPSSession {{}}
-    function Get-ConnectionInformation {{ [pscustomobject]@{{ IsEopSession=$true; State='Connected'; TenantID='{tenant}' }} }}
-    function Export-ActivityExplorerData {{
-        [pscustomobject]@{{ LastPage={last}; WaterMark='fixture-cookie'; ResultData='[{{"Activity":"CopilotInteraction","SensitiveInfoTypeCount":1,"User":"person@example.invalid","Prompt":"do-not-export"}}]' }}
+    function Get-Module {{ [pscustomobject]@{{ Version = [version]'2.0.220' }} }}
+    function Add-PowerAppsAccount {{
+        [CmdletBinding()] param($Endpoint, $TenantID, $UseSystemBrowser)
+        if ([bool]$UseSystemBrowser -ne ('{login}' -eq 'Browser')) {{ throw 'unexpected login mode' }}
     }}
-    & '{script}' -TenantId '{TENANT}' -Service Purview -OutputPath '{output}' -MaxPages 1
+    function Get-AdminPowerAppEnvironmentRoleAssignment {{ [pscustomobject]@{{ RoleName = 'fixture-role' }} }}
+    function Get-AdminDlpPolicy {{ [pscustomobject]@{{ DisplayName = 'fixture-policy' }}, [pscustomobject]@{{ DisplayName = 'second' }} }}
+    & '{script}' -TenantId '{TENANT}' -Service PowerPlatform -OutputPath '{output}' -Login {login}
     exit $LASTEXITCODE
     """
     completed = subprocess.run(
         [executable, "-NoProfile", "-NonInteractive", "-Command", code],
         capture_output=True, text=True, encoding="utf-8", check=False,
     )
-    assert (tmp_path / "purview.json").is_file(), completed.stderr
-    return completed, json.loads((tmp_path / "purview.json").read_text(encoding="utf-8-sig"))
+    assert (tmp_path / "powerplatform.json").is_file(), completed.stderr
+    return completed, json.loads((tmp_path / "powerplatform.json").read_text(encoding="utf-8-sig"))
 
 
-def test_purview_export_keeps_only_aggregate_evidence(tmp_path: Path) -> None:
-    completed, value = run_ps_export(tmp_path)
+@pytest.mark.parametrize("login", ["Interactive", "Browser"])
+def test_power_platform_export_keeps_only_object_counts(tmp_path: Path, login: str) -> None:
+    completed, value = run_ps_export(tmp_path, login=login)
     assert completed.returncode == 0, completed.stderr
     export = AdminEvidenceExport.model_validate(value)
-    assert export.tenant_verified and export.reads[0].object_count == 1
-    assert export.reads[0].counts["sensitive_type_observed"] == 1
-    assert "person@example.invalid" not in json.dumps(value) and "do-not-export" not in json.dumps(value)
+    assert export.tenant_verified and {read.source: read.object_count for read in export.reads} == {
+        "powerplatform.environment_roles": 1, "powerplatform.dlp_policies": 2,
+    }
+    assert "fixture-role" not in json.dumps(value) and "fixture-policy" not in json.dumps(value)
 
 
-@pytest.mark.parametrize("incomplete,wrong", [(True, False), (False, True)])
-def test_purview_incomplete_pages_and_wrong_tenant_do_not_pass(
-    tmp_path: Path, incomplete: bool, wrong: bool,
-) -> None:
-    completed, value = run_ps_export(tmp_path, incomplete=incomplete, wrong_tenant=wrong)
+def test_power_platform_device_code_is_recorded_as_unavailable_not_success(tmp_path: Path) -> None:
+    completed, value = run_ps_export(tmp_path, login="DeviceCode")
     assert completed.returncode == 2
     export = AdminEvidenceExport.model_validate(value)
-    assert not export.reads[0].completed and export.reads[0].object_count is None
+    assert not export.tenant_verified
+    assert all(not read.completed and read.reason == "feature_unavailable" and read.object_count is None
+               for read in export.reads)

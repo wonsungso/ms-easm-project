@@ -14,25 +14,21 @@ COMMANDS = {
     "powerplatform.environments": ENVIRONMENTS_URL,
     "powerplatform.environment_roles": "Get-AdminPowerAppEnvironmentRoleAssignment",
     "powerplatform.dlp_policies": "Get-AdminDlpPolicy",
-    "purview.activity_explorer": "Export-ActivityExplorerData",
 }
 TITLES = {
     "DM-SY-02": "Power Platform 환경·역할 할당 관측",
     "DS-SY-04": "Power Platform DLP 정책 관측",
     "BI-SY-10": "Power Platform 환경 유형·보호 수준 관측",
-    "OT-SY-30": "Purview AI·DLP 활동 증적 관측",
 }
 SOURCES = {
     "DM-SY-02": ("powerplatform.environments", "powerplatform.environment_roles"),
     "DS-SY-04": ("powerplatform.dlp_policies",),
     "BI-SY-10": ("powerplatform.environments",),
-    "OT-SY-30": ("purview.activity_explorer",),
 }
 LIMITS = {
     "DM-SY-02": "역할 할당 수는 고유 Maker 사용자 수가 아니며, 공식 역할 cmdlet은 비 Dataverse 환경의 관리자 접근 범위",
     "DS-SY-04": "정책 개수만으로 커넥터 분류·차단·환경 적용 또는 정책 실효성을 입증하지 않음",
     "BI-SY-10": "관리자에게 보이는 환경 목록·원본 type/protectionLevel이며 개발·운영 분리와 관리형 운영 기준 충족을 입증하지 않음",
-    "OT-SY-30": "민감 데이터 접근·분류·DLP 이벤트는 유출 확정이 아님. Agent별 귀속·전체 잠재 노출·조치 완료는 별도 증거 필요",
 }
 
 
@@ -92,7 +88,7 @@ def admin_observations(data: Collection) -> list[ProposalFinding]:
             metrics={
                 source: {
                     "object_count": reads[source].object_count, "completed": reads[source].completed,
-                    "counts": reads[source].counts, "scope": reads[source].scope,
+                    "scope": reads[source].scope,
                     "environment_types": dict(Counter(
                         environment.environment_type or "미확인" for environment in reads[source].environments
                     )) if reads[source].completed and source == "powerplatform.environments" else None,

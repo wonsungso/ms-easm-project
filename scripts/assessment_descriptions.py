@@ -1,4 +1,4 @@
-"""수집 대상 System Evidence 22개의 F열 설명."""
+"""수집 대상 System Evidence 23개의 F열 설명."""
 
 ITEM_DETAILS = {
     "DS-SY-05": "Entra Agent ID의 Blueprint 참조 ID와 실제 Blueprint 목록 대조\n존재하는 Blueprint에 연결된 Agent ID 비율 산출",
@@ -22,5 +22,6 @@ ITEM_DETAILS = {
     "OE-SY-26": "AI 리소스 지역과 연결된 Log Analytics workspace 보존기간 조회\n지역 식별·기준일 이상 보존 설정 충족 비율 산출\n실제 모델 처리 지역·테이블별 유효 보존기간 제외",
     "OT-SY-28": "조회 기간 내 AI 계정·자체 호스트의 숫자 메트릭 표본 확인\n값이 0인 표본도 관측으로 포함\n개별 Agent의 실제 이용자 수 측정 제외",
     "OT-SY-29": "동일 통화의 양수 AI 비용을 사용일자·리소스·Agent 연결 관계와 대조\n정확히 한 Agent에 귀속 가능한 금액 비율 산출\n공유 비용 중복 배분 제외",
+    "OT-SY-30": "구독별 Defender for Cloud의 AI 서비스 플랜과 Defender CSPM 플랜 pricingTier 조회\nCSPM의 SensitiveDataDiscovery 확장 활성 여부 확인\n세 조건을 모두 충족한 구독 비율 산출\n실제 경보·노출 여부와 리소스별 적용 범위 제외",
     "OT-SY-31": "승인 구독별 현재 유효한 양수 Cost 예산의 구독 전체 적용 여부 확인\n활성 실제·예측 비용 경보의 임계값·수신자 설정 조회",
 }

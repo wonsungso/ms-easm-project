@@ -916,6 +916,49 @@ items:
         coverage:
           eq: 0
     agent_denominator: true
+  OT-SY-30:
+    title: AI 민감 데이터 노출 점검 구성
+    scope: partial
+    metric: sensitive_data_protection_ratio
+    denominator: 승인 구독 수
+    evidence: Microsoft.Security pricings의 AI 플랜 pricingTier, CloudPosture 플랜 pricingTier와 SensitiveDataDiscovery 확장 isEnabled
+    limit: Defender for Cloud 플랜·확장 구성이며 실제 경고 발생·민감 데이터 노출 여부·조치 완료를 뜻하지 않음. 구독 안의 모든 AI 리소스 적용 범위는 확인하지 않음
+    product: Microsoft Defender for Cloud
+    collectors:
+    - defender_plans
+    complete_flags: []
+    complete_subscriptions:
+    - defender_plans_complete_subscriptions
+    levels:
+      L1: AI 위협 방지·Defender CSPM·민감 데이터 검색 활성 구독 비율 0%
+      L2: AI 위협 방지·Defender CSPM·민감 데이터 검색 활성 구독 비율 0% 초과~80% 미만
+      L3: AI 위협 방지·Defender CSPM·민감 데이터 검색 활성 구독 비율 80% 이상~90% 미만
+      L4: AI 위협 방지·Defender CSPM·민감 데이터 검색 활성 구독 비율 90% 이상~100% 미만
+      L5: AI 위협 방지·Defender CSPM·민감 데이터 검색 활성 구독 비율 100%
+    rules:
+    - level: L5
+      when:
+        coverage:
+          eq: 1
+    - level: L4
+      when:
+        coverage:
+          gte: 0.9
+          lt: 1
+    - level: L3
+      when:
+        coverage:
+          gte: 0.8
+          lt: 0.9
+    - level: L2
+      when:
+        coverage:
+          gt: 0
+          lt: 0.8
+    - level: L1
+      when:
+        coverage:
+          eq: 0
   OT-SY-31:
     title: 구독 예산·실제·예측 경보 구성
     scope: partial

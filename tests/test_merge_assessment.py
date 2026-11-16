@@ -162,7 +162,7 @@ def test_only_implemented_evidence_has_bold_titles_and_bullet_descriptions() -> 
     sheet = book[SOURCE_SHEET]
     rows = {row[1].value: row for row in sheet.iter_rows(min_row=5) if row[1].value}
     assert len(rows) == 85
-    assert len(ITEM_DETAILS) == 22
+    assert len(ITEM_DETAILS) == 23
     assert ITEM_DETAILS.keys() == load_criteria()["items"].keys()
     for code, row in rows.items():
         content = row[5].value

@@ -15,7 +15,11 @@ from azure.identity import DefaultAzureCredential
 from easm_agent.azure import AccessError, EvidenceStore
 from easm_agent.collect import collect
 from easm_agent.collect_admin_evidence import admin_observations, read_admin_evidence
-from easm_agent.collect_agent365 import Agent365Collector, agent365_observations
+from easm_agent.collect_agent365 import (
+    Agent365Collector,
+    agent365_observations,
+    crosscheck_agent365,
+)
 from easm_agent.collect_entra import EntraCollector
 from easm_agent.evaluation import evaluate
 from easm_agent.models import (
@@ -56,6 +60,13 @@ def main(argv: list[str] | None = None) -> int:
     package.add_argument("--mode", choices=["live", "fixture"])
     package.add_argument("--admin-evidence-file", action="append", type=Path, default=[])
     package.add_argument("--tenant-id")
+    package.add_argument(
+        "--reassess", action="store_true",
+        help="저장된 실측 데이터를 현재 기준으로 다시 평가하고 새 API 수집이 아님을 기록",
+    )
+    package.add_argument("--config", type=Path, default=Path("config") / "custom-config.yaml",
+                         help="재평가에 사용할 고객별 선택 설정 파일")
+    package.add_argument("--criteria", type=Path, help="재평가 기준 YAML 경로 - 기본값 config/criteria.yaml")
     args = parser.parse_args(argv)
     logging.getLogger("azure").setLevel(logging.WARNING)
     logging.getLogger("azure.identity").setLevel(logging.ERROR)
@@ -105,6 +116,23 @@ def main(argv: list[str] | None = None) -> int:
                     if proposal.code not in {item.code for item in admin_observations(data)}
                 ] + admin_observations(data)
             data.facts["data_mode"] = mode
+            if args.reassess:
+                settings = load_settings(args.config)
+                if args.criteria:
+                    settings.criteria_file = args.criteria
+                criteria = load_criteria(settings)
+                conventions = load_conventions(settings)
+                data.proposals = [
+                    proposal for proposal in data.proposals
+                    if not (proposal.evidence_only and proposal.code in criteria["items"])
+                ]
+                data.agent365_crosschecks = crosscheck_agent365(data, criteria)
+                findings = evaluate(
+                    data, criteria, {}, conventions,
+                    interviews={row.se_code: row.interview_level for row in findings if row.interview_level is not None},
+                    provenance_origin="saved_snapshot_reassessment",
+                )
+                data.assessment_provenance.source_result_data_sha256 = result.get("manifest", {}).get("data_sha256")
             write_reports(data, findings, source.parent, mode, new_run=False)
             return 0
         settings = load_settings(args.config)

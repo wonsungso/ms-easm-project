@@ -47,6 +47,7 @@ LIMITS = {
     "OE-SY-26": "테넌트 저장 지역과 Azure 리소스 지역·workspace 보존기간은 다른 증거",
     "OT-SY-28": "활동 통계와 Azure 리소스 메트릭 표본은 다른 증거",
     "OT-SY-29": "토큰·활동 통계와 Cost Management 실제 비용은 다른 증거",
+    "OT-SY-30": "등록부에 Azure 구독의 Defender for Cloud 플랜 구성 없음",
     "OT-SY-31": "등록부에 Azure 구독 예산·실제/예측 경보 설정 없음",
 }
 

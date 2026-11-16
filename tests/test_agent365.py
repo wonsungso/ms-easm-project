@@ -161,7 +161,7 @@ def test_invalid_registry_pagination_is_an_explicit_failure(next_link: object) -
 
 def test_partial_id_crosschecks_do_not_compare_unrelated_fields_or_same_graph_source() -> None:
     result = checks(snapshot())
-    assert len(result) == 22
+    assert len(result) == 23
     for code in ("DS-SY-05", "DP-SY-19"):
         assert result[code].status == "partial_match"
         assert result[code].matched == result[code].compared == 1
@@ -240,7 +240,7 @@ def test_report_keeps_grades_and_separates_crosscheck_details(tmp_path: Path) ->
     assert details.cell(rows["OE-SY-21"], 10).value == "동일 정보 미제공"
     assert "기존 Azure/Graph API로 평가" in details.cell(rows["OE-SY-21"], 11).value
     assert "평가 제외 아님" in details.cell(rows["OE-SY-21"], 11).value
-    assert len(book["8. 수집 Raw 데이터"].tables) == 15
+    assert len(book["8. 수집 Raw 데이터"].tables) == 16
     assert finding.level == "L5"
 
 

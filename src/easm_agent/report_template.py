@@ -45,7 +45,7 @@ COLLECTION_METHODS = {
     "OT-SY-27": "Agent 365 → Shadow AI Detection",
     "OT-SY-28": "Azure → Monitor → Metrics",
     "OT-SY-29": "Azure → Cost Management → Cost analysis",
-    "OT-SY-30": "Microsoft Purview → DSPM for AI / Activity explorer",
+    "OT-SY-30": "Azure → Microsoft Defender for Cloud → Environment settings → Defender plans",
     "OT-SY-31": "Azure → Cost Management → Budgets",
 }
 _MAIN = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"

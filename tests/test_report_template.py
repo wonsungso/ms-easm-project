@@ -212,7 +212,7 @@ def test_all_findings_link_to_the_matching_detail_row_and_preserve_existing_metr
     table = next(table for table in details.tables.values() if table.ref.startswith("A3:"))
     last_detail = range_boundaries(table.ref)[3]
     detail_rows = {details.cell(row, 1).value: row for row in range(4, last_detail + 1)}
-    assert len(detail_rows) == len(findings) == 22
+    assert len(detail_rows) == len(findings) == 23
     expected_metrics = {item.code: item.metrics for item in data.proposals}
     for code, row in detail_rows.items():
         if code in expected_metrics:
@@ -236,7 +236,7 @@ def test_all_findings_link_to_the_matching_detail_row_and_preserve_existing_metr
         assert link.hyperlink.target is None and link.hyperlink.id is None
         assert link.hyperlink.location == f"'7. 수집결과 근거'!A{detail_rows[code]}"
         linked += 1
-    assert linked == 22
+    assert linked == 23
 
 
 @pytest.mark.parametrize("level", ["L1", "L2", "L3", "L4", "L5", "N/A"])

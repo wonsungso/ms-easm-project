@@ -118,6 +118,9 @@ def resource_names(data: Collection, code: str) -> list[ResourceName]:
     elif code == "OT-SY-31":
         for budget in data.budgets:
             add("예산", budget.budget_id, sid=budget.subscription_id)
+    elif code == "OT-SY-30":
+        for plan in data.defender_plans:
+            add("Defender 플랜 구독", plan.subscription_id, "AI·CloudPosture 플랜", plan.subscription_id)
     return sorted(found.values(), key=lambda row: (
         row.category, (row.name or "").casefold(), row.identifier.casefold(),
     ))

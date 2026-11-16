@@ -12,6 +12,7 @@ from easm_agent.models import (
     Budget,
     Collection,
     CostRecord,
+    DefenderPlan,
     LogSetting,
     PolicyAssignment,
     SecureScore,
@@ -41,6 +42,7 @@ class SignalCollector:
             for name, operation in [
                 ("cost", self.costs), ("logs", self.logs), ("metrics", self.metrics), ("security", self.security),
                 ("secure_score", self.secure_score), ("policies", self.policies), ("budgets", self.budgets),
+                ("defender_plans", self.defender_plans),
             ]:
                 try:
                     operation(sid, result)
@@ -54,6 +56,7 @@ class SignalCollector:
                         "secure_score": ("Reader", "Security Reader"),
                         "policies": ("Reader",),
                         "budgets": ("Reader", "Cost Management Reader"),
+                        "defender_plans": ("Reader", "Security Reader"),
                     }[name]
                     result.issues.append(issue(self.http, name, sid, exc, roles))
                     if name == "cost":
@@ -337,6 +340,28 @@ class SignalCollector:
         if not any(item.subscription_id == sid for item in result.secure_scores):
             raise AccessError("feature_unavailable", "구독 보안 점수(ascScore) 없음; Defender for Cloud 활성화 확인 필요")
         result.facts.setdefault("secure_score_complete_subscriptions", []).append(sid)
+
+    def defender_plans(self, sid: str, result: Collection) -> None:
+        url = ARM + f"/subscriptions/{sid}/providers/Microsoft.Security/pricings?api-version=2024-01-01"
+        wanted = {"ai": "AI", "cloudposture": "CloudPosture"}
+        found: set[str] = set()
+        for row in self.http.list_arm(url):
+            plan = wanted.get(str(row.get("name", "")).lower())
+            if plan is None:
+                continue
+            properties = row.get("properties") or {}
+            extensions = {
+                str(item["name"]): {"true": True, "false": False}.get(str(item.get("isEnabled")).lower())
+                for item in properties.get("extensions") or [] if isinstance(item, dict) and item.get("name")
+            }
+            found.add(plan)
+            result.defender_plans.append(DefenderPlan(
+                subscription_id=sid, plan=plan, tier=properties.get("pricingTier"),
+                sub_plan=properties.get("subPlan"), coverage=properties.get("resourcesCoverageStatus"),
+                extensions=extensions, evidence_refs=[self.http.last_ref] if self.http.last_ref else [],
+            ))
+        if found != set(wanted.values()):
+            raise AccessError("feature_unavailable", "Defender 플랜 응답에 AI 또는 CloudPosture 플랜이 없음")
 
     def policies(self, sid: str, result: Collection) -> None:
         required = {str(value).lower() for value in self.criteria.get("model_policy_definition_ids") or []}

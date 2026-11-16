@@ -188,7 +188,7 @@ def test_fixture_cli_is_offline_and_writes_only_workbook_and_raw_data(tmp_path: 
     result = load_result(tmp_path)
     assert result["mode"] == "fixture"
     agents = result["collection"]["agents"]
-    assert len(agents) == 3 and len(result["findings"]) == 22
+    assert len(agents) == 3 and len(result["findings"]) == 23
     assert {
         "collected_at", "tenant_id", "subscription_id", "resource_group", "platform",
         "agent_id", "agent_name", "resource_id", "hosting_type", "owner", "sponsor",
@@ -525,7 +525,7 @@ def test_workbook_sheets_tables_borders_and_validation(tmp_path: Path) -> None:
             "A4" if sheet.title == TITLES["수집결과 근거"] else "A2"
         )
         assert len(sheet.tables) == (
-            15 if sheet.title == TITLES["수집 Raw 데이터"] else
+            16 if sheet.title == TITLES["수집 Raw 데이터"] else
             4 if sheet.title == TITLES["수집결과 근거"] else 1
         )
         # Excel repairs a file that has both a table and a sheet-level autoFilter on one range.

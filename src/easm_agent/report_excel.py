@@ -32,6 +32,7 @@ from easm_agent.models import (
     Budget,
     Collection,
     CostRecord,
+    DefenderPlan,
     EntraAgentIdentity,
     EntraBlueprint,
     EvaluationRun,
@@ -345,6 +346,13 @@ def collection_summary(data: Collection, finding: Finding) -> tuple[str, str | N
         summary = f"Azure Agent {len(agents)}개 중 최근 사용일 확인 {sum(item.last_used_at is not None for item in agents)}개"
     elif code == "OT-SY-29" and (data.costs or data.budgets):
         summary = f"비용 행 {len(data.costs)}건, 예산 {len(data.budgets)}개"
+    elif code == "OT-SY-30" and data.defender_plans:
+        summary = (
+            f"Defender 플랜 {len(data.defender_plans)}건, AI 위협 방지 Standard "
+            f"{sum(row.plan == 'AI' and row.tier == 'Standard' for row in data.defender_plans)}개 구독, "
+            f"민감 데이터 검색 활성 "
+            f"{sum(row.plan == 'CloudPosture' and row.extensions.get('SensitiveDataDiscovery') is True for row in data.defender_plans)}개 구독"
+        )
     elif code == "DS-SY-05" and data.facts.get("entra_blueprints_complete"):
         summary = f"Blueprint {len(data.entra_blueprints)}개"
     elif code == "OE-SY-21" and (
@@ -766,6 +774,7 @@ def write_workbook(
         ("로그 Raw 데이터", LogSetting, data.logs),
         ("보안 Raw 데이터", SecurityRecommendation, data.security),
         ("보안점수 Raw 데이터", SecureScore, data.secure_scores),
+        ("Defender 플랜 Raw 데이터", DefenderPlan, data.defender_plans),
         ("정책할당 Raw 데이터", PolicyAssignment, data.policy_assignments),
         ("예산 Raw 데이터", Budget, data.budgets),
         ("Blueprint Raw 데이터", EntraBlueprint, data.entra_blueprints),

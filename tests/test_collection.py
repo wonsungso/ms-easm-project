@@ -200,6 +200,16 @@ def test_three_subscription_pipeline_and_cross_subscription_model_link(tmp_path:
             }}]}
         elif path.endswith("/budgets"):
             payload = {"value": []}
+        elif path.endswith("/pricings"):
+            payload = {"value": [
+                {"name": "AI", "properties": {"pricingTier": "Standard", "extensions": [
+                    {"name": "AIPromptEvidence", "isEnabled": "True"},
+                ]}},
+                {"name": "CloudPosture", "properties": {"pricingTier": "Standard", "extensions": [
+                    {"name": "SensitiveDataDiscovery", "isEnabled": "True"},
+                ]}},
+                {"name": "Containers", "properties": {"pricingTier": "Free"}},
+            ]}
         elif urlparse(url).hostname == "graph.microsoft.com":
             payload = {"value": []}
         else:
@@ -215,6 +225,9 @@ def test_three_subscription_pipeline_and_cross_subscription_model_link(tmp_path:
     assert all(agent.model_version == "2024-07-18" for agent in data.agents)
     assert len(data.costs) == 3
     assert len(data.secure_scores) == 3 and not data.budgets
+    assert len(data.defender_plans) == 6
+    assert set(data.facts["defender_plans_complete_subscriptions"]) == set(settings.subscriptions)
+    assert all(row.plan in ("AI", "CloudPosture") and row.tier == "Standard" for row in data.defender_plans)
     assert set(data.facts["budget_complete_subscriptions"]) == set(settings.subscriptions)
     assert "policy_complete_subscriptions" not in data.facts
     for host in (agent for agent in data.agents if agent.platform != "foundry"):

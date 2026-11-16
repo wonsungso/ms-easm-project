@@ -93,13 +93,6 @@ MANUAL_LEVELS = {
         "미승인 비율 1% 미만, L3 충족과 지원 경로별 자동 통보·통제",
         "관측 범위 내 미승인 0건, L4 충족과 탐지·수요 전환 개선",
     ),
-    "OT-SY-30": (
-        "민감 데이터 노출 점검·조치 절차가 없음을 확인",
-        "확인된 고위험 노출 조치율 90% 미만",
-        "고위험 노출 조치율 90% 이상, 지원 데이터 경로별 보호 검증",
-        "미조치 고위험 0건, L3 충족과 지원 DLP·접근 통제 자동화",
-        "L4 충족, 노출·오탐·사고 이력으로 보호 정책 개선",
-    ),
 }
 
 
@@ -466,7 +459,9 @@ def review_parts(archive: ZipFile, patched: dict[str, bytes]) -> dict[str, bytes
             number = row.get("r")
             code = value(row.find(f"{Q}c[@r='B{number}']"))
             if code in criteria and value(row.find(f"{Q}c[@r='C{number}']")) == domain:
-                product = PRODUCTS.get(code, "Microsoft Entra Agent ID" if criteria[code].get("requires") else "Azure API")
+                product = PRODUCTS.get(code) or criteria[code].get("product") or (
+                    "Microsoft Entra Agent ID" if criteria[code].get("requires") else "Azure API"
+                )
                 summaries.append(f"▸ {code} {criteria[code]['title']}\n  [{product}]")
             elif code in MANUAL_LEVELS and value(row.find(f"{Q}c[@r='C{number}']")) == domain:
                 title = value(row.find(f"{Q}c[@r='F{number}']")).split("\n", 1)[0]

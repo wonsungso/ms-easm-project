@@ -9,9 +9,11 @@ from easm_agent.api_grading import Measurement, measurements, targets
 from easm_agent.evaluation import evaluate, matches
 from easm_agent.models import (
     DEFAULT_TAGS,
+    AdminReadResult,
     AgentEvidence,
     Budget,
     Collection,
+    DefenderPlan,
     EntraAgentIdentity,
     EntraBlueprint,
     EvaluationRun,
@@ -163,6 +165,7 @@ def data() -> Collection:
     from easm_agent.models import CostRecord, SecurityRecommendation
 
     value.costs = [CostRecord(subscription_id=SID, resource_id=ACCOUNT, amount=10, currency="USD", usage_date="20261109")]
+    value.defender_plans = defender_plans()
     value.security = [SecurityRecommendation(subscription_id=SID, resource_id=ACCOUNT,
                                             assessment_id="/assessment", severity="Low", status="Healthy")]
     entries = [
@@ -191,9 +194,22 @@ def data() -> Collection:
     return value
 
 
-def test_complete_api_snapshot_grades_all_22_controls_without_qualitative_inputs(data: Collection) -> None:
+def defender_plans(
+    sid: str = SID, *, ai_tier: str | None = "Standard", cspm_tier: str | None = "Standard",
+    discovery: bool | None = True,
+) -> list[DefenderPlan]:
+    extensions = {} if discovery is None else {"SensitiveDataDiscovery": discovery}
+    return [
+        DefenderPlan(subscription_id=sid, plan="AI", tier=ai_tier, extensions={"AIPromptEvidence": True},
+                     evidence_refs=["fixture://defender"]),
+        DefenderPlan(subscription_id=sid, plan="CloudPosture", tier=cspm_tier, extensions=extensions,
+                     evidence_refs=["fixture://defender"]),
+    ]
+
+
+def test_complete_api_snapshot_grades_all_23_controls_without_qualitative_inputs(data: Collection) -> None:
     rows = grade(data)
-    assert len(rows) == 22
+    assert len(rows) == 23
     assert all(row.level == "L5" and row.metric_value == 1 for row in rows.values())
     assert all(row.reason is None and row.assessment_basis == "criteria" for row in rows.values())
     assert data.facts["grading_profile"] == "api_configuration_v1"
@@ -213,22 +229,50 @@ def test_agent365_crosscheck_failures_do_not_change_primary_grades(data: Collect
     assert {code: row.model_dump() for code, row in grade(data).items()} == before
 
 
-def test_administrator_evidence_never_changes_primary_grades(data: Collection) -> None:
+def test_administrator_evidence_for_other_controls_never_changes_primary_grades(data: Collection) -> None:
     from easm_agent.collect_admin_evidence import admin_observations
-    from easm_agent.models import AdminReadResult
 
     before = {code: row.model_dump() for code, row in grade(data).items()}
-    data.admin_evidence = [AdminReadResult(
-        source="purview.activity_explorer", command="Export-ActivityExplorerData",
-        module_version="3.9.0", scope="tenant activity aggregates, not Agent exposure",
-        completed=True, observed_at=data.collected_at, object_count=0, detail="completed empty query",
-    )]
+    data.admin_evidence.append(AdminReadResult(
+        source="powerplatform.dlp_policies", command="Get-AdminDlpPolicy",
+        module_version="2.0.220", scope="tenant DLP policy objects",
+        completed=True, observed_at=data.collected_at, object_count=3, detail="completed policy count",
+    ))
     data.proposals.extend(admin_observations(data))
     assert {code: row.model_dump() for code, row in grade(data).items()} == before
 
 
+@pytest.mark.parametrize("changes,level", [
+    ({}, "L5"),
+    ({"ai_tier": "Free"}, "L1"),
+    ({"cspm_tier": "Free", "discovery": None}, "L1"),
+    ({"discovery": False}, "L1"),
+])
+def test_sensitive_data_protection_requires_ai_plan_cspm_and_discovery(
+    data: Collection, changes: dict, level: str,
+) -> None:
+    data.defender_plans = defender_plans(**changes)
+    row = grade(data)["OT-SY-30"]
+    assert row.level == level
+    assert row.measurement.denominator == 1 and row.evidence_refs == ["fixture://defender"]
+    assert row.measurement.targets[0].observed["prompt_evidence"] is True
+
+
+@pytest.mark.parametrize("plans", [
+    [],
+    defender_plans(ai_tier=None),
+    defender_plans(discovery=None),
+    defender_plans()[:1],
+])
+def test_missing_defender_plan_fields_are_unknown_not_l1(data: Collection, plans: list[DefenderPlan]) -> None:
+    data.defender_plans = plans
+    row = grade(data)["OT-SY-30"]
+    assert row.level == "N/A" and row.metric_value is None and row.reason == "not_found"
+    assert row.measurement.numerator is None and row.measurement.denominator is None
+
+
 @pytest.mark.parametrize("good,level", [(0, "L1"), (1, "L2"), (8, "L3"), (9, "L4"), (10, "L5")])
-def test_real_api_field_combinations_reach_every_level_for_all22_controls(
+def test_real_api_field_combinations_reach_every_level_for_all23_controls(
     data: Collection, good: int, level: str,
 ) -> None:
     from copy import deepcopy
@@ -283,6 +327,7 @@ def test_real_api_field_combinations_reach_every_level_for_all22_controls(
         snapshot.costs.append(data.costs[0].model_copy(update={
             "subscription_id": sid, "resource_id": account if complete else f"/shared-workspace/{index}",
         }))
+        snapshot.defender_plans.extend(defender_plans(sid, ai_tier="Standard" if complete else "Free"))
         for original in data.proposal_observations:
             row = original.model_copy(deep=True, update={"subscription_id": sid, "subject": account})
             field_values = deepcopy(row.values)
@@ -315,7 +360,7 @@ def test_real_api_field_combinations_reach_every_level_for_all22_controls(
         for key in config["complete_subscriptions"]:
             snapshot.facts[key] = snapshot.subscriptions
     rows = grade(snapshot)
-    assert len(rows) == 22
+    assert len(rows) == 23
     for code, row in rows.items():
         assert row.metric_value == pytest.approx(good / 10), (code, row.rationale)
         assert row.level == level, (code, row.rationale)
@@ -497,7 +542,7 @@ def test_rules_reject_unknown_operator_and_missing_values() -> None:
 
 def test_all_criteria_have_exactly_api_metrics_and_exhaustive_level_definitions() -> None:
     criteria = load_criteria()
-    assert len(criteria["items"]) == 22
+    assert len(criteria["items"]) == 23
     assert "configuration_grading" not in criteria
     for config in criteria["items"].values():
         assert list(config["levels"]) == ["L1", "L2", "L3", "L4", "L5"]

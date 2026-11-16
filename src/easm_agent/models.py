@@ -148,6 +148,16 @@ class SecureScore(EvidenceModel):
     evidence_refs: list[str] = Field(default_factory=list)
 
 
+class DefenderPlan(EvidenceModel):
+    subscription_id: str
+    plan: str
+    tier: str | None = None
+    sub_plan: str | None = None
+    coverage: str | None = None
+    extensions: dict[str, bool | None] = Field(default_factory=dict)
+    evidence_refs: list[str] = Field(default_factory=list)
+
+
 class PolicyAssignment(EvidenceModel):
     subscription_id: str
     assignment_id: str
@@ -304,18 +314,14 @@ class AdminEnvironment(EvidenceModel):
 
 class AdminReadResult(EvidenceModel):
     source: Literal[
-        "powerplatform.environments", "powerplatform.environment_roles",
-        "powerplatform.dlp_policies", "purview.activity_explorer",
+        "powerplatform.environments", "powerplatform.environment_roles", "powerplatform.dlp_policies",
     ]
     command: str
     module_version: str
     scope: str
     completed: StrictBool
     observed_at: AwareDatetime
-    window_start: AwareDatetime | None = None
-    window_end: AwareDatetime | None = None
     object_count: StrictInt | None = Field(default=None, ge=0)
-    counts: dict[str, StrictInt] = Field(default_factory=dict)
     environments: list[AdminEnvironment] = Field(default_factory=list)
     reason: Reason | None = None
     detail: str
@@ -327,21 +333,8 @@ class AdminReadResult(EvidenceModel):
             raise ValueError("완료된 관리자 조회에는 확인된 건수와 오류 없음이 필요합니다.")
         if not self.completed and (self.reason is None or self.object_count is not None):
             raise ValueError("실패한 관리자 조회는 사유와 null 건수를 유지해야 합니다.")
-        if any(value < 0 for value in self.counts.values()):
-            raise ValueError("관측 건수는 음수일 수 없습니다.")
-        if set(self.counts) - {
-            "AIAppInteraction", "CopilotInteraction", "DLPRuleMatch", "DLPRuleEnforce",
-            "unclassified", "sensitive_type_observed", "sensitivity_label_observed",
-        }:
-            raise ValueError("허용되지 않은 관리자 집계 필드입니다.")
-        if self.source != "purview.activity_explorer" and self.counts:
-            raise ValueError("Purview 활동 집계를 다른 명령 결과로 사용할 수 없습니다.")
-        if not self.completed and (self.environments or self.counts):
+        if not self.completed and self.environments:
             raise ValueError("미완료 조회를 완전한 집계나 목록으로 사용할 수 없습니다.")
-        if (self.window_start is None) != (self.window_end is None):
-            raise ValueError("조회 기간의 시작과 끝이 모두 필요합니다.")
-        if self.window_start and self.window_end and self.window_start > self.window_end:
-            raise ValueError("관리자 조회 기간이 역전되었습니다.")
         return self
 
 
@@ -351,7 +344,7 @@ class AdminEvidenceExport(EvidenceModel):
     tenant_id: str
     tenant_verified: StrictBool
     exported_at: AwareDatetime
-    reads: list[AdminReadResult] = Field(min_length=1, max_length=4)
+    reads: list[AdminReadResult] = Field(min_length=1, max_length=3)
 
 
 class EvidenceSource(EvidenceModel):
@@ -408,6 +401,7 @@ class Collection(EvidenceModel):
     costs: list[CostRecord] = Field(default_factory=list)
     security: list[SecurityRecommendation] = Field(default_factory=list)
     secure_scores: list[SecureScore] = Field(default_factory=list)
+    defender_plans: list[DefenderPlan] = Field(default_factory=list)
     policy_assignments: list[PolicyAssignment] = Field(default_factory=list)
     budgets: list[Budget] = Field(default_factory=list)
     entra_blueprints: list[EntraBlueprint] = Field(default_factory=list)

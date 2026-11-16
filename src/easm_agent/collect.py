@@ -38,7 +38,7 @@ from easm_agent.models import (
 
 def merge(destination: Collection, source: Collection) -> None:
     for field in (
-        "agents", "deployments", "evaluations", "costs", "security", "secure_scores",
+        "agents", "deployments", "evaluations", "costs", "security", "secure_scores", "defender_plans",
         "policy_assignments", "budgets", "entra_blueprints", "entra_agent_identities",
         "agent365_packages", "agent365_crosschecks",
         "admin_evidence",

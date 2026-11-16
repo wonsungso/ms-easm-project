@@ -141,6 +141,14 @@ def load_result(output: Path) -> dict[str, Any]:
         facts["assessment_revision"] = 4
     if revision != ASSESSMENT_REVISION:
         migrate_revision_4_codes(result)
+    # Administrator reads from retired sources are not part of the current evidence contract.
+    collection = result["collection"]
+    if collection.get("admin_evidence"):
+        collection["admin_evidence"] = [
+            {key: value for key, value in row.items() if key not in ("window_start", "window_end", "counts")}
+            for row in collection["admin_evidence"]
+            if str(row.get("source", "")).startswith("powerplatform.")
+        ]
     return result
 
 

@@ -474,6 +474,7 @@ def measurements(
         ],
     )
     result["OT-SY-29"] = cost_measurement(data, agents)
+    result["OT-SY-30"] = exposure_measurement(data)
     budget_values = []
     for sid in data.subscriptions:
         budgets = [row for row in data.budgets if row.subscription_id == sid]
@@ -525,6 +526,31 @@ def budget_configured(row: Any, now: datetime) -> bool | None:
         row.actual_alerts > 0 if row.actual_alerts is not None else None,
         row.forecast_alerts > 0,
         row.notifications_with_receivers if row.notifications_with_receivers is not None else None,
+    )
+
+
+def exposure_measurement(data: Collection) -> Measurement:
+    values: list[bool | None] = []
+    decisions: list[TargetAssessment] = []
+    for sid in data.subscriptions:
+        plans = {row.plan: row for row in data.defender_plans if row.subscription_id == sid}
+        ai, posture = plans.get("AI"), plans.get("CloudPosture")
+        discovery = posture.extensions.get("SensitiveDataDiscovery") if posture else None
+        values.append(and_known(
+            ai.tier == "Standard" if ai and ai.tier is not None else None,
+            posture.tier == "Standard" if posture and posture.tier is not None else None,
+            discovery,
+        ))
+        decisions.append(decision(
+            sid, row_refs(list(plans.values())),
+            ai_tier=ai.tier if ai else None, cspm_tier=posture.tier if posture else None,
+            sensitive_data_discovery=discovery,
+            prompt_evidence=ai.extensions.get("AIPromptEvidence") if ai else None,
+            ai_model_scanner=ai.extensions.get("AIModelScanner") if ai else None,
+        ))
+    return measured(
+        values, "승인 구독 중 Defender AI 위협 방지·Defender CSPM·민감 데이터 검색이 모두 활성인 구독 비율",
+        decisions=decisions,
     )
 
 

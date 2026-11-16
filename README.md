@@ -200,7 +200,7 @@ easm-agent collect --setup-file .easm-agent/setup.json --output-dir output
 - 결과는 실행별 `output/<실행시각-UTC>/`에 저장됩니다.
 - `NOT_CHECKED`는 대상 없음·프로젝트 미지정으로 미점검이며 수집은 계속 진행됩니다.
 - 권한·인증 점검이 실패하면 고객 관리자에게 보완을 요청합니다.
-- Power Platform·Purview 보조 증거는 별도 관리자의 [읽기 내보내기](docs/api-notes.md#관리자-읽기-내보내기)로 반영합니다. 진단 앱에 관리자 권한을 추가하지 않습니다.
+- Power Platform 보조 증거는 별도 관리자의 [읽기 내보내기](docs/api-notes.md#관리자-읽기-내보내기)로 반영합니다. 진단 앱에 관리자 권한을 추가하지 않습니다.
 
 ## Step 5. <span style='background-color: #e5dcf7'>[고객/MS 공동]</span> 결과 확인과 종료
 
@@ -233,7 +233,7 @@ bash setup.sh cleanup-apply  # 진단 앱·SP·해당 역할 할당 삭제, 미�
 
 ## 점검 항목 (System Evidence 31개)
 
-✅ 수집 구현 / ⚠️ 일부 증거만 수집·점수 보류 / ❌ 미구현입니다. 22개 등급 산정 항목은 [평가 기준](docs/api-notes.md#심사기준-검토와-점수-반영-2026-11-05)을 따릅니다. DM-SY-02·DS-SY-04·BI-SY-10·DP-SY-17·18·OT-SY-30은 보조 증거만 수집하며, 나머지 3개는 수집·채점하지 않습니다. 실제 조회 실패는 사유와 함께 표시합니다.
+✅ 수집 구현 / ⚠️ 일부 증거만 수집·점수 보류 / ❌ 미구현입니다. 23개 등급 산정 항목은 [평가 기준](docs/api-notes.md#심사기준-검토와-점수-반영-2026-11-05)을 따릅니다. DM-SY-02·DS-SY-04·BI-SY-10·DP-SY-17·18은 보조 증거만 수집하며, 나머지 3개는 수집·채점하지 않습니다. 실제 조회 실패는 사유와 함께 표시합니다.
 
 | API 구성·기록 충족률 | Level |
 | --- | --- |
@@ -276,7 +276,7 @@ bash setup.sh cleanup-apply  # 진단 앱·SP·해당 역할 할당 삭제, 미�
 | [OT-SY-27](docs/checklist.md#ot-sy-27-승인되지-않은-agentshadow-ai-탐지-결과) | 6. Optimize | 미승인 Agent 탐지 | Agent 365 → Shadow AI Detection | ❌ | |
 | [OT-SY-28](docs/checklist.md#ot-sy-28-ai-리소스-사용량-관측-범위) | 6. Optimize | AI 리소스 사용량 관측 범위 | Azure → Monitor → Metrics | ✅ | |
 | [OT-SY-29](docs/checklist.md#ot-sy-29-ai-비용의-단일-agent-귀속) | 6. Optimize | AI 비용의 단일 Agent 귀속 | Azure → Cost Management → Cost analysis | ✅ | |
-| [OT-SY-30](docs/checklist.md#ot-sy-30-agent가-접근하는-민감-데이터-노출-현황) | 6. Optimize | 민감 데이터 노출 | Microsoft Purview → DSPM for AI / Activity explorer | ⚠️ | |
+| [OT-SY-30](docs/checklist.md#ot-sy-30-ai-민감-데이터-노출-점검-구성) | 6. Optimize | AI 민감 데이터 노출 점검 | Azure → Microsoft Defender for Cloud → Environment settings → Defender plans | ✅ | |
 | [OT-SY-31](docs/checklist.md#ot-sy-31-구독-예산실제예측-경보-구성) | 6. Optimize | 구독 예산·실제·예측 경보 구성 | Azure → Cost Management → Budgets | ✅ | ✓ |
 
 ## 개발 참고
@@ -306,7 +306,7 @@ tags:
 
 `owner`·`sponsor`·`env`·`cost-center`는 메타데이터 태그의 기본 이름입니다. 이 이름을 변경하려면 탐지 조건인 `tags`와 별도로 `tag_conventions: {owner_key: service-owner}`를 사용합니다. 과거 `tags` 규약의 문자열 매핑은 `tag_conventions`로 옮깁니다. 목록형 선택자가 있는 과거 규약은 로딩 호환을 유지합니다.
 
-Level 문장과 규칙을 변경한 경우 평가 템플릿도 함께 갱신합니다: `python -m scripts.merge_assessment --source docs/assessment-result-template.xlsx --output <갱신할-템플릿.xlsx>`. 검토 후 갱신 파일을 기존 템플릿 대신 사용하세요. 기존 결과의 `package`는 점수를 다시 계산하지 않습니다.
+Level 문장과 규칙을 변경한 경우 평가 템플릿도 함께 갱신합니다: `python -m scripts.merge_assessment --source docs/assessment-result-template.xlsx --output <갱신할-템플릿.xlsx>`. 검토 후 갱신 파일을 기존 템플릿 대신 사용하세요. 기존 결과의 `package`는 저장된 점수를 다시 계산하지 않으며, 새 기준이나 관리자 증적을 판정에 반영하려면 `--reassess`를 지정합니다.
 - [docs/api-notes.md](docs/api-notes.md): 권한·API·심사 근거와 기술적 한계
 - 검사: `python -m pytest -q`, `python -m ruff check src scripts demo tests`
 
