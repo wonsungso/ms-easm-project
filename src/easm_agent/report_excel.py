@@ -6,10 +6,13 @@ import re
 import unicodedata
 from collections.abc import Iterable, Sequence
 from copy import copy, deepcopy
+from io import BytesIO
 from pathlib import Path
 from typing import Any, TypedDict
+from zipfile import ZipFile
 
-from openpyxl import Workbook
+from lxml import etree
+from openpyxl import Workbook, load_workbook
 from openpyxl.cell.rich_text import CellRichText, TextBlock
 from openpyxl.cell.text import InlineFont
 from openpyxl.comments import Comment
@@ -23,6 +26,7 @@ from pydantic import BaseModel
 
 from easm_agent.azure import redact
 from easm_agent.collect_agent365 import STATUS_LABELS
+from easm_agent.deck_model import _score
 from easm_agent.models import (
     AdminReadResult,
     Agent365Crosscheck,
@@ -474,11 +478,17 @@ def _scope_summary(
     pending = {item.se_code for item in findings if item.se_code not in graded}
     missing = system_codes - graded - pending
     admin_failed = sum(not item.completed for item in data.admin_evidence)
+    interviews = [
+        row for row in range(5, sheet.max_row + 1)
+        if re.fullmatch(r"[A-Z]{2}-(?:PR|PE|DA|TE)-\d+", str(sheet.cell(row, 2).value))
+    ]
+    completed = sum(_score(sheet.cell(row, 13).value) is not None for row in interviews)
     sheet["B2"] = (
-        f"점검 요약 - 구독 {len(data.subscriptions)}개, Azure Agent {len(azure_agents(data))}개. "
+        f"점검 요약 - 인터뷰 {len(interviews)}개 항목(답변 완료 {completed}개), "
         f"System Evidence {len(system_codes)}개 중 등급 산정 {len(graded)}개, "
         f"판정 보류 {len(pending)}개(보조 증거 포함), 자동 수집 결과 없음 {len(missing)}개. "
-        f"API 조회 이슈 {len(data.issues)}건, 관리자 조회 미완료 {admin_failed}건. 인터뷰 항목은 별도입니다."
+        f"API 조회 이슈 {len(data.issues)}건, 관리자 조회 미완료 {admin_failed}건.\n"
+        f"수집 대상 : 구독 {len(data.subscriptions)}개, Azure Agent {len(azure_agents(data))}개."
     )
     provenance = data.assessment_provenance
     basis = (
@@ -487,13 +497,55 @@ def _scope_summary(
            if provenance.origin == "saved_snapshot_reassessment" else "")
     ) if provenance else "수집 당시 평가 기준 사본·수집기 버전 미기록 - 과거 결과에 현재 기준을 소급 기재하지 않음. "
     sheet["B3"] = (
-        "해석 주의 - L5는 해당 API 구성·기록의 충족률 100%이며 조직 전체 거버넌스 성숙도·정책 실효성의 증명이 아닙니다. "
+        "참고 - L5는 해당 API 구성·기록의 충족률 100%이며 조직 전체 거버넌스 성숙도·정책 실효성의 증명이 아닙니다. "
         "실패·미확인·빈 분모는 0점이 아닌 판정 보류입니다. " + basis
         + "7번 시트에서 계산값·대상별 판정·증적·기준 출처를 확인하세요."
     )
     for row in (2, 3):
         sheet.row_dimensions[row].height = 45
         sheet.cell(row, 2).alignment = Alignment(vertical="center", wrap_text=True)
+
+
+def refresh_interview_summary(path: Path, data: Collection, findings: list[Finding]) -> None:
+    """Refresh completion labels without rewriting workbook scores, styles or formula caches."""
+    book = load_workbook(path, rich_text=True)
+    sheet = book[RESULT_SHEET]
+    updates = {}
+    for row in range(5, sheet.max_row + 1):
+        if re.fullmatch(r"[A-Z]{2}-(?:PR|PE|DA|TE)-\d+", str(sheet.cell(row, 2).value)):
+            updates[f"G{row}"] = "답변 완료" if _score(sheet.cell(row, 13).value) is not None else "인터뷰 필요"
+    evidence_only = {proposal.code for proposal in data.proposals if proposal.evidence_only}
+    _scope_summary(sheet, data, findings, evidence_only)
+    updates.update({coordinate: sheet[coordinate].value for coordinate in ("B2", "B3")})
+    book.close()
+    main = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+    rel = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+    output = BytesIO()
+    with ZipFile(path) as source, ZipFile(output, "w") as target:
+        workbook = etree.fromstring(source.read("xl/workbook.xml"))
+        result = next(node for node in workbook.iter(f"{{{main}}}sheet") if node.get("name") == RESULT_SHEET)
+        relationships = etree.fromstring(source.read("xl/_rels/workbook.xml.rels"))
+        sheet_target = next(node.get("Target") for node in relationships if node.get("Id") == result.get(f"{{{rel}}}id"))
+        part = sheet_target.lstrip("/") if sheet_target.startswith("/") else "xl/" + sheet_target
+        for info in source.infolist():
+            content = source.read(info.filename)
+            if info.filename == part:
+                root = etree.fromstring(content)
+                for cell in root.iter(f"{{{main}}}c"):
+                    address = cell.get("r")
+                    if address not in updates:
+                        continue
+                    for child in list(cell):
+                        cell.remove(child)
+                    cell.set("t", "inlineStr")
+                    inline = etree.SubElement(cell, f"{{{main}}}is")
+                    etree.SubElement(inline, f"{{{main}}}t").text = updates[address]
+                    if address in ("B2", "B3"):
+                        cell.getparent().set("ht", "45")
+                        cell.getparent().set("customHeight", "1")
+                content = etree.tostring(root, encoding="UTF-8", xml_declaration=True, standalone=True)
+            target.writestr(info, content)
+    path.write_bytes(output.getvalue())
 
 
 def _result_sheet(

@@ -215,10 +215,10 @@ easm-agent collect --setup-file .easm-agent/setup.json --output-dir output
 | 3 | 레벨 판정 | 같은 행의 **4. 질문별 평가 기준** 시트 G~K열(Level 1~5 기준)과 L열(확인 증적)을 보고 인터뷰 답변과 증적에 가장 부합하는 레벨을 정합니다. |
 | 4 | 점수 기입 | **6. 수집 결과** 시트 **M열(평가 점수)** 에 `1`~`5` 정수를 입력합니다. 확인할 수 없거나 대상이 아니면 `N/A`를 입력하거나 비워 둡니다. 근거는 N열 **검토메모**에 남깁니다. |
 | 5 | 저장 후 Codespaces에 올리기 | 저장하고 Excel을 **닫습니다**. 같은 이름의 파일을 Codespaces 탐색기의 `output/<실행시각-UTC>/` 폴더로 끌어다 놓아 **덮어씁니다**(또는 `gh codespace cp 로컬파일 "remote:/workspaces/ms-internal-easm-project/output/<실행시각-UTC>/report-<타임스탬프>.xlsx"`). 파일명을 바꾸지 마세요. |
-| 6 | PPT 재생성 | Codespaces 터미널에서 `cd /workspaces/ms-internal-easm-project` 후 `easm-agent deck --output-dir output --customer "<고객사명>"`을 실행합니다. 같은 폴더의 `EASM-report-<타임스탬프>.pptx`가 덮어써집니다. |
-| 7 | 결과 내려받기·확인 | 갱신된 `EASM-report-<타임스탬프>.pptx`를 다운로드해 PPT 3번 슬라이드의 "인터뷰 진행 현황"에서 `인터뷰 54개 중 n개 입력`을 확인하고 종합 성숙도의 **(잠정)** 표시가 사라졌는지 봅니다. |
+| 6 | PPT 재생성 | Codespaces 터미널에서 `cd /workspaces/ms-internal-easm-project` 후 `easm-agent deck --output-dir output --customer "<고객사명>"`을 실행합니다. Excel G열과 점검 요약의 **답변 완료** 건수가 갱신되고, 같은 폴더의 `EASM-report-<타임스탬프>.pptx`가 맑은 고딕 글꼴로 다시 만들어집니다. |
+| 7 | 결과 내려받기·확인 | 갱신된 Excel과 PPT를 다운로드합니다. PPT 3번 슬라이드의 "인터뷰 진행 현황"에서 `인터뷰 54개 중 답변 완료 n개`를 확인하고 종합 성숙도의 **(잠정)** 표시가 사라졌는지 봅니다. |
 
-로컬에서 바로 재생성할 수도 있습니다. `output/<실행시각-UTC>/` 폴더(json·xlsx)를 내려받아 저장소를 설치한 환경에서 `easm-agent deck --output-dir <내려받은 폴더의 상위 경로>`를 실행합니다. `deck`은 Azure에 접속하지 않으며 json과 xlsx만 읽습니다.
+로컬에서 바로 재생성할 수도 있습니다. `output/<실행시각-UTC>/` 폴더(json·xlsx)를 내려받아 저장소를 설치한 환경에서 `easm-agent deck --output-dir <내려받은 폴더의 상위 경로>`를 실행합니다. `deck`은 Azure에 접속하지 않습니다. json과 xlsx를 읽고 Excel의 답변 상태·점검 요약을 갱신한 뒤 PPT를 생성합니다. 입력 점수와 원본 json은 변경하지 않습니다.
 
 **입력 규칙**
 

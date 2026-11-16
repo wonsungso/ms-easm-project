@@ -11,8 +11,11 @@ import re
 import sysconfig
 from dataclasses import dataclass
 from datetime import datetime
+from io import BytesIO
 from pathlib import Path
+from zipfile import ZipFile
 
+from lxml import etree
 from pptx import Presentation
 from pptx.chart.data import CategoryChartData
 from pptx.dml.color import RGBColor
@@ -40,6 +43,7 @@ from easm_agent.report_template import COLLECTION_METHODS
 
 TEMPLATE_NAME = "assessment-report-template.pptx"
 DEFAULT_CUSTOMER = "<고객사>"
+PRESENTATION_FONT = "맑은 고딕"
 LEVEL_COLORS = ["D13438", "F2A900", "107C10", "008575", "00566B"]
 PASTEL = ["F4C7C3", "FCE8B2", "CDE8C4", "B7E1DD", "A9CCE3"]
 PASTEL_TEXT = ["7A1F1F", "6B4A00", "1E5B1E", "0B5A52", "0B3F58"]
@@ -63,6 +67,22 @@ def presentation_template_path() -> Path:
     if not path.is_file():
         raise FileNotFoundError(f"보고서 PPT 템플릿을 찾을 수 없습니다: {path}")
     return path
+
+
+def apply_presentation_font(path: Path) -> None:
+    """Apply the report font to slides, tables, charts, layouts and themes."""
+    output = BytesIO()
+    with ZipFile(path) as source, ZipFile(output, "w") as target:
+        for info in source.infolist():
+            content = source.read(info.filename)
+            if info.filename.endswith(".xml"):
+                root = etree.fromstring(content)
+                for node in root.iter():
+                    if "typeface" in node.attrib:
+                        node.set("typeface", PRESENTATION_FONT)
+                content = etree.tostring(root, encoding="UTF-8", xml_declaration=True, standalone=True)
+            target.writestr(info, content)
+    path.write_bytes(output.getvalue())
 
 
 def context_from_workbook(workbook: Path, customer: str = DEFAULT_CUSTOMER) -> DeckContext:
@@ -226,6 +246,7 @@ def write_presentation(workbook: Path, output: Path, context: DeckContext | None
         if ext.find("{http://schemas.microsoft.com/office/powerpoint/2010/main}sectionLst") is not None:
             ext.getparent().remove(ext)
     prs.save(output)
+    apply_presentation_font(output)
 
 
 def build_cover(slide, context: DeckContext) -> None:
@@ -284,9 +305,9 @@ def build_status(slide, assessment: Assessment, context: DeckContext) -> None:
             "조회 실패·미확인은 0점이 아닌 '평가 보류'로 구분",
         ]),
         (27, 28, "인터뷰 진행 현황", [
-            f"인터뷰 {c['int_total']}개 중 {c['int_scored']}개 입력",
-            "영역별 입력: " + by_area,
-            "Excel 6번 시트 M열에 1~5점 입력 후 보고서 재생성" if unfilled else "모든 인터뷰 점수가 반영됨",
+            f"인터뷰 {c['int_total']}개 중 답변 완료 {c['int_scored']}개",
+            "영역별 답변 완료: " + by_area,
+            "Excel 6번 시트 M열에 1~5점 입력 후 보고서 재생성" if unfilled else "인터뷰 전체 답변 완료",
         ]),
         (32, 33, "점검 범위와 방식", [
             "읽기 전용 공식 API로 구성·기록 확인(쓰기·삭제·배포 없음)",
@@ -340,7 +361,7 @@ def build_key(slide, assessment: Assessment) -> None:
     strong = pick_distinct(sorted(scored, key=lambda i: (-i.score, i.is_system, i.code)))
     weak = pick_distinct(sorted(scored, key=lambda i: (i.score, i.is_system, i.code)))
     set_text(page(25), clip(
-        f"System Evidence {c['se_scored']}/{c['se_total']} 진단, 인터뷰 {c['int_scored']}/{c['int_total']} 입력"
+        f"System Evidence {c['se_scored']}/{c['se_total']} 진단, 인터뷰 답변 완료 {c['int_scored']}/{c['int_total']}개"
         + (" - 인터뷰 입력 후 종합 성숙도가 확정됩니다." if c["int_scored"] < c["int_total"] else ""), 80))
     for text_id, item in zip((31, 33, 35), strong + [None] * 3, strict=False):
         set_text(page(text_id), f"{clip(item.title, 32)} (Level {item.score})" if item else "해당 항목 없음")
@@ -441,7 +462,7 @@ def build_matrix(slide, assessment: Assessment) -> None:
         text = f"{area.final:.1f}점 · {area.status}" if area.final is not None else "판정 보류"
         rows.append([
             area_label(prefix), level_text(assessment, area.level),
-            f"{text} | 실측 {area.system_scored}/{area.system_total} · 인터뷰 {area.interview_scored}/{area.interview_total}",
+            f"{text} | 실측 {area.system_scored}/{area.system_total} · 답변 완료 {area.interview_scored}/{area.interview_total}",
             area.level,
         ])
     fill_table(slide, 26, ["평가 영역", "성숙도", "점수 · 근거"], rows, [2.5, 1.5, 4.2], 0.6, chip_column=1)
@@ -630,6 +651,6 @@ def build_appendix(slide, assessment: Assessment) -> None:
     for area in assessment.areas.values():
         missing = area.interview_total - area.interview_scored
         if missing:
-            rows.append([f"인터뷰 · {area_label(area.prefix, True)}", f"{area.interview_scored}/{area.interview_total}개 입력",
+            rows.append([f"인터뷰 · {area_label(area.prefix, True)}", f"답변 완료 {area.interview_scored}/{area.interview_total}개",
                          f"미입력 {missing}개 - Excel 6번 시트 M열에 1~5점 입력", None])
     fill_table(slide, 26, ["구분", "항목", "상태 · 조치"], rows, [2.4, 3.6, 6.1], 0.34)

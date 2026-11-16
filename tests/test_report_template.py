@@ -74,7 +74,7 @@ def test_result_preserves_source_columns_and_inserts_collection_methods(output: 
             old, new = source.cell(row, column), result.cell(row, column)
             code = source.cell(row, 2).value
             if row in (2, 3) and column == 2:
-                assert "점검 요약" in new.value if row == 2 else "해석 주의" in new.value
+                assert "점검 요약" in new.value if row == 2 else "참고" in new.value
             elif column == 6 and code in COLLECTION_METHODS:
                 lines = new.value.splitlines()
                 assert lines[1] == f"- [{COLLECTION_METHODS[code]}]"

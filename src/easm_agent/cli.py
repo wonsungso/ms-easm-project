@@ -33,6 +33,7 @@ from easm_agent.models import (
 )
 from easm_agent.proposals import evaluate_proposals
 from easm_agent.report import latest_raw, load_result, write_reports
+from easm_agent.report_excel import refresh_interview_summary
 from easm_agent.report_pptx import DEFAULT_CUSTOMER, context_from_workbook, write_presentation
 
 
@@ -90,6 +91,11 @@ def main(argv: list[str] | None = None) -> int:
             workbook = args.workbook or source.parent / f"report-{stamp}.xlsx"
             if not workbook.is_file():
                 raise FileNotFoundError(f"Excel 보고서를 찾을 수 없습니다: {workbook}")
+            result = load_result(source.parent)
+            refresh_interview_summary(
+                workbook, Collection.model_validate(result["collection"]),
+                [Finding.model_validate(row) for row in result["findings"]],
+            )
             deck_path = source.parent / f"EASM-report-{stamp}.pptx"
             write_presentation(workbook, deck_path, context_from_workbook(workbook, args.customer))
             print(f"PPT 보고서: {deck_path}")
