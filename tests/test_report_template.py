@@ -204,6 +204,36 @@ def test_existing_report_formatting_preserves_answers_styles_and_cached_parts(ou
     assert output.read_bytes() == once
 
 
+def test_domain_boundary_borders_extend_through_all_result_columns(output: Path) -> None:
+    book = load_workbook(output, rich_text=True)
+    sheet = book[RESULT_SHEET]
+    starts = [
+        row for row in range(6, sheet.max_row + 1)
+        if str(sheet.cell(row, 2).value)[:2] != str(sheet.cell(row - 1, 2).value)[:2]
+    ]
+    assert len(starts) == 5
+    for row in starts:
+        for column in range(7, 15):
+            cell = sheet.cell(row, column)
+            border = copy(cell.border)
+            border.top = copy(sheet.cell(5, column).border.top)
+            cell.border = border
+    book.save(output)
+    format_assessment_workbook(output)
+    updated = load_workbook(output, rich_text=True)[RESULT_SHEET]
+    for row in starts:
+        for column in range(7, 15):
+            before, after = sheet.cell(row, column), updated.cell(row, column)
+            assert after.border.top == copy(updated.cell(row, 2).border.top)
+            assert after.border.top.style == "medium"
+            for side in ("left", "right", "bottom"):
+                assert getattr(before.border, side) == getattr(after.border, side)
+            assert before.value == after.value
+    once = output.read_bytes()
+    format_assessment_workbook(output)
+    assert output.read_bytes() == once
+
+
 def test_unknown_result_code_fails_explicitly_without_writing(tmp_path: Path) -> None:
     path = tmp_path / "invalid.xlsx"
     with pytest.raises(ValueError, match="템플릿에 없는 SE 코드"):

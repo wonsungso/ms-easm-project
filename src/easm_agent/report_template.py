@@ -79,7 +79,7 @@ def format_assessment_workbook(path: Path) -> None:
     book = load_workbook(BytesIO(content), read_only=True)
     rows_by_sheet = {
         name: {
-            row[1].row: "-SY-" in str(row[1].value)
+            row[1].row: str(row[1].value)
             for row in book[name].iter_rows(min_row=5, max_col=2)
             if re.fullmatch(r"[A-Z]{2}-(?:PR|PE|DA|TE|SY)-\d+", str(row[1].value))
         }
@@ -90,6 +90,7 @@ def format_assessment_workbook(path: Path) -> None:
     with ZipFile(BytesIO(content)) as archive:
         styles = etree.fromstring(archive.read("xl/styles.xml"))
         fills = styles.find(f"{_MAIN}fills")
+        borders = styles.find(f"{_MAIN}borders")
         xfs = styles.find(f"{_MAIN}cellXfs")
         blue = next((
             index for index, fill in enumerate(fills)
@@ -104,19 +105,27 @@ def format_assessment_workbook(path: Path) -> None:
             etree.SubElement(pattern, f"{_MAIN}fgColor", rgb=SYSTEM_EVIDENCE_COLOR)
             fills.set("count", str(len(fills)))
         original_count = len(xfs)
+        original_borders = len(borders)
         mapped = {}
 
-        def assessment_style(style_id: int, fill_id: int | None, centered: bool) -> int:
-            key = (style_id, fill_id, centered)
+        def assessment_style(style_id: int, fill_id: int | None, centered: bool, top_border: int | None) -> int:
+            key = (style_id, fill_id, centered, top_border)
             if key not in mapped:
                 original = xfs[style_id]
+                border = borders[int(original.get("borderId", "0"))]
+                top = borders[top_border].find(f"{_MAIN}top") if top_border is not None else None
+                old_top = border.find(f"{_MAIN}top")
+                same_border = top_border is None or (
+                    top is not None and old_top is not None
+                    and etree.tostring(deepcopy(top)) == etree.tostring(deepcopy(old_top))
+                )
                 alignment = original.find(f"{_MAIN}alignment")
                 same_fill = fill_id is None or int(original.get("fillId", "0")) == fill_id
                 same_alignment = not centered or (
                     alignment is not None and alignment.get("horizontal") == "center"
                     and alignment.get("vertical") == "center"
                 )
-                if same_fill and same_alignment:
+                if same_fill and same_alignment and same_border:
                     mapped[key] = style_id
                     return style_id
                 style = deepcopy(original)
@@ -133,6 +142,20 @@ def format_assessment_workbook(path: Path) -> None:
                             protection.addprevious(alignment)
                     alignment.set("horizontal", "center")
                     alignment.set("vertical", "center")
+                if not same_border:
+                    replacement = deepcopy(border)
+                    current_top = replacement.find(f"{_MAIN}top")
+                    if current_top is None or top is None:
+                        raise ValueError("진단 영역 경계선의 기준 테두리가 없습니다.")
+                    replacement.replace(current_top, deepcopy(top))
+                    rendered = etree.tostring(replacement)
+                    border_id = next((
+                        i for i, existing in enumerate(borders) if etree.tostring(existing) == rendered
+                    ), None)
+                    if border_id is None:
+                        border_id = len(borders)
+                        borders.append(replacement)
+                    style.set("borderId", str(border_id))
                 candidate = etree.tostring(style)
                 existing = next((i for i, xf in enumerate(xfs) if etree.tostring(xf) == candidate), None)
                 if existing is None:
@@ -153,6 +176,7 @@ def format_assessment_workbook(path: Path) -> None:
             root = etree.fromstring(archive.read(part))
             dirty = False
             height = CRITERIA_ROW_HEIGHT if name == CRITERIA_SHEET else RESULT_ROW_HEIGHT
+            previous_domain = None
             for row in root.iter(f"{_MAIN}row"):
                 number = int(row.get("r"))
                 question = number in rows_by_sheet[name]
@@ -162,24 +186,35 @@ def format_assessment_workbook(path: Path) -> None:
                     row.set("ht", str(height))
                     row.set("customHeight", "1")
                     dirty = True
-                system = rows_by_sheet[name].get(number, False)
+                code = rows_by_sheet[name].get(number, "")
+                boundary = question and previous_domain is not None and code[:2] != previous_domain
+                if question:
+                    previous_domain = code[:2]
+                anchor = row.find(f"{_MAIN}c[@r='B{number}']")
+                top_border = (
+                    int(xfs[int(anchor.get("s", "0"))].get("borderId", "0"))
+                    if name == RESULT_SHEET and boundary else None
+                )
+                system = "-SY-" in code
                 fill_id = blue if system else 0 if question and name == RESULT_SHEET else None
                 for cell in row.findall(f"{_MAIN}c"):
                     address = cell.get("r", "")
                     if not re.fullmatch(r"[B-N]\d+", address):
                         continue
                     centered = name == CRITERIA_SHEET and address.startswith("M")
-                    if fill_id is None and not centered:
+                    border_id = top_border if address[0] in "GHIJKLMN" else None
+                    if fill_id is None and not centered and border_id is None:
                         continue
                     old = int(cell.get("s", "0"))
-                    new = assessment_style(old, fill_id, centered)
+                    new = assessment_style(old, fill_id, centered, border_id)
                     if old != new:
                         cell.set("s", str(new))
                         dirty = True
             if dirty:
                 changed[part] = etree.tostring(root, encoding="utf-8", xml_declaration=True, standalone=True)
-        if len(xfs) != original_count or added_fill:
+        if len(xfs) != original_count or added_fill or len(borders) != original_borders:
             xfs.set("count", str(len(xfs)))
+            borders.set("count", str(len(borders)))
             changed["xl/styles.xml"] = etree.tostring(styles, encoding="utf-8", xml_declaration=True, standalone=True)
         if not changed:
             return

@@ -7,12 +7,15 @@ from zipfile import ZipFile
 from lxml import etree
 from openpyxl import load_workbook
 from pptx import Presentation
+from pptx.enum.text import PP_ALIGN
+from pptx.util import Inches, Pt
 
 from easm_agent.cli import main
 from easm_agent.deck_model import Item, compute_scores, level_of, read_assessment
 from easm_agent.report_pptx import (
     PRESENTATION_FONT,
     TEMPLATE_NAME,
+    format_appendix_tables,
     presentation_template_path,
     write_presentation,
 )
@@ -66,6 +69,49 @@ def test_unavailable_scores_are_not_zero() -> None:
 
 def test_packaged_template_is_available() -> None:
     assert presentation_template_path().name == TEMPLATE_NAME
+
+
+def test_appendix_tables_left_align_questions_and_split_system_scores() -> None:
+    prs = Presentation()
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    system = slide.shapes.add_table(3, 3, Inches(0.5), Inches(1), Inches(12.1), Inches(3)).table
+    for column, width in zip(system.columns, (1.65, 4.25, 6.2), strict=True):
+        column.width = Inches(width)
+    values = [
+        ["항목 · 실측 점수", "수집 항목", "원본 실측 판정"],
+        ["DS-SY-08\nLevel 5", "MCP 도구 필수 승인 모드", "실측 충족률 100%"],
+        ["DM-SY-01\n평가 보류", "거버넌스 분류", "permission_denied"],
+    ]
+    for row, texts in zip(system.rows, values, strict=True):
+        for cell, text in zip(row.cells, texts, strict=True):
+            cell.text = text
+            cell.text_frame.paragraphs[0].alignment = PP_ALIGN.CENTER
+    first = system.cell(1, 0).text_frame.paragraphs[0].runs[0]
+    first.font.bold, first.font.size = True, Pt(11)
+    second = prs.slides.add_slide(prs.slide_layouts[6])
+    interview = second.shapes.add_table(2, 3, Inches(0.5), Inches(1), Inches(12.1), Inches(2)).table
+    for row, texts in zip(interview.rows, (
+        ["문항 · 평가 점수", "인터뷰 질문", "답변 · 확인 증적"],
+        ["DM-PR-01\nLevel 3", "수요 접수 절차가 있는가?", "표준 접수 절차 운영"],
+    ), strict=True):
+        for cell, text in zip(row.cells, texts, strict=True):
+            cell.text = text
+            cell.text_frame.paragraphs[0].alignment = PP_ALIGN.CENTER
+    width = sum(column.width for column in system.columns)
+    format_appendix_tables(prs)
+    assert [cell.text for cell in system.rows[0].cells] == ["항목", "실측 점수", "수집 항목", "원본 실측 판정"]
+    assert [cell.text for cell in system.rows[1].cells] == [
+        "DS-SY-08", "Level 5", "MCP 도구 필수 승인 모드", "실측 충족률 100%",
+    ]
+    assert system.cell(2, 1).text == "평가 보류"
+    assert system.cell(1, 1).text_frame.paragraphs[0].runs[0].font.bold
+    assert sum(column.width for column in system.columns) == width
+    for table, column in ((system, 2), (interview, 1)):
+        assert all(cell.text_frame.paragraphs[0].alignment == PP_ALIGN.LEFT
+                   for cell in (row.cells[column] for row in table.rows))
+    once = slide._element.xml
+    format_appendix_tables(prs)
+    assert slide._element.xml == once
 
 
 def test_run_creates_deck_that_marks_interviews_as_not_entered(tmp_path: Path) -> None:

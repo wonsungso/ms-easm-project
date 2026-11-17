@@ -20,7 +20,7 @@ from pptx import Presentation
 from pptx.chart.data import CategoryChartData
 from pptx.dml.color import RGBColor
 from pptx.oxml.ns import qn
-from pptx.util import Pt
+from pptx.util import Inches, Pt
 
 from easm_agent.deck_model import (
     AREAS,
@@ -245,6 +245,7 @@ def write_presentation(workbook: Path, output: Path, context: DeckContext | None
     for ext in list(prs.part._element.iter(qn("p:ext"))):
         if ext.find("{http://schemas.microsoft.com/office/powerpoint/2010/main}sectionLst") is not None:
             ext.getparent().remove(ext)
+    format_appendix_tables(prs)
     prs.save(output)
     apply_presentation_font(output)
 
@@ -492,6 +493,47 @@ def fill_table(slide, shape_id: int, header, rows, widths, row_height, chip_colu
                 set_text(tc, text)
         table.append(row)
     place(frame, w=sum(widths), h=0.4 + row_height * len(rows))
+
+
+def format_appendix_tables(prs) -> None:
+    """Keep appendix questions left-aligned and separate SE identifiers from scores."""
+    for slide in prs.slides:
+        for shape in slide.shapes:
+            if not shape.has_table:
+                continue
+            table = shape.table
+            headers = [cell.text.strip() for cell in table.rows[0].cells]
+            if headers == ["항목 · 실측 점수", "수집 항목", "원본 실측 판정"]:
+                old_width = table.columns[0].width
+                code_width, score_width = Inches(1.15), Inches(1)
+                item_width = table.columns[1].width - (code_width + score_width - old_width)
+                if item_width <= 0:
+                    raise ValueError("수집 항목 열의 너비가 부족합니다.")
+                grid = table._tbl.find(qn("a:tblGrid"))
+                columns = list(grid)
+                columns[0].set("w", str(code_width))
+                columns[1].set("w", str(item_width))
+                grid.insert(1, etree.Element(qn("a:gridCol"), w=str(score_width)))
+                for index, row in enumerate(table._tbl.findall(qn("a:tr"))):
+                    first = row.find(qn("a:tc"))
+                    score = copy.deepcopy(first)
+                    if index == 0:
+                        set_text(first, "항목")
+                        set_text(score, "실측 점수")
+                    else:
+                        code, separator, level = table.cell(index, 0).text.partition("\n")
+                        if not separator:
+                            raise ValueError("실측 점수와 항목 번호를 구분할 수 없습니다.")
+                        set_text(first, code)
+                        set_text(score, level)
+                    align(score, "ctr")
+                    first.addnext(score)
+                headers = [cell.text.strip() for cell in table.rows[0].cells]
+            for column, header in enumerate(headers):
+                if header not in ("인터뷰 질문", "수집 항목"):
+                    continue
+                for row in table.rows:
+                    align(row.cells[column]._tc, "l")
 
 
 def build_heatmap(slide, assessment: Assessment) -> None:
