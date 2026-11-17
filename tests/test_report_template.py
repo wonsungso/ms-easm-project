@@ -44,7 +44,7 @@ def test_original_sheets_metadata_and_cached_formulas_are_preserved(output: Path
     before, after = load_workbook(source_path), load_workbook(output)
     assert after.sheetnames[:5] == before.sheetnames
     with ZipFile(source_path) as source, ZipFile(output) as target:
-        for index in range(1, 6):
+        for index in range(1, 4):
             name = f"xl/worksheets/sheet{index}.xml"
             assert target.read(name) == re.sub(rb'\btabSelected="1"', b'tabSelected="0"', source.read(name))
         for name in source.namelist():
@@ -54,8 +54,23 @@ def test_original_sheets_metadata_and_cached_formulas_are_preserved(output: Path
     for index in range(5):
         for row in before.worksheets[index]:
             for cell in row:
+                if index == 3 and cell.column > 12:
+                    continue
                 target = after.worksheets[index][cell.coordinate]
-                assert cell.value == target.value and cell._style == target._style
+                if index == 3 and cell.coordinate == "B3":
+                    assert "6. 수집 결과" in target.value
+                    continue
+                if index == 4 and cell.coordinate == "B61":
+                    assert "시트 6 입력 점수 연동" in target.value
+                    continue
+                expected = cell.value
+                retargeted = cell.data_type == "f" and "'4. 질문별 평가 기준'!M" in cell.value
+                if retargeted:
+                    expected = expected.replace("'4. 질문별 평가 기준'!M", "'6. 수집 결과'!M")
+                assert expected == target.value and cell._style == target._style
+                if retargeted:
+                    assert cached_output.worksheets[index][cell.coordinate].value is None
+                    continue
                 assert cached_source.worksheets[index][cell.coordinate].value == cached_output.worksheets[index][
                     cell.coordinate
                 ].value
@@ -99,6 +114,24 @@ def test_result_preserves_source_columns_and_inserts_collection_methods(output: 
     assert book.sheetnames[6:] == [
         "7. 수집결과 근거", "8. 수집 Raw 데이터", "9. 수집이슈 Raw 데이터", "10. 필드누락사유",
     ]
+
+
+def test_result_criteria_has_no_score_columns_and_scoring_uses_result_inputs(output: Path) -> None:
+    book = load_workbook(output)
+    criteria = book[CRITERIA_SHEET]
+    assert criteria.max_column == 12
+    assert {str(merged) for merged in criteria.merged_cells.ranges} == {"B2:L2", "B3:L3"}
+    assert not criteria.data_validations.dataValidation
+    assert criteria["L4"].value == "확인 증적"
+    assert book[RESULT_SHEET]["M4"].value == "평가 점수\n(1~5)"
+    assert book[RESULT_SHEET]["N4"].value == "검토메모"
+    scoring = book["5. 점수 산정 방식"]
+    assert "'6. 수집 결과'!M5" in scoring["C64"].value
+    assert not any(
+        "'4. 질문별 평가 기준'!M" in str(cell.value)
+        for row in scoring for cell in row if cell.data_type == "f"
+    )
+    assert load_workbook(assessment_template_path())[CRITERIA_SHEET].max_column == 14
 
 
 def test_result_preserves_bold_titles_and_regular_bullet_descriptions(output: Path) -> None:
@@ -150,15 +183,13 @@ def test_assessment_heights_and_system_evidence_blue_fill_match_each_sheet(tmp_p
         assert all(sheet.row_dimensions[row].height == height for row in questions)
         rows = [row for row in range(5, sheet.max_row + 1) if "-SY-" in str(sheet.cell(row, 2).value)]
         assert len(rows) == 31
+        last_column = 12 if name == CRITERIA_SHEET else 14
         assert all(
             sheet.cell(row, column).fill.fgColor.rgb == "FFEAF3FB"
-            for row in rows for column in range(2, 15)
+            for row in rows for column in range(2, last_column + 1)
         )
         if name == CRITERIA_SHEET:
-            assert all(
-                sheet.cell(row, 13).alignment.horizontal == sheet.cell(row, 13).alignment.vertical == "center"
-                for row in [4, *questions]
-            )
+            assert sheet.max_column == 12
         else:
             assert all(
                 sheet.cell(row, column).fill.patternType is None
@@ -172,8 +203,9 @@ def test_existing_report_formatting_preserves_answers_styles_and_cached_parts(ou
         sheet = book[name]
         sheet.row_dimensions[5].height = 25
         sheet["F29"].fill = PatternFill("solid", fgColor="E2EFDA")
-        sheet["M29"] = 4
-        sheet["N29"] = "사용자가 작성한 메모"
+        if name == RESULT_SHEET:
+            sheet["M29"] = 4
+            sheet["N29"] = "사용자가 작성한 메모"
         font = copy(sheet["F29"].font)
         font.italic = True
         sheet["F29"].font = font

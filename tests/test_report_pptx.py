@@ -106,7 +106,11 @@ def test_appendix_tables_left_align_questions_and_split_system_scores() -> None:
     assert system.cell(2, 1).text == "평가 보류"
     assert system.cell(1, 1).text_frame.paragraphs[0].runs[0].font.bold
     assert sum(column.width for column in system.columns) == width
-    for table, column in ((system, 2), (interview, 1)):
+    assert [cell.text for cell in interview.rows[0].cells] == ["항목", "평가 점수", "인터뷰 질문", "답변 · 확인 증적"]
+    assert [cell.text for cell in interview.rows[1].cells] == [
+        "DM-PR-01", "Level 3", "수요 접수 절차가 있는가?", "표준 접수 절차 운영",
+    ]
+    for table, column in ((system, 2), (interview, 2)):
         assert all(cell.text_frame.paragraphs[0].alignment == PP_ALIGN.LEFT
                    for cell in (row.cells[column] for row in table.rows))
     once = slide._element.xml

@@ -496,14 +496,19 @@ def fill_table(slide, shape_id: int, header, rows, widths, row_height, chip_colu
 
 
 def format_appendix_tables(prs) -> None:
-    """Keep appendix questions left-aligned and separate SE identifiers from scores."""
+    """Keep appendix questions left-aligned and separate every item identifier from its score."""
     for slide in prs.slides:
         for shape in slide.shapes:
             if not shape.has_table:
                 continue
             table = shape.table
             headers = [cell.text.strip() for cell in table.rows[0].cells]
-            if headers == ["항목 · 실측 점수", "수집 항목", "원본 실측 판정"]:
+            score_headers = {
+                "항목 · 실측 점수": ("수집 항목", "실측 점수"),
+                "문항 · 평가 점수": ("인터뷰 질문", "평가 점수"),
+            }
+            split = score_headers.get(headers[0])
+            if len(headers) == 3 and split and headers[1] == split[0]:
                 old_width = table.columns[0].width
                 code_width, score_width = Inches(1.15), Inches(1)
                 item_width = table.columns[1].width - (code_width + score_width - old_width)
@@ -519,11 +524,11 @@ def format_appendix_tables(prs) -> None:
                     score = copy.deepcopy(first)
                     if index == 0:
                         set_text(first, "항목")
-                        set_text(score, "실측 점수")
+                        set_text(score, split[1])
                     else:
                         code, separator, level = table.cell(index, 0).text.partition("\n")
                         if not separator:
-                            raise ValueError("실측 점수와 항목 번호를 구분할 수 없습니다.")
+                            raise ValueError("점수와 항목 번호를 구분할 수 없습니다.")
                         set_text(first, code)
                         set_text(score, level)
                     align(score, "ctr")

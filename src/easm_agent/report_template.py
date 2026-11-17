@@ -11,6 +11,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 
 from lxml import etree
 from openpyxl import load_workbook
+from openpyxl.utils import range_boundaries
 from openpyxl.workbook.workbook import Workbook
 
 TEMPLATE_NAME = "assessment-result-template.xlsx"
@@ -73,8 +74,62 @@ def load_report_template() -> tuple[Workbook, bytes]:
     return book, content
 
 
+def _criteria_reference_view(root) -> bool:
+    """Keep criteria A:L in result workbooks; answers and scores live on the result sheet."""
+    before = etree.tostring(root)
+    for cell in list(root.iter(f"{_MAIN}c")):
+        if re.fullmatch(r"[MN]\d+", cell.get("r", "")):
+            cell.getparent().remove(cell)
+    for row in root.iter(f"{_MAIN}row"):
+        if row.get("spans"):
+            first, last = map(int, row.get("spans").split(":"))
+            row.set("spans", f"{min(first, 12)}:{min(last, 12)}")
+    for column in list(root.iter(f"{_MAIN}col")):
+        if int(column.get("min")) > 12:
+            column.getparent().remove(column)
+        elif int(column.get("max")) > 12:
+            column.set("max", "12")
+    for node in list(root.iter()):
+        attribute = "sqref" if "sqref" in node.attrib else "ref" if "ref" in node.attrib else None
+        if attribute is None:
+            continue
+        ranges = []
+        for reference in node.get(attribute).split():
+            first, _, last, _ = range_boundaries(reference)
+            if first is None or last is None:
+                ranges.append(reference)
+                continue
+            if first > 12:
+                continue
+            if last > 12:
+                reference = re.sub(r"(?<=:)(\$?)[A-Z]+(?=\$?\d+$)", r"\1L", reference)
+            ranges.append(reference)
+        if ranges:
+            node.set(attribute, " ".join(ranges))
+        else:
+            node.getparent().remove(node)
+    for tag in ("mergeCells", "dataValidations"):
+        parent = root.find(f"{_MAIN}{tag}")
+        if parent is not None:
+            if len(parent):
+                parent.set("count", str(len(parent)))
+            else:
+                root.remove(parent)
+    note = root.find(f".//{_MAIN}c[@r='B3']")
+    if note is not None:
+        for child in list(note):
+            note.remove(child)
+        note.set("t", "inlineStr")
+        inline = etree.SubElement(note, f"{_MAIN}is")
+        etree.SubElement(inline, f"{_MAIN}t").text = (
+            "평가 기준표 - 인터뷰 54개 + System Evidence 31개. "
+            "답변·평가 점수·메모는 6. 수집 결과 시트에서 관리합니다."
+        )
+    return etree.tostring(root) != before
+
+
 def format_assessment_workbook(path: Path) -> None:
-    """Apply assessment formatting, preserving data, rich text and cached formulas."""
+    """Apply report layout and keep result-sheet scores as the scoring formulas' input."""
     content = path.read_bytes()
     book = load_workbook(BytesIO(content), read_only=True)
     rows_by_sheet = {
@@ -167,14 +222,56 @@ def format_assessment_workbook(path: Path) -> None:
         workbook = etree.fromstring(archive.read("xl/workbook.xml"))
         rels = etree.fromstring(archive.read("xl/_rels/workbook.xml.rels"))
         targets = {node.get("Id"): node.get("Target") for node in rels}
+        result_report = RESULT_SHEET in rows_by_sheet
         for sheet in workbook.iter(f"{_MAIN}sheet"):
             name = sheet.get("name")
-            if name not in rows_by_sheet:
+            if name not in rows_by_sheet and not (result_report and name == "5. 점수 산정 방식"):
                 continue
             target = targets[sheet.get(f"{_DOC_REL}id")]
             part = target.lstrip("/") if target.startswith("/") else "xl/" + target
             root = etree.fromstring(archive.read(part))
             dirty = False
+            if name == "5. 점수 산정 방식":
+                note = root.find(f".//{_MAIN}c[@r='B61']")
+                title = "실제 평가 집계 - 시트 6 입력 점수 연동 (인터뷰 54개 + System Evidence 31개)"
+                if note is not None and "".join(note.itertext()) != title:
+                    for child in list(note):
+                        note.remove(child)
+                    note.set("t", "inlineStr")
+                    etree.SubElement(etree.SubElement(note, f"{_MAIN}is"), f"{_MAIN}t").text = title
+                    dirty = True
+                for cell in root.iter(f"{_MAIN}c"):
+                    formula = cell.find(f"{_MAIN}f")
+                    if formula is None or not formula.text:
+                        continue
+                    updated = re.sub(
+                        re.escape(f"'{CRITERIA_SHEET}'!") + r"(?=\$?[MN]\$?\d)",
+                        f"'{RESULT_SHEET}'!", formula.text,
+                    )
+                    if updated != formula.text:
+                        formula.text = updated
+                        cached = cell.find(f"{_MAIN}v")
+                        if cached is not None:
+                            cell.remove(cached)
+                        dirty = True
+                if dirty:
+                    changed[part] = etree.tostring(root, encoding="utf-8", xml_declaration=True, standalone=True)
+                    calc = workbook.find(f"{_MAIN}calcPr")
+                    if calc is None:
+                        calc = etree.Element(f"{_MAIN}calcPr")
+                        extension = workbook.find(f"{_MAIN}extLst")
+                        if extension is None:
+                            workbook.append(calc)
+                        else:
+                            extension.addprevious(calc)
+                    calc.set("fullCalcOnLoad", "1")
+                    calc.set("forceFullCalc", "1")
+                    changed["xl/workbook.xml"] = etree.tostring(
+                        workbook, encoding="utf-8", xml_declaration=True, standalone=True,
+                    )
+                continue
+            if name == CRITERIA_SHEET and result_report:
+                dirty = _criteria_reference_view(root)
             height = CRITERIA_ROW_HEIGHT if name == CRITERIA_SHEET else RESULT_ROW_HEIGHT
             previous_domain = None
             for row in root.iter(f"{_MAIN}row"):
