@@ -1,7 +1,7 @@
 """평가 모델의 SE 기준과 실제 점수 집계를 같은 시트/서식으로 반영한다.
 
-원본 zip에서 시트 2, 4 XML만 직접 고치고 나머지 파트(스타일, 시트 1/3/5, 민감도 레이블 등)는
-바이트 그대로 보존한다. 검토된 템플릿을 입력하면 사용자 셀 서식·점수·메모를 유지한다.
+원본 zip의 평가 XML과 지정된 행 높이·SE 배경색만 고친다.
+다른 시트·민감도 레이블·점수·메모와 나머지 셀 서식은 보존한다.
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ from openpyxl import load_workbook
 
 from easm_agent.models import load_criteria
 from easm_agent.proposals import DOMAINS, PRODUCTS, TITLES
+from easm_agent.report_template import format_assessment_workbook
 from scripts.assessment_descriptions import ITEM_DETAILS
 from scripts.proposal_levels import LEVELS
 
@@ -34,7 +35,6 @@ NOTE = (
     "미확보·조회 실패·대상 없음은 N/A이며 L1 또는 0점으로 환산하지 않음"
 )
 ROW_HEIGHT = "25.05"
-SYSTEM_EVIDENCE_ROW_HEIGHT = "150"
 FIRST_DATA_ROW = 5
 SHEET_SCORING = "xl/worksheets/sheet5.xml"
 
@@ -235,6 +235,7 @@ def merge_assessment(source: Path, output: Path) -> dict[str, str | int]:
         raise ValueError("작업 중 원본이 변경되었습니다.")
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_bytes(result.getvalue())
+    format_assessment_workbook(output)
     return {"merged_proposals": len(DOMAINS), "source_sha256": hashlib.sha256(raw).hexdigest()}
 
 
@@ -322,8 +323,6 @@ def review_parts(archive: ZipFile, patched: dict[str, bytes]) -> dict[str, bytes
     for index, row in enumerate(system_rows, 1):
         previous = value(row.find(f"{Q}c[@r='B{row.get('r')}']"))
         replace_text(row, "B", f"{previous[:2]}-SY-{index:02}")
-        row.set("ht", SYSTEM_EVIDENCE_ROW_HEIGHT)
-        row.set("customHeight", "1")
     for row in data:
         title = value(row.find(f"{Q}c[@r='F{row.get('r')}']"))
         for code in TITLES:

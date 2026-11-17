@@ -9,12 +9,16 @@ from pathlib import Path
 from xml.sax.saxutils import quoteattr
 from zipfile import ZIP_DEFLATED, ZipFile
 
+from lxml import etree
 from openpyxl import load_workbook
 from openpyxl.workbook.workbook import Workbook
 
 TEMPLATE_NAME = "assessment-result-template.xlsx"
 CRITERIA_SHEET = "4. 질문별 평가 기준"
 RESULT_SHEET = "6. 수집 결과"
+CRITERIA_ROW_HEIGHT = 80
+RESULT_ROW_HEIGHT = 150
+SYSTEM_EVIDENCE_COLOR = "FFEAF3FB"
 COLLECTION_METHODS = {
     "DM-SY-01": "M365 Admin Center → Agents → Settings",
     "DM-SY-02": "Power Platform Admin Center → Environments → 권한",
@@ -67,6 +71,123 @@ def load_report_template() -> tuple[Workbook, bytes]:
     if len(book.worksheets) != 5 or CRITERIA_SHEET not in book.sheetnames:
         raise ValueError("평가 결과 템플릿에는 원본 1~5번 시트와 질문별 평가 기준이 필요합니다.")
     return book, content
+
+
+def format_assessment_workbook(path: Path) -> None:
+    """Apply assessment formatting, preserving data, rich text and cached formulas."""
+    content = path.read_bytes()
+    book = load_workbook(BytesIO(content), read_only=True)
+    rows_by_sheet = {
+        name: {
+            row[1].row: "-SY-" in str(row[1].value)
+            for row in book[name].iter_rows(min_row=5, max_col=2)
+            if re.fullmatch(r"[A-Z]{2}-(?:PR|PE|DA|TE|SY)-\d+", str(row[1].value))
+        }
+        for name in (CRITERIA_SHEET, RESULT_SHEET) if name in book.sheetnames
+    }
+    book.close()
+    changed = {}
+    with ZipFile(BytesIO(content)) as archive:
+        styles = etree.fromstring(archive.read("xl/styles.xml"))
+        fills = styles.find(f"{_MAIN}fills")
+        xfs = styles.find(f"{_MAIN}cellXfs")
+        blue = next((
+            index for index, fill in enumerate(fills)
+            if fill.find(f"{_MAIN}patternFill[@patternType='solid']/{_MAIN}fgColor") is not None
+            and fill.find(f"{_MAIN}patternFill/{_MAIN}fgColor").get("rgb", "").upper() == SYSTEM_EVIDENCE_COLOR
+        ), None)
+        added_fill = blue is None
+        if added_fill:
+            blue = len(fills)
+            fill = etree.SubElement(fills, f"{_MAIN}fill")
+            pattern = etree.SubElement(fill, f"{_MAIN}patternFill", patternType="solid")
+            etree.SubElement(pattern, f"{_MAIN}fgColor", rgb=SYSTEM_EVIDENCE_COLOR)
+            fills.set("count", str(len(fills)))
+        original_count = len(xfs)
+        mapped = {}
+
+        def assessment_style(style_id: int, fill_id: int | None, centered: bool) -> int:
+            key = (style_id, fill_id, centered)
+            if key not in mapped:
+                original = xfs[style_id]
+                alignment = original.find(f"{_MAIN}alignment")
+                same_fill = fill_id is None or int(original.get("fillId", "0")) == fill_id
+                same_alignment = not centered or (
+                    alignment is not None and alignment.get("horizontal") == "center"
+                    and alignment.get("vertical") == "center"
+                )
+                if same_fill and same_alignment:
+                    mapped[key] = style_id
+                    return style_id
+                style = deepcopy(original)
+                if fill_id is not None:
+                    style.set("fillId", str(fill_id))
+                if centered:
+                    alignment = style.find(f"{_MAIN}alignment")
+                    if alignment is None:
+                        alignment = etree.Element(f"{_MAIN}alignment")
+                        protection = style.find(f"{_MAIN}protection")
+                        if protection is None:
+                            style.append(alignment)
+                        else:
+                            protection.addprevious(alignment)
+                    alignment.set("horizontal", "center")
+                    alignment.set("vertical", "center")
+                candidate = etree.tostring(style)
+                existing = next((i for i, xf in enumerate(xfs) if etree.tostring(xf) == candidate), None)
+                if existing is None:
+                    existing = len(xfs)
+                    xfs.append(style)
+                mapped[key] = existing
+            return mapped[key]
+
+        workbook = etree.fromstring(archive.read("xl/workbook.xml"))
+        rels = etree.fromstring(archive.read("xl/_rels/workbook.xml.rels"))
+        targets = {node.get("Id"): node.get("Target") for node in rels}
+        for sheet in workbook.iter(f"{_MAIN}sheet"):
+            name = sheet.get("name")
+            if name not in rows_by_sheet:
+                continue
+            target = targets[sheet.get(f"{_DOC_REL}id")]
+            part = target.lstrip("/") if target.startswith("/") else "xl/" + target
+            root = etree.fromstring(archive.read(part))
+            dirty = False
+            height = CRITERIA_ROW_HEIGHT if name == CRITERIA_SHEET else RESULT_ROW_HEIGHT
+            for row in root.iter(f"{_MAIN}row"):
+                number = int(row.get("r"))
+                question = number in rows_by_sheet[name]
+                if not question and not (name == CRITERIA_SHEET and number == 4):
+                    continue
+                if question and (float(row.get("ht", "0")) != height or row.get("customHeight") != "1"):
+                    row.set("ht", str(height))
+                    row.set("customHeight", "1")
+                    dirty = True
+                system = rows_by_sheet[name].get(number, False)
+                fill_id = blue if system else 0 if question and name == RESULT_SHEET else None
+                for cell in row.findall(f"{_MAIN}c"):
+                    address = cell.get("r", "")
+                    if not re.fullmatch(r"[B-N]\d+", address):
+                        continue
+                    centered = name == CRITERIA_SHEET and address.startswith("M")
+                    if fill_id is None and not centered:
+                        continue
+                    old = int(cell.get("s", "0"))
+                    new = assessment_style(old, fill_id, centered)
+                    if old != new:
+                        cell.set("s", str(new))
+                        dirty = True
+            if dirty:
+                changed[part] = etree.tostring(root, encoding="utf-8", xml_declaration=True, standalone=True)
+        if len(xfs) != original_count or added_fill:
+            xfs.set("count", str(len(xfs)))
+            changed["xl/styles.xml"] = etree.tostring(styles, encoding="utf-8", xml_declaration=True, standalone=True)
+        if not changed:
+            return
+        output = BytesIO()
+        with ZipFile(output, "w") as result:
+            for info in archive.infolist():
+                result.writestr(info, changed.get(info.filename, archive.read(info.filename)))
+    path.write_bytes(output.getvalue())
 
 
 def preserve_template_parts(path: Path, template: bytes) -> None:

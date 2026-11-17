@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from copy import copy
 from datetime import UTC, datetime
 from pathlib import Path
 from shutil import copyfile
@@ -10,6 +11,7 @@ from zipfile import ZipFile
 import pytest
 from openpyxl import load_workbook
 from openpyxl.cell.rich_text import CellRichText, TextBlock
+from openpyxl.styles import PatternFill
 from openpyxl.utils import range_boundaries
 
 from easm_agent import report_template
@@ -21,6 +23,7 @@ from easm_agent.report_template import (
     CRITERIA_SHEET,
     RESULT_SHEET,
     assessment_template_path,
+    format_assessment_workbook,
 )
 
 
@@ -67,7 +70,7 @@ def test_result_preserves_source_columns_and_inserts_collection_methods(output: 
         assert sheet.title.startswith(f"{index}. ")
     for row in range(1, source.max_row + 1):
         assert result.row_dimensions[row].height == (
-            45 if row in (2, 3) else 150 if "-SY-" in str(result.cell(row, 2).value)
+            45 if row in (2, 3) else 150 if row >= 5 and result.cell(row, 2).value
             else source.row_dimensions[row].height
         )
         for column in range(1, 7):
@@ -133,18 +136,72 @@ def test_collection_methods_match_all_readme_rows() -> None:
     assert COLLECTION_METHODS == methods
 
 
-def test_every_system_evidence_row_is_height150_in_criteria_and_result_sheets(tmp_path: Path) -> None:
+def test_assessment_heights_and_system_evidence_blue_fill_match_each_sheet(tmp_path: Path) -> None:
     path = tmp_path / "heights.xlsx"
     write_workbook(Collection(collected_at=datetime.now(UTC)), [Finding(
         se_code="DS-SY-06", scope="partial", level="N/A", reason="permission_denied",
         rationale="조회 실패의 상세 근거입니다. " * 20,
     )], path)
     book = load_workbook(path)
-    for name in (RESULT_SHEET, CRITERIA_SHEET):
+    for name, height in ((RESULT_SHEET, 150), (CRITERIA_SHEET, 80)):
         sheet = book[name]
+        questions = [row for row in range(5, sheet.max_row + 1) if sheet.cell(row, 2).value]
+        assert len(questions) == 85
+        assert all(sheet.row_dimensions[row].height == height for row in questions)
         rows = [row for row in range(5, sheet.max_row + 1) if "-SY-" in str(sheet.cell(row, 2).value)]
         assert len(rows) == 31
-        assert all(sheet.row_dimensions[row].height == 150 for row in rows)
+        assert all(
+            sheet.cell(row, column).fill.fgColor.rgb == "FFEAF3FB"
+            for row in rows for column in range(2, 15)
+        )
+        if name == CRITERIA_SHEET:
+            assert all(
+                sheet.cell(row, 13).alignment.horizontal == sheet.cell(row, 13).alignment.vertical == "center"
+                for row in [4, *questions]
+            )
+        else:
+            assert all(
+                sheet.cell(row, column).fill.patternType is None
+                for row in questions if row not in rows for column in range(2, 15)
+            )
+
+
+def test_existing_report_formatting_preserves_answers_styles_and_cached_parts(output: Path) -> None:
+    book = load_workbook(output, rich_text=True)
+    for name in (CRITERIA_SHEET, RESULT_SHEET):
+        sheet = book[name]
+        sheet.row_dimensions[5].height = 25
+        sheet["F29"].fill = PatternFill("solid", fgColor="E2EFDA")
+        sheet["M29"] = 4
+        sheet["N29"] = "사용자가 작성한 메모"
+        font = copy(sheet["F29"].font)
+        font.italic = True
+        sheet["F29"].font = font
+    book[RESULT_SHEET]["H5"].fill = PatternFill("solid", fgColor="FFEAF3FB")
+    book.save(output)
+    book = load_workbook(output, rich_text=True)
+    with ZipFile(output) as archive:
+        unchanged = {name: archive.read(name) for name in archive.namelist()
+                     if name not in ("xl/styles.xml", "xl/worksheets/sheet4.xml", "xl/worksheets/sheet6.xml")}
+    format_assessment_workbook(output)
+    updated = load_workbook(output, rich_text=True)
+    for name, height in ((CRITERIA_SHEET, 80), (RESULT_SHEET, 150)):
+        assert updated[name].row_dimensions[5].height == height
+        for row in book[name]:
+            for old in row:
+                new = updated[name][old.coordinate]
+                assert old.value == new.value
+                old_style, new_style = copy(old._style), copy(new._style)
+                if old_style is not None and new_style is not None:
+                    old_style.fillId = new_style.fillId = 0
+                assert old_style == new_style
+        assert updated[name]["F29"].fill.fgColor.rgb == "FFEAF3FB"
+    assert updated[RESULT_SHEET]["H5"].fill.patternType is None
+    with ZipFile(output) as archive:
+        assert all(archive.read(name) == content for name, content in unchanged.items())
+    once = output.read_bytes()
+    format_assessment_workbook(output)
+    assert output.read_bytes() == once
 
 
 def test_unknown_result_code_fails_explicitly_without_writing(tmp_path: Path) -> None:

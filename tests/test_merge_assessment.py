@@ -27,7 +27,7 @@ from scripts.proposal_levels import LEVELS
 
 UNTOUCHED = (
     "xl/worksheets/sheet1.xml", "xl/worksheets/sheet3.xml",
-    "xl/styles.xml", "xl/sharedStrings.xml", "xl/theme/theme1.xml", "docMetadata/LabelInfo.xml",
+    "xl/sharedStrings.xml", "xl/theme/theme1.xml", "docMetadata/LabelInfo.xml",
 )
 
 

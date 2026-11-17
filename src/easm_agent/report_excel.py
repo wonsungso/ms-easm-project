@@ -53,7 +53,9 @@ from easm_agent.report_resources import ResourceName, resource_names, resource_s
 from easm_agent.report_template import (
     COLLECTION_METHODS,
     CRITERIA_SHEET,
+    RESULT_ROW_HEIGHT,
     RESULT_SHEET,
+    format_assessment_workbook,
     load_report_template,
     preserve_template_parts,
 )
@@ -110,7 +112,6 @@ RATIOS = set(SE_NAMES)
 EMPTY = "수집된 데이터 없음 - 미수행 또는 0건으로 확정하지 않음"
 ORIGINAL = "원본 JSON"
 FONT_SIZE = 10
-SYSTEM_EVIDENCE_ROW_HEIGHT = 150
 HEADER_FILL = "D9D9D9"
 EVIDENCE_FILL = "EAF3FB"
 _SIDE = Side(style="thin", color="000000")
@@ -653,8 +654,7 @@ def _result_sheet(
             evidence.font = font
         sheet.cell(number, 11).alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
         sheet.cell(number, 13).alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-        if "-SY-" in str(code):
-            sheet.row_dimensions[number].height = SYSTEM_EVIDENCE_ROW_HEIGHT
+        sheet.row_dimensions[number].height = RESULT_ROW_HEIGHT
     sheet.cell(4, 11).alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
     sheet.cell(4, 13).alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
     if rows.keys() != by_code.keys():
@@ -894,3 +894,4 @@ def write_workbook(
     _fit_audit_rows(proposals_sheet, header + 1, proposals_sheet.max_row, 2)
     book.save(path)
     preserve_template_parts(path, template)
+    format_assessment_workbook(path)

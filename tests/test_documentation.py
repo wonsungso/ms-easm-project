@@ -171,28 +171,22 @@ def test_summary_table_links_resolve_to_checklist_sections_with_images() -> None
         assert section and "- **구현:** ✅ 구현 - 현재 API 기준 완료" in section[0]
 
 
-def test_summary_marks_added_items_only_in_the_rightmost_column() -> None:
-    from easm_agent.proposals import TITLES
-
+def test_summary_lists_all_controls_without_new_item_markers() -> None:
     readme = (Path(__file__).parents[1] / "README.md").read_text(encoding="utf-8")
-    assert "| 점검 내용 | 수집 방법 | 수집 | 신규 추가 |" in readme
+    assert "| 점검 내용 | 수집 방법 | 수집 |" in readme
     methods = [
         line.split("|")[4].strip() for line in readme.splitlines()
         if re.match(r"^\| \[[A-Z]{2}-SY-\d+\]", line)
     ]
     assert len(methods) == 31 and all("→" in method for method in methods)
-    assert "| 수집 | 신규 추가 |" in readme
+    assert "신규 추가" not in readme
     rows = re.findall(r"^\| \[([A-Z]{2}-SY-\d+)\].+$", readme, re.M)
     assert len(rows) == 31
-    marked = set()
     for line in readme.splitlines():
         match = re.match(r"^\| \[([A-Z]{2}-SY-\d+)\]", line)
         if match:
-            last = line.split("|")[-2].strip()
-            assert last in ("", "✓")
-            if last:
-                marked.add(match[1])
-    assert marked == TITLES.keys()
+            fields = [field.strip() for field in line.strip("|").split("|")]
+            assert len(fields) == 5 and fields[-1] == "✅"
     assert "추가 제안 13개" not in readme and "점수 산정에는 포함하지 않음" not in readme
 
 
