@@ -1,14 +1,19 @@
-# 설계, API 계약과 System Evidence 기준
+# API·평가 기준 참고
 
-- 기준: [config/criteria.yaml](../config/criteria.yaml)의 `grading_profile: api_configuration_v1` (2026-11-09). 항목명·분모·증거·한계·규칙의 단일 기준입니다.
-- 실행·고객 권한 설정·정리는 [README](../README.md), 31개 항목과 확인 화면은 [점검 항목 상세](checklist.md), 샘플 배포는 [개발자 데모](../demo/README.md)를 참고합니다.
-- 승인된 기존 원본은 로컬 `source-materials/`(.gitignore 대상)에 별도 보관하며 저장소·Codespaces에 요구하지 않습니다. 과거 19개 원문 Level과 구성 L2 기본등급은 현재 평가 기준으로 사용하지 않습니다.
+| 찾을 내용 | 위치 |
+| --- | --- |
+| 실행·권한 설정·정리 | [README](../README.md) |
+| 항목별 설명·확인 화면 | [점검 항목 상세](checklist.md) |
+| 지표·분모·증거·한계·등급 규칙 | [criteria.yaml](../config/criteria.yaml)의 `grading_profile: api_configuration_v1` |
+| 읽기 API·버전·공식 근거 | [공식 API 계약](#공식-api와-읽기-계약) |
+| 별도 관리자 증적 | [내보내기 절차](#관리자-읽기-내보내기) |
+| 테스트 환경 배포 | [개발용 데모](../demo/README.md) |
+
+승인된 과거 원본은 Git 제외 로컬 `source-materials/`에 보관하며 실행에 필요하지 않습니다. 과거 원문 Level·구성 L2 기본등급은 현재 평가에 사용하지 않습니다.
 
 ## 범위 원칙
 
-한글 용어는 MS Learn 한국어 문서를 기준으로 합니다. `Owner`는 **소유자**, `Sponsor`는 **스폰서**, 관리 관계의 `Manager`는 **관리자**, `agent identity blueprint`는 **에이전트 ID 청사진**, `sensitivity label`은 **민감도 레이블**입니다. API 키와 실제 화면의 영문 메뉴·리소스 이름은 유지합니다.
-
-- [에이전트 소유자·스폰서·관리자](https://learn.microsoft.com/ko-kr/entra/agent-id/agent-owners-sponsors-managers), [민감도 레이블](https://learn.microsoft.com/ko-kr/purview/sensitivity-labels)
+용어는 MS Learn의 [소유자·스폰서·관리자](https://learn.microsoft.com/ko-kr/entra/agent-id/agent-owners-sponsors-managers), 에이전트 ID 청사진, [민감도 레이블](https://learn.microsoft.com/ko-kr/purview/sensitivity-labels)을 사용합니다. API 키·실제 메뉴·리소스 이름은 유지합니다.
 
 | 구분 | 범위·처리 |
 | --- | --- |
@@ -17,10 +22,10 @@
 | 등록부 5개 | DM-SY-01·03, DP-SY-17~18, OT-SY-27. Agent 365 등록부 API와 라이선스가 필요하며 조회 실패는 `null`과 사유로 유지 |
 | 관리자 읽기 3개 | DM-SY-02·DS-SY-04·BI-SY-10. 승인된 관리자가 별도 실행하는 읽기 내보내기 증적을 사용하며 진단 SP 권한은 확대하지 않음 |
 | 범위 구분 | Azure 인벤토리는 Agent Registry·인사 대사를 대체하지 않음 |
-| 자체 Agent 탐지 | 기본 LangChain 조건에 `tags`의 임의 key:value OR 조건을 추가. 승인 구독의 App Service·Container Apps·AKS만 대상. 사용자 태그만 일치하면 `custom` 후보로 분류하고 기존 호스트 점검 적용. 태그는 실제 Agent·프레임워크 실행 증명이 아님 |
+| 자체 Agent 탐지 | 승인 구독의 App Service·Container Apps·AKS. 기본 LangChain 조건에 사용자 태그 OR 조건 추가. 태그만 일치하면 `custom` 후보이며 실제 실행 증거는 아님. [설정 예시](../README.md#자체-agent-탐지-태그) |
 | 승인 경계 | 지정 테넌트의 접근 가능한 구독을 기본 열거하고 CLI·설정의 승인 범위를 적용. 외부 workspace·청구 범위 접근을 자동 확대하지 않음 |
 | 실행 신원 | 진단 SP의 DefaultAzureCredential. Reader 중심 GET 및 Resource Graph·비용·로그의 읽기 query POST만 허용 |
-| 보안 권고 범위 | 현재 발견한 AI 관련 리소스와 그 하위 리소스로 Resource Graph 요청부터 제한. 삭제된 리소스·무관한 대상의 권고는 원본 증적에 포함하지 않으며, 응답도 같은 범위로 다시 확인 |
+| 보안 권고 범위 | 현재 발견한 AI 리소스·하위 리소스로 Resource Graph 요청과 응답을 제한. 삭제·무관 리소스 권고는 증적에서 제외 |
 | 관리자 예외 | `scripts/setup.sh`, `setup_account.py`, 정리 스크립트와 demo만 승인된 배포·역할·일회성 인증 준비 수행. 수집기에서 import 금지 |
 | 결과 번호 | `assessment_revision: 5`는 01~31 순번. Demand 01~03, Design 04~09, Build 10~16, Deploy 17~19, Operate 20~26, Optimize 27~31 |
 | 호환성 | 이전 revision 4는 항목·점수·증거 귀속을 보존해 한 번 변환. 더 오래된 결과는 위험 Agent·Red team 제거와 구 번호 변환을 먼저 수행 |
@@ -39,13 +44,17 @@
 | Excel 6번 상단 | 등급 산정·판정 보류·결과 없음 및 조회 이슈 요약. L5는 API 구성·기록 조건 100% 충족이며 조직 전체 성숙도·정책 실효성의 증명이 아님 |
 | Excel 7번 | 항목 요약·전체 리소스 목록·대상별 판정·평가 출처. 비용은 건수가 아닌 금액·통화로 확인 |
 
-- 기준 해시는 JSON 사본을 UTF-8·키 정렬·공백 없는 형식으로 직렬화한 SHA256입니다. 소스 묶음 해시는 패키지 내 Python 파일별 SHA256 목록을 같은 방식으로 직렬화해 계산합니다. 원천 인증 서명이나 배포 승인을 대신하지 않습니다.
-- 수집 당시 사본이 없는 과거 결과는 현재 기준으로 채워 넣지 않습니다. 저장 데이터 재평가 시에는 원래 수집 시각을 유지하고 `origin=saved_snapshot_reassessment`와 재평가 시각을 별도로 기록합니다. 당시 수집기 버전을 확인했다는 의미가 아닙니다.
-- `package`는 저장된 판정을 그대로 표시하며 점수·기준 사본을 새로 만들지 않습니다. 새 기준·관리자 증적을 판정에 반영하려면 `--reassess`로 저장 데이터를 재평가하고 `origin=saved_snapshot_reassessment`·원본 결과 데이터 SHA256을 기록합니다. 분모 전체의 조회가 미완료이면 관측된 일부 대상이 충족하더라도 종합 계산값·점수는 보류합니다.
+| 재현성 규칙 | 처리 |
+| --- | --- |
+| 해시 | 기준 JSON은 UTF-8·키 정렬·공백 없이 직렬화한 SHA256. 소스는 Python 파일별 SHA256 목록을 같은 방식으로 해시. 원천 서명·배포 승인은 아님 |
+| 과거 결과 | 당시 사본이 없으면 현재 기준으로 채우지 않음 |
+| `package` | 저장 판정·기준 사본 유지. 새 기준·관리자 증적의 판정 반영은 `--reassess` 필요 |
+| 재평가 | 원래 수집 시각 유지. `origin=saved_snapshot_reassessment`·재평가 시각·원본 데이터 SHA256 기록. 당시 수집기 버전의 검증은 아님 |
+| 불완전한 분모 | 일부 대상이 충족해도 전체 조회 미완료이면 종합 계산값·점수 보류 |
 
 ## 심사기준 검토와 점수 반영 (2026-11-05)
 
-이 절의 링크 주소는 유지하며 내용은 현재 API 평가 기준을 설명합니다. 충족률은 아래 분모 중 API 증거가 조건을 충족한 비율입니다. 비용 항목만 건수가 아닌 금액 비율입니다.
+충족률은 전체 분모 중 API 증거가 조건을 충족한 비율입니다. **비용만 건수가 아닌 금액 기준**입니다.
 
 | API 충족률 | Level | 점수 |
 | --- | --- | --- |
@@ -112,26 +121,32 @@
 
 | 항목 | 계약 |
 | --- | --- |
-| 출력 | 실행별 `output/<실행시각-UTC>/`에 `report-<타임스탬프>.xlsx`, `EASM-report-<타임스탬프>.pptx`, `raw-data-<타임스탬프>.json` 3개. JSON은 raw + evidence + meta 통합. PPT는 Excel 6번 시트의 System Evidence·인터뷰 점수에서 생성하며(영역 점수는 5번 시트 규칙: 관점 평균, 인터뷰-실측 1.5점 이상 괴리 시 보정), manifest에는 자동 생성 시점의 파일 해시를 기록. 인터뷰 기입 후 `easm-agent deck`으로 PPT 재생성 |
+| 출력 | 실행별 `output/<실행시각-UTC>/`에 Excel·PPT·원본 JSON(raw·evidence·meta 통합). manifest는 자동 생성 시점의 파일 해시 기록 |
+| PPT | Excel 6번의 SE·인터뷰 점수로 생성. 인터뷰 입력 후 `easm-agent deck`으로 갱신. [입력 절차](../README.md#중요---인터뷰-입력-후-ppt-재생성) |
 | 실행 시각 | 마이크로초 포함 UTC·충돌 접미사를 폴더와 새 파일명에 동일 적용. 실제 수집 시각은 `collection.collected_at` 유지 |
 | 시트 1~5 | 평가 템플릿의 기존 수식 캐시·메타데이터·사용자 강조·스타일·입력 점수·메모·민감도 레이블 보존. 시트 4 점수 자동 덮어쓰기 안 함 |
 | 6. 수집 결과 | 시트 4의 A~F·서식·행 순서를 복사. G 수집 상태, I Level·평가기준, J 수집 내용·판정 근거, K 수집결과 링크, L 다음조치, M 평가 점수(1~5), N 검토메모. 판정 불가는 M 빈칸 |
 | 근거 이동 | 6번 K의 수집결과는 같은 SE 코드의 7번 행으로 이동하는 통합 문서 내부 링크. 외부 URL·파일·사용자 입력을 링크 대상으로 쓰지 않음 |
 | 원본·실패 | 7. 수집결과 근거, 8. 수집 Raw 데이터, 9. 수집이슈 Raw 데이터, 10. 필드누락사유. 원래 숫자·불리언·null·JSON 및 evidence_refs 보존 |
-| 리소스 이름 | 6번 J와 7번 요약에 주요 이름 최대 3개와 나머지 건수 표시. 7. 수집결과 근거 하단의 두 번째 표에 관련 이름·분류·구독·리소스 그룹·식별자를 전체 행으로 기록. 별도 리소스 시트 없이 통합하며, 중복 이름은 식별자로 구분. 목록은 준수 여부를 뜻하지 않음 |
+| 리소스 이름 | 6번 J·7번 요약은 최대 3개와 나머지 건수. 7번 하단 두 번째 표에 전체 이름·분류·구독·리소스 그룹·ID 기록. 동명은 ID로 구분하며 목록은 준수 증거가 아님 |
 | 집계 | 인터뷰 54개·SE 31개 구조 유지. 시트 5 실제 집계는 시트 4 입력 기준이며 빈칸·N/A 제외. 4개 인터뷰 관점·SE 확보 시 영역, 6개 영역 확보 시 종합 산정 |
 | 괴리 보정 | 인터뷰 평균 - SE 평균 >= 1.5이면 SE 평균 + 1.0으로 하향 보정, 소수 첫째 자리 반올림. 미확보를 0으로 보간하지 않음 |
 | 템플릿 갱신 | `python -m scripts.merge_assessment --source <검토할-xlsx> --output <다른-경로.xlsx>`. 검토 후 사용하며 원본 덮어쓰기 금지. 패키지에도 템플릿 포함, 누락 시 오류 |
-| 기존 결과 | `easm-agent package --output-dir output`은 최신 실행의 Excel만 재생성. 특정 실행 폴더·기존 평면 구조 지원. 기존 파일명·판정 보존, 현재 기준으로 재채점하지 않음 |
+| 기존 결과 | `easm-agent package --output-dir output`은 최신 실행의 Excel·PPT 재생성. 특정 실행 폴더·기존 평면 구조 지원. 기본적으로 기존 파일명·판정 보존 |
 
 ## 고객 셋업·정리 계약
 
-- 고객 설정·정리 명령과 화면은 [README Step 1~5](../README.md#진행-순서)를 유지합니다. 실제로 실행하지 않은 인증·배포·삭제를 완료했다고 표시하지 않습니다. 실제 캡처는 클릭 위치를 빨간 네모로 표시하고 식별자를 가립니다.
-- 고객에게는 [customer-setup.zip](downloads/customer-setup.zip)의 `setup.sh`, `setup_account.py`, `foundry-reader.json`, `cleanup_account.py` 4개 실행 파일과 고객별 공개 인증서를 별도 전달합니다. ZIP에 setup.json·개인키·인증서·수집기를 포함하지 않습니다.
-- `python -m scripts.package_customer_setup`으로 현재 소스에서 ZIP을 다시 만듭니다. LF 줄바꿈·고정 파일 목록을 사용하며 테스트는 ZIP·소스 일치와 압축 해제한 고객 폴더의 다중 구독 plan 실행을 확인합니다.
-- 고객은 Python 3.11 이상·Azure CLI가 있는 승인된 Bash 환경에서 `bash setup.sh login/plan/apply`를 사용하고 완료한 `setup.json`만 MS에 반환합니다. Python 표준 라이브러리만 사용하며 저장소·수집기 패키지를 요구하지 않습니다. 고객은 관리자 인증 정보나 개인키를 MS에 전달하지 않습니다.
-- 고객 폴더는 같은 위치의 setup.json을 기본 입출력으로 사용하고 저장소 내부는 `.easm-agent/setup.json`을 유지합니다. `verify`는 별도 진단 모듈·개인키가 필요해 MS 저장소에서만 실행하며 고객 폴더에서는 거부합니다.
-- `plan`은 계정 식별자의 실제 존재를 조회하지 않습니다. `apply`는 Client ID로 SP를 조회해 앱 이름·반환 Client ID·SP 개체 ID를 검증합니다. principal_id는 생략 가능하며 잘못된 이전 값은 검증한 ID로 보정 사실을 안내하고 성공 후 저장합니다. Client ID 조회·이름 검증 실패 시 이름 기반 대체·새 SP 생성 없이 쓰기 전 중단합니다. Client ID 없는 기존 명시 SP 방식은 유지합니다.
+실행 명령·화면은 [README Step 1~5](../README.md#진행-순서)를 따릅니다. 미실행 인증·배포·삭제는 완료로 표시하지 않으며 캡처는 클릭 위치를 빨간 네모로 표시하고 식별자를 가립니다.
+
+| 구분 | 계약 |
+| --- | --- |
+| 전달물 | [고객 ZIP](downloads/customer-setup.zip): `setup.sh`·`setup_account.py`·`foundry-reader.json`·`cleanup_account.py`. 공개 인증서는 별도 전달. 설정·개인키·인증서·수집기는 ZIP에서 제외 |
+| ZIP 갱신 | `python -m scripts.package_customer_setup`. LF·고정 파일 목록 사용. 소스 일치·압축 해제 후 다중 구독 plan을 테스트 |
+| 고객 실행 | Python 3.11 이상·Azure CLI·Bash. Python 표준 라이브러리만 사용하며 저장소·수집기 설치 불필요. 완료한 `setup.json`만 반환 |
+| 인증 분리 | 고객은 관리자 인증 정보를 전달하지 않음. 개인키는 MS 보관. `verify`는 MS 저장소에서만 실행 |
+| 설정 경로 | 고객 폴더는 같은 위치의 `setup.json`, 저장소는 `.easm-agent/setup.json` |
+| `plan` | 계정 식별자의 실제 존재는 조회하지 않음 |
+| `apply` | Client ID로 SP 조회 후 앱 이름·Client ID·SP 개체 ID 검증. 생략·오류 `principal_id`는 검증값으로 안내·저장. 조회·이름 검증 실패 시 쓰기 전 중단하며 이름 대체·새 SP 생성 금지. Client ID 없는 기존 명시 SP 방식 유지 |
 
 | 권한 구분 | 관리자 apply 계약 |
 | --- | --- |
@@ -141,10 +156,12 @@
 | Graph 앱 읽기 | `AgentIdentity.Read.All`, `AgentIdentityBlueprint.Read.All`, `Application.Read.All`, `CopilotPackages.Read.All` 및 테넌트 관리자 동의 |
 | 최소 권한 | 진단 SP에 Owner·Contributor·Foundry User 등 쓰기 역할 부여 금지. Graph 관리자 동의 권한은 구독 역할 할당 권한과 별개 |
 
-- Graph 읽기 권한은 앱의 `requiredResourceAccess`에도 추가한 뒤 동의해 Configured permissions와 실제 appRoleAssignments를 맞춥니다. 기존 다른 API 권한은 보존하고 필요한 `Role`만 추가·동의합니다. [Azure CLI API 권한 추가](https://learn.microsoft.com/en-us/cli/azure/ad/app/permission?view=azure-cli-latest#az-ad-app-permission-add).
-- Graph appRoleAssignments POST 실패는 Azure 역할 부여 성공과 별도로 동의 미완료로 표시합니다. 활성 Privileged Role Administrator/Global Administrator 등 동의 권한이 필요하고 Global Reader로는 불가합니다. PIM 활성화 후 `bash setup.sh login --login-resource graph`로 토큰을 갱신하고 재실행합니다. Azure CLI 오류는 승인한 고정 코드만 표시하고 본문·토큰은 출력하지 않습니다. [Graph appRoleAssignment 권한](https://learn.microsoft.com/en-us/graph/api/serviceprincipal-post-approleassignments?view=graph-rest-1.0).
-- Step 1은 인증서 경로만 `.easm-agent/certificate-path`에 기록합니다. Step 4의 `scripts/certificate_path.py`는 이를 재사용합니다. 기록 없는 기존 환경에서는 `auth-*/diagnostic.pem`이 정확히 하나일 때만 선택·기록하며 부재·다중 후보·잘못된 기존 기록은 오류입니다. 개인키 내용은 읽지 않습니다.
-- 사전 점검의 대상 AI 리소스 없음·프로젝트 endpoint 미지정은 `NOT_CHECKED/not_found`로 저장하며 OK가 아닙니다. 이 항목만 미점검이면 종료 0으로 수집을 이어가고 실제 DENIED·ERROR·FEATURE_UNAVAILABLE는 종료 2입니다. 정식 수집은 프로젝트를 자동 발견하며 실패·null 계약을 유지합니다.
+| 예외·안전 처리 | 계약 |
+| --- | --- |
+| Graph 동의 | `requiredResourceAccess`와 실제 appRoleAssignments를 일치시키되 기존 타 API 권한은 보존. 필요한 `Role`만 추가. [CLI 권한 추가](https://learn.microsoft.com/en-us/cli/azure/ad/app/permission?view=azure-cli-latest#az-ad-app-permission-add) |
+| 동의 실패 | Azure 역할 성공과 별도로 미완료 표시. 활성 Privileged Role Administrator/Global Administrator 필요(Global Reader 불가). PIM 활성화 후 `bash setup.sh login --login-resource graph`로 갱신·재실행. 오류는 고정 코드만 표시하며 본문·토큰 미출력. [Graph 권한](https://learn.microsoft.com/en-us/graph/api/serviceprincipal-post-approleassignments?view=graph-rest-1.0) |
+| 인증서 경로 | `.easm-agent/certificate-path`를 재사용. 기록이 없으면 `auth-*/diagnostic.pem`이 정확히 하나일 때만 선택. 부재·다중 후보·잘못된 기록은 오류. 경로 도우미는 개인키 내용을 읽지 않음 |
+| 사전 점검 | 대상 없음·endpoint 미지정은 `NOT_CHECKED/not_found`이며 성공 아님. 이 사유만 있으면 종료 0·수집 계속. DENIED·ERROR·FEATURE_UNAVAILABLE는 종료 2. 정식 수집은 프로젝트 자동 발견 |
 
 | 정리 단계 | 안전 계약 |
 | --- | --- |
@@ -240,14 +257,20 @@
 | 인증서 | Graph application GET `$select=keyCredentials`로 기존 공개키를 보존하고 이번 임시 UUID만 추가·제거. 확보 불가 시 수정 안 함. 만료는 실제 not_valid_after_utc와 일치. [앱 갱신](https://learn.microsoft.com/graph/api/application-update?view=graph-rest-1.0), [keyCredential](https://learn.microsoft.com/graph/api/resources/keycredential?view=graph-rest-1.0) |
 | 배포 확인 | 공식 Kudu ZIP의 이번 새 작업 ID·status=4·complete=true·실제 health 확인. 다른 origin·HTTP Location에 bearer 전송 금지. [Kudu API](https://github.com/projectkudu/kudu/wiki/Deploying-from-a-zip-file-or-url) |
 
-- 모델 목록·쿼터만으로 신규 배포 가능성을 확정하지 않았습니다. Korea Central validate의 ServiceModelDeprecating 응답 뒤 validate를 통과한 gpt-4.1-nano 2025-04-14 GlobalStandard로 샘플을 변경했으며 지역은 유지했습니다.
-- Oryx 설치 지연은 사전 패키징한 Linux wheel로 전환해 ELF x86_64·ZIP 무결성을 확인했습니다. ZIP 완료만으로 새 프로세스 실행을 단정하지 않고 명시적 재시작·새 revision·health를 확인했습니다.
-- callback 401에서 Easy Auth의 `response_type=code id_token`을 확인해 ID 토큰 발급·기본 로그인 동의를 완료했으며 access token implicit은 껐습니다.
-- 빈 POST 403은 no-referrer와 CSRF 검사 충돌로 same-origin을 적용했습니다. 플랫폼 CSRF는 끄지 않았으며 forwarded 헤더 대신 WEBSITE_HOSTNAME의 HTTPS 원점과 비교했습니다.
-- 오래된 CLI CAE 토큰은 동일 관리자 DefaultAzureCredential로 Graph를 호출했습니다. 인증서 전파 AADSTS700027만 제한 재시도하며 다른 신원·관리자 토큰으로 진단 수집을 대체하지 않았습니다.
-- 소형 모델 요청 한도·새 endpoint 공개 여부를 구분하고 연결 후 요청했으며 429만 제한 대기했습니다. 실패 문항도 보존하고 정확 일치 실패를 보안 위험 확정으로 바꾸지 않았습니다.
-- 정확 일치 3문항은 포괄적 보안·품질 검증이 아닙니다. 관리자 published_at·관측 완료 시각은 운영 배포 서비스 증거가 아니며 Reader 판정에 자동 주입하지 않습니다.
-- 당시 비용 행 없음·승인 범위 밖 중앙 로그·AI 권고/활성화 미확인은 각각 원래 null 사유로 보존했습니다. 인증서 등록은 관리자 준비이며 진단 SP에 Graph 쓰기를 부여하지 않습니다. 동일 앱 인증서를 동시에 변경하는 준비 실행은 피합니다.
+<details>
+<summary>과거 샘플 검증에서 확인한 제약</summary>
+
+| 주제 | 확인·처리 |
+| --- | --- |
+| 모델 배포 | 목록·쿼터만으로 배포 가능성을 확정하지 않음. Korea Central의 `ServiceModelDeprecating` 이후 validate를 통과한 gpt-4.1-nano 2025-04-14 GlobalStandard 사용 |
+| 패키징 | Oryx 지연으로 Linux wheel 사전 패키징. ELF x86_64·ZIP 무결성·새 revision·재시작 후 health를 별도 확인 |
+| 웹 인증 | callback 401 확인 후 `response_type=code id_token`에 맞춰 ID 토큰·기본 동의 적용. access token implicit은 비활성 유지 |
+| CSRF | no-referrer POST 403은 same-origin으로 해결. 플랫폼 CSRF 유지, forwarded 헤더 대신 WEBSITE_HOSTNAME의 HTTPS 원점 대조 |
+| 인증·재시도 | 오래된 CLI CAE 토큰 대신 동일 관리자 DefaultAzureCredential 사용. 인증서 전파 `AADSTS700027`·모델 429만 제한 재시도. 진단 수집을 관리자 신원으로 대체하지 않음 |
+| 해석 | 정확 일치 3문항은 종합 보안·품질 검증 아님. 실패 문항·비용 없음·범위 밖 로그·AI 권고 미확인의 원래 사유 보존 |
+| 증거 경계 | 관리자 `published_at`·관측 시각은 운영 배포 증거가 아니며 Reader 판정에 주입하지 않음. 인증서 준비는 관리자만 수행하고 동일 앱의 동시 변경은 피함 |
+
+</details>
 
 ## 미확정 범위와 이기종 Agent
 
@@ -284,16 +307,7 @@
 
 ## 등록부·관리자 읽기 5+3개 항목의 계산 범위
 
-| 코드 | 구현·한계 |
-| --- | --- |
-| DM-SY-01 | 등록부 `governanceMetadata` 분류 비율. 포털 제작 허용 설정은 읽지 않음 |
-| DM-SY-02 | 환경별 역할 할당 존재 비율. 비 Dataverse 환경만 반환, 고유 Maker 수·전체 유효 권한 미입증 |
-| DM-SY-03 | 최근 183일 신규 패키지의 승인 요청 상태 비율. 패키지 생성일을 실제 Agent 생성일로 간주하지 않음 |
-| DS-SY-04 | DLP 정책 환경 범위 포함 비율. 분류·차단·환경별 준수는 미입증 |
-| BI-SY-10 | `protectionLevel=Standard` 환경 비율. 개발/테스트/운영 분리·관리형 운영 준수는 미입증 |
-| DP-SY-17 | 소유자 연결·배포 기록 패키지 비율. 미등록 자산·승인 등록부 정합성은 미입증 |
-| DP-SY-18 | 접근·배포 범위 제한 패키지 비율. 테넌트 설치 정책·승인 범위 일치는 미입증 |
-| OT-SY-27 | 등록부 등록 Azure Agent 비율. 등록 목록에 없다는 이유로 Shadow AI로 단정하지 않음 |
+계산식·한계는 [31개 API 지표](#31개-api-지표)를 따릅니다. 등록부 5개와 관리자 읽기 3개의 증적 원천을 구분하며, 진단 SP에 관리자 권한을 부여하지 않습니다.
 
 - 등록부 5개는 Agent 365 라이선스·`CopilotPackages.Read.All`이 없으면 `permission_denied` 등 원래 사유와 `null`로 유지하며 L1·0%로 바꾸지 않습니다. 등록부가 비어 있거나 조회가 미완료인 경우도 같습니다.
 - 관리자 읽기 3개는 별도 관리자 증적이 없으면 판정 보류입니다. 내보내기에는 환경별 역할 건수(`role_counts`)와 정책 적용 범위(`policies`)만 포함하며 사람·정책 내용은 저장하지 않습니다.
@@ -328,8 +342,9 @@ python scripts\export_admin_environments.py --tenant-id <테넌트-ID> --output 
 ```powershell
 easm-agent package --output-dir output\<실행폴더> --tenant-id <테넌트-ID> `
   --admin-evidence-file .easm-agent\admin-exports\environments.json `
-  --admin-evidence-file .easm-agent\admin-exports\powerplatform.json
+  --admin-evidence-file .easm-agent\admin-exports\powerplatform.json --reassess
 ```
 
+- `--reassess`는 첨부한 증적을 등급에 반영합니다. `package`는 Excel을 새로 만들므로 인터뷰 입력본을 먼저 별도 보관합니다.
 - 2026-11-10 실측: 환경 API 200·접근 가능 환경 1개. 로컬 PowerApps 모듈 부재로 역할·정책은 미수집이며, 완료했다고 표시하지 않습니다.
 - 공식 근거: [역할 할당 조회](https://learn.microsoft.com/en-us/powershell/module/microsoft.powerapps.administration.powershell/get-adminpowerappenvironmentroleassignment), [DLP 정책 조회](https://learn.microsoft.com/en-us/powershell/module/microsoft.powerapps.administration.powershell/get-admindlppolicy), [관리 SP 권한 한계](https://learn.microsoft.com/en-us/power-platform/admin/powershell-create-service-principal).

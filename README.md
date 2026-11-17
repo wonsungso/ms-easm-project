@@ -1,21 +1,32 @@
-# EASM (Enterprise Agent Service Management) 거버넌스 진단/수집 툴
+# EASM 거버넌스 진단·수집
 
-- **점검 대상:** Microsoft Foundry, Azure 자체 호스팅 Agent, 운영 로그·비용·보안, Entra Agent ID
-- **결과:** 실행별 `output/<실행시각-UTC>/` 폴더에 Excel 보고서와 원본 JSON 저장
-- **원칙:** 진단 앱은 읽기 권한만 사용하며 리소스를 변경하거나 비밀값을 조회하지 않습니다
-- **로그 범위:** Agent 관련 AI 계정·호스트의 실행 로그를 점검합니다.
+EASM(Enterprise Agent Service Management)은 **읽기 전용 API로 Agent 구성·기록을 수집**하고 Excel·PPT 보고서를 만듭니다.
+
+| 구분 | 내용 |
+| --- | --- |
+| 대상 | Microsoft Foundry, Azure 자체 호스팅 Agent, Entra Agent ID, Agent 365 등록부, Power Platform 관리자 증적 |
+| 점검 | System Evidence 31개. 로그는 Agent 관련 AI 계정·호스트의 실행 로그로 한정 |
+| 결과 | 실행별 `output/<실행시각-UTC>/`에 Excel·PPT·원본 JSON 저장 |
+| 안전 원칙 | 진단 앱은 리소스 변경·배포·삭제·비밀 조회를 하지 않음. 권한 설정·정리는 승인된 관리자가 별도 수행 |
+
+| 필요한 정보 | 문서 |
+| --- | --- |
+| 고객 준비·수집·결과 확인 | 아래 Step 1~5 |
+| 항목별 계산 방식·한계·확인 화면 | [점검 항목 상세](docs/checklist.md) |
+| API·권한·평가 계약 | [API 참고](docs/api-notes.md) |
+| 승인된 테스트 환경 배포 | [개발용 데모](demo/README.md) |
 
 ## 진행 순서
 
 | 순서 | 담당 | 실행 위치 | 할 일 |
 | --- | --- | --- | --- |
-| 1 | <span style='background-color: #fff5b1'>**MS EASM 관리자**</span> | Codespaces 터미널 | 인증서 준비, 고객용 ZIP·공개 인증서 전달 |
-| 2 | <span style='background-color: #dcffe4'>**고객사 담당자**</span> | 고객사 VM의 웹 브라우저 - Azure Portal | 진단 앱 등록, 공개 인증서 업로드 |
-| 3 | <span style='background-color: #dcffe4'>**고객사 담당자**</span> | 고객사 VM의 Bash 터미널 | 고객용 ZIP으로 읽기 권한 설정, setup.json 반환 |
-| 4 | <span style='background-color: #fff5b1'>**MS EASM 관리자**</span> | Codespaces 터미널 | 반환받은 setup.json과 개인키로 검증·수집, 결과 다운로드 |
-| 5 | <span style='background-color: #e5dcf7'>**고객/MS 공동**</span> | Codespaces / 고객사 VM | 결과 공동 검토, 고객은 Portal에서 권한 회수, MS는 개인키·데이터 정리 |
+| 1 | <span style="background-color: #fff5b1; color: #24292f;">[MS EASM 관리자]</span> | <span style="background-color: #ddf4ff; color: #24292f;">[Codespaces]</span> 터미널 | 인증서 생성, 고객용 ZIP·공개 인증서 전달 |
+| 2 | <span style="background-color: #dcffe4; color: #24292f;">[고객사 담당자]</span> | <span style="background-color: #ffe8d6; color: #24292f;">[고객 VM]</span> 브라우저 - Azure Portal | 진단 앱 등록, 공개 인증서 업로드 |
+| 3 | <span style="background-color: #dcffe4; color: #24292f;">[고객사 담당자]</span> | <span style="background-color: #ffe8d6; color: #24292f;">[고객 VM]</span> Bash 터미널 | 읽기 권한 설정, `setup.json` 반환 |
+| 4 | <span style="background-color: #fff5b1; color: #24292f;">[MS EASM 관리자]</span> | <span style="background-color: #ddf4ff; color: #24292f;">[Codespaces]</span> 터미널·로컬 Excel | 검증·수집, 인터뷰 점수 입력 후 PPT 확정 |
+| 5 | <span style="background-color: #e5dcf7; color: #24292f;">[고객/MS 공동]</span> | <span style="background-color: #ddf4ff; color: #24292f;">[Codespaces]</span> / <span style="background-color: #ffe8d6; color: #24292f;">[고객 VM]</span> | 결과 검토, 권한 회수·키·데이터 정리 |
 
-## Step 1. <span style='background-color: #fff5b1'>[MS EASM 관리자]</span> Codespaces와 인증서 준비
+## Step 1. <span style="background-color: #fff5b1; color: #24292f;">[MS EASM 관리자]</span> <span style="background-color: #ddf4ff; color: #24292f;">[Codespaces]</span> - 환경·인증서 준비
 
 - **환경 준비:** 저장소 **Code → Codespaces → Create codespace**에서 엽니다.
 - **인증서 생성:** 아래 명령을 실행하고 개인키 암호는 안전하게 보관합니다.
@@ -36,7 +47,9 @@ printf '%s\n' "$cert_dir/diagnostic.pem" > .easm-agent/certificate-path
 
 - **고객 전달:** 프로젝트에 포함된 [**customer-setup.zip**](docs/downloads/customer-setup.zip) ([바로 다운로드](https://github.com/wonsungso/ms-internal-easm-project/raw/refs/heads/main/docs/downloads/customer-setup.zip)) 파일과 위에서 만든 **public-cert.pem**을 전달합니다.
 
-## Step 2. <span style='background-color: #dcffe4'>[고객사 담당자]</span> 진단 앱 등록
+## Step 2. <span style="background-color: #dcffe4; color: #24292f;">[고객사 담당자]</span> <span style="background-color: #ffe8d6; color: #24292f;">[고객 VM]</span> - 진단 앱 등록
+
+실행 위치: 고객 VM의 브라우저 - Azure Portal.
 
 - **앱 등록:** [Azure Portal](https://portal.azure.com) → **Microsoft Entra ID → 앱 등록 → 새 등록**에서 이름은 `easmagent-diagnostic`, 계정 유형은 **Single tenant**로 등록합니다.
 
@@ -50,9 +63,11 @@ printf '%s\n' "$cert_dir/diagnostic.pem" > .easm-agent/certificate-path
 
 ![공개 인증서 업로드](docs/imgs/09-upload-certificate.png)
 
-- **MS에 전달:** **Tenant ID, Client ID, 승인 구독 ID 목록**을 전달합니다. 검증된 SP 개체 ID는 Step 3 완료 후 반환하는 `setup.json`에 자동 저장됩니다.
+- **MS에 전달:** Tenant ID, Client ID, 승인 구독 ID 목록. SP 개체 ID는 Step 3에서 검증 후 `setup.json`에 자동 저장됩니다.
 
-## Step 3. <span style='background-color: #dcffe4'>[고객사 담당자]</span> 전체 진단용 권한 부여
+## Step 3. <span style="background-color: #dcffe4; color: #24292f;">[고객사 담당자]</span> <span style="background-color: #ffe8d6; color: #24292f;">[고객 VM]</span> - 읽기 권한 설정
+
+실행 위치: 고객 VM의 Bash 터미널.
 
 - **부여 대상:** 아래 읽기 권한을 **기본으로 모두 부여**합니다. Azure 역할과 Entra 권한은 서로 달라 둘 다 필요합니다.
 
@@ -68,11 +83,9 @@ printf '%s\n' "$cert_dir/diagnostic.pem" > .easm-agent/certificate-path
 | Graph 애플리케이션 권한 | `Application.Read.All` | 테넌트, 관리자 동의 필요 |
 | Graph 애플리케이션 권한 | `CopilotPackages.Read.All` | Agent 365 등록부 읽기, 관리자 동의 필요 |
 
-- **관리자 권한 확인:** 구독 역할 할당·사용자 지정 역할 생성 권한과 Entra 관리자 동의 권한이 필요합니다.
-- **최소 권한 유지:** 진단 앱에는 Owner·Contributor를 부여하지 않습니다.
+**실행 조건:** Python 3.11 이상·Azure CLI가 있는 승인된 Bash 환경, 구독 역할 할당·사용자 지정 역할 생성 권한, Entra 관리자 동의 권한이 필요합니다. **진단 앱에는 Owner·Contributor를 부여하지 않습니다.**
 
-- **실행 환경 준비:** **Python 3.11 이상과 Azure CLI가 있는 승인된 Bash 환경**을 사용합니다.
-- **파일 압축 해제:** MS EASM 관리자로부터 전달받은 [**customer-setup.zip**](docs/downloads/customer-setup.zip) ([바로 다운로드](https://github.com/wonsungso/ms-internal-easm-project/raw/refs/heads/main/docs/downloads/customer-setup.zip)) 파일을 아래 명령으로 압축 해제합니다.
+받은 [**customer-setup.zip**](docs/downloads/customer-setup.zip) ([바로 다운로드](https://github.com/wonsungso/ms-internal-easm-project/raw/refs/heads/main/docs/downloads/customer-setup.zip))을 압축 해제합니다.
 
 ```bash
 python3 -m zipfile -e customer-setup.zip customer-setup
@@ -109,7 +122,6 @@ bash setup.sh apply    # 기본 읽기 권한 전체 부여 및 결과를 setup.
 
 ![고객 VM 권한 설정 성공 결과 예시](docs/imgs/20-customer-setup-success.png)
 
-- **적용 범위:** `apply`는 목록의 모든 승인 구독에 기본 Azure 역할 4개·Foundry 사용자 지정 역할을 할당하고 Graph 권한 4개를 추가·동의합니다.
 - **Graph 동의 단계에서 중단될 때:** 구독 역할 할당 권한과 Entra 동의 권한은 별개입니다. PIM에서 **Privileged Role Administrator 또는 Global Administrator**를 활성화한 관리자가 아래를 재실행합니다. Global Reader만으로는 동의할 수 없으며, 기존 Azure 역할은 중복 생성하지 않습니다.
 
 ```bash
@@ -117,36 +129,26 @@ bash setup.sh login --login-resource graph
 bash setup.sh apply
 ```
 
-- **인증 정보 보호:** 고객은 자신의 관리자 계정으로 로그인하며 MS에 관리자 인증 정보를 전달하지 않습니다.
+완료된 **`setup.json`만 MS에 반환**합니다. 관리자 인증 정보는 전달하지 않고, 개인키는 MS가 보관합니다. Azure·Entra 관리자가 다르면 같은 파일로 절차를 이어갑니다.
 
-- **결과 반환:** 완료된 **setup.json만 MS 담당자에게 반환**합니다. 고객에게 개인키를 보내거나 수집을 실행하도록 요청하지 않습니다.
-- **담당자 분리 시:** Azure 역할 관리자와 Entra 동의 관리자가 다르면 동일 파일로 각 승인 절차를 이어서 진행합니다.
-
-- **권한 확인:** 스크립트 실행 후 아래 화면에서 확인합니다. **포털에서 같은 권한을 다시 부여할 필요는 없습니다.**
+아래 화면은 확인용입니다. **스크립트 성공 후 같은 권한을 포털에서 다시 부여하지 않습니다.**
 
 <details>
-<summary>Azure 역할 설정 (Portal 기준)</summary>
+<summary>권한 확인 화면 펼치기 - Azure 역할·Foundry·Graph</summary>
 
-
-- **Azure 역할:** **구독 → 액세스 제어(IAM) → 역할 할당 추가**에서 역할과 진단 앱을 지정합니다.
+**구독 → 액세스 제어(IAM)**에서 진단 앱의 역할을 확인합니다. 누락 시에만 승인된 관리자가 추가합니다.
 
 ![Azure Reader 역할 선택 위치](docs/imgs/10-reader-role.png)
 
-### Foundry 사용자 지정 역할 설정
-
-- **Foundry 역할:** 스크립트로 역할을 생성한 뒤 같은 IAM 화면에서 **EASMAgent Foundry Evidence Reader v2**를 선택합니다.
+**Foundry:** 스크립트가 생성한 **EASMAgent Foundry Evidence Reader v2**를 확인합니다.
 
 ![Foundry 사용자 지정 읽기 역할 선택](docs/imgs/17-foundry-reader.png)
 
-### Graph 애플리케이션 권한 설정
-
-- **Graph 권한:** **Entra → 앱 등록 → 진단 앱 → API 사용 권한**에서 위 권한 4개를 확인하고 **관리자 동의**합니다. 아래 그림은 Entra 권한 3개의 예시이며 `CopilotPackages.Read.All`도 함께 확인합니다.
+**Graph:** **Entra → 앱 등록 → 진단 앱 → API 사용 권한**에서 4개 권한과 관리자 동의를 확인합니다. 아래 화면은 3개 권한의 과거 예시이므로 `CopilotPackages.Read.All`도 확인합니다.
 
 ![Graph 읽기 권한 3개와 관리자 동의 위치](docs/imgs/12-entra-consent.png)
 
-### 나머지 역할·DataActions·승인 완료 화면
-
-- **수동 역할 할당:** **구독 → 액세스 제어(IAM) → 역할 할당 추가**에서 아래 역할을 선택합니다. 각 역할마다 진단 앱을 멤버로 지정하고 **검토 + 할당**합니다.
+나머지 Azure 역할도 같은 IAM 화면에서 확인합니다.
 
 ![진단 앱과 구독 범위 확인](docs/imgs/11-reader-review.png)
 
@@ -166,16 +168,16 @@ bash setup.sh apply
 
 ![Foundry JSON에서 읽기 DataActions 전체 이름 3개 확인](docs/imgs/18-foundry-permissions.png)
 
-- **Entra 승인 확인:** **앱 등록 → 진단 앱 → API 사용 권한**에서 Graph 권한 4개와 승인 상태를 확인합니다. 수동 동의는 **Global Administrator 또는 Privileged Role Administrator**가 수행하며, PIM을 사용하면 먼저 해당 역할을 활성화합니다.
-
 ![관리자 동의 확인](docs/imgs/19-entra-confirm.png)
 
 ![Graph 읽기 권한 3개 승인 완료 확인](docs/imgs/13-entra-granted.png)
 
-- **권한 누락 시:** **Entra 점검도 필수입니다.** 권한이 빠지면 해당 항목은 **판정 보류**로 표시하며, 권한을 보완한 뒤 다시 수집합니다.
+권한 누락 항목은 **판정 보류**입니다. Entra 점검도 생략하지 않으며, 권한 보완 후 다시 수집합니다.
 </details>
 
-## Step 4. <span style='background-color: #fff5b1'>[MS EASM 관리자]</span> 점검과 수집
+<a id="step-4"></a>
+
+## Step 4. <span style="background-color: #fff5b1; color: #24292f;">[MS EASM 관리자]</span> <span style="background-color: #ddf4ff; color: #24292f;">[Codespaces]</span> - 수집·보고서 확정
 
 - **준비:** 고객이 반환한 `setup.json`을 저장소의 **.easm-agent/setup.json**으로 저장합니다.
 - **실행:** **Step 1에서 사용한 동일 Codespaces 터미널**에서 아래를 실행합니다. Step 1의 개인키 암호를 재입력합니다.
@@ -197,32 +199,35 @@ easm-agent collect --setup-file .easm-agent/setup.json --output-dir output
 
 ![Codespaces 점검·수집 완료 예시](docs/imgs/21-codespaces-collection-success.png)
 
-- 결과는 실행별 `output/<실행시각-UTC>/`에 `raw-data-<타임스탬프>.json`(원본), `report-<타임스탬프>.xlsx`(상세 보고서), `EASM-report-<타임스탬프>.pptx`(PPT 보고서) 3개로 저장됩니다. 
-- 점검 직후 PPT는 인터뷰 미입력 상태의 실측 기준 잠정 결과입니다.
-- `NOT_CHECKED`는 대상 없음·프로젝트 미지정으로 미점검이며 수집은 계속 진행됩니다.
-- 권한·인증 점검이 실패하면 고객 관리자에게 보완을 요청합니다.
-- 점검 직후 PPT는 잠정본이므로 아래 **인터뷰 점수 기입과 PPT 재생성**을 반드시 수행합니다.
+| 실행 폴더의 파일 | 용도 |
+| --- | --- |
+| `raw-data-<타임스탬프>.json` | 수집 원본·증적·메타데이터 |
+| `report-<타임스탬프>.xlsx` | 상세 결과·인터뷰 입력 |
+| `EASM-report-<타임스탬프>.pptx` | 요약 보고서. 인터뷰 입력 전에는 잠정본 |
 
-### <span style='background-color: #00b7ff'>[중요]</span> 인터뷰 점수 기입과 PPT 재생성
+`NOT_CHECKED`는 대상 없음·프로젝트 미지정에 따른 미점검이며 수집은 계속됩니다. 권한·인증 실패는 고객 관리자에게 보완을 요청합니다.
 
-- 점검 직후의 PPT는 **인터뷰 미입력 상태의 잠정본**입니다. 
-- 인터뷰 54개 항목은 자동 수집이 아니므로 담당자가 인터뷰·문서 확인 후 Excel에 점수를 기입하고, 그 파일에서 PPT를 다시 생성해야 종합 성숙도가 확정됩니다.
+### 중요 - 인터뷰 입력 후 PPT 재생성
+
+**인터뷰 54개는 수동 평가입니다.** Excel에 인터뷰·문서 확인 결과를 입력하고 PPT를 다시 만들어야 종합 성숙도가 확정됩니다.
 
 | 순서 | 작업 | 상세 |
 | --- | --- | --- |
-| 1 | 파일 내려받기 | 탐색기에서 `output/<실행시각-UTC>/report-<타임스탬프>.xlsx`를 우클릭해 **다운로드**하거나 로컬 터미널에서 `gh codespace cp -e "remote:/workspaces/ms-internal-easm-project/output/<실행시각-UTC>/report-<타임스탬프>.xlsx" .`를 실행합니다. 내려받은 파일을 로컬 Excel로 엽니다. |
-| 2 | 질문 확인 | **6. 수집 결과** 시트에서 G열 **확인상태**가 `인터뷰 필요`인 행이 입력 대상입니다. F열이 질문이며 행 번호는 **4. 질문별 평가 기준** 시트와 같습니다. |
-| 3 | 레벨 판정 | 같은 행의 **4. 질문별 평가 기준** 시트 G~K열(Level 1~5 기준)과 L열(확인 증적)을 보고 인터뷰 답변과 증적에 가장 부합하는 레벨을 정합니다. |
-| 4 | 점수 기입 | **6. 수집 결과** 시트 **M열(평가 점수)** 에 `1`~`5` 정수를 입력합니다. 확인할 수 없거나 대상이 아니면 `N/A`를 입력하거나 비워 둡니다. 근거는 N열 **검토메모**에 남깁니다. |
-| 5 | 저장 후 Codespaces에 올리기 | 저장하고 Excel을 **닫습니다**. 같은 이름의 파일을 Codespaces 탐색기의 `output/<실행시각-UTC>/` 폴더로 끌어다 놓아 **덮어씁니다**(또는 `gh codespace cp 로컬파일 "remote:/workspaces/ms-internal-easm-project/output/<실행시각-UTC>/report-<타임스탬프>.xlsx"`). 파일명을 바꾸지 마세요. |
-| 6 | PPT 재생성 | Codespaces 터미널에서 `cd /workspaces/ms-internal-easm-project` 후 `easm-agent deck --output-dir output --customer "<고객사명>"`을 실행합니다. Excel G열과 점검 요약의 **답변 완료** 건수가 갱신되고, 같은 폴더의 `EASM-report-<타임스탬프>.pptx`가 맑은 고딕 글꼴로 다시 만들어집니다. |
-| 7 | 결과 내려받기·확인 | 갱신된 Excel과 PPT를 다운로드합니다. PPT 3번 슬라이드의 "인터뷰 진행 현황"에서 `인터뷰 54개 중 답변 완료 n개`를 확인하고 종합 성숙도의 **(잠정)** 표시가 사라졌는지 봅니다. |
+| 1 | 다운로드 | 탐색기에서 해당 실행의 Excel을 우클릭해 **다운로드**하고 로컬 Excel로 열기 |
+| 2 | 질문·기준 확인 | **6. 수집 결과** G열이 `인터뷰 필요`인 행의 F열 질문 확인. 같은 행의 **4. 질문별 평가 기준** G~K열(Level 1~5)·L열(증적) 참고 |
+| 3 | 점수 입력 | 6번 시트 M열에 `1`~`5` 정수, N열에 근거 입력. 확인 불가·대상 아님은 빈칸 또는 `N/A` |
+| 4 | 업로드 | 저장 후 Excel을 닫고 원래 실행 폴더에 **같은 이름으로 덮어쓰기** |
+| 5 | PPT 재생성 | 아래 `deck` 명령 실행. Excel 답변 상태·요약과 같은 폴더의 PPT 갱신 |
+| 6 | 최종 확인 | Excel·PPT 다운로드. PPT 3번 슬라이드의 답변 완료 수와 종합 성숙도의 **(잠정)** 표시 확인 |
 
-로컬에서 바로 재생성할 수도 있습니다. `output/<실행시각-UTC>/` 폴더(json·xlsx)를 내려받아 저장소를 설치한 환경에서 `easm-agent deck --output-dir <내려받은 폴더의 상위 경로>`를 실행합니다. `deck`은 Azure에 접속하지 않습니다. json과 xlsx를 읽고 Excel의 답변 상태·점검 요약을 갱신한 뒤 PPT를 생성합니다. 입력 점수와 원본 json은 변경하지 않습니다.
+```bash
+easm-agent deck --output-dir output --customer "<고객사명>"
+```
+
+로컬에서도 설치된 환경에 실행 폴더(JSON·Excel)를 내려받아 `easm-agent deck --output-dir <실행폴더>`로 재생성할 수 있습니다. **`deck`은 Azure에 접속하지 않으며 입력 점수·원본 JSON을 변경하지 않습니다.**
 
 **입력 규칙**
 
-- 점수는 1~5 정수만 허용합니다. 0.5 단위는 허용하지 않으며 다른 값은 입력 오류로 표시됩니다.
 - **증적 상한**: 문서 증적이 없으면 최대 2점, 시스템 증적이 없으면 최대 3점입니다. 인터뷰 답변만으로는 Level 3 이상을 주지 않습니다(Excel 3번 시트 증적 원칙).
 - 빈칸과 `N/A`는 평균에서 제외하며 0점으로 취급하지 않습니다.
 - System Evidence 항목(`-SY-`)의 M열은 점검 결과가 이미 채웁니다. 수정하지 않습니다.
@@ -236,18 +241,20 @@ easm-agent collect --setup-file .easm-agent/setup.json --output-dir output
 
 **주의**
 
-- 인터뷰 기입 후에는 `easm-agent package`를 실행하지 마세요. `package`는 Excel을 새로 만들어 기입한 점수가 사라집니다. 점수를 보존하려면 파일을 따로 복사해 두고, 점수가 사라진 경우 복사본으로 `--workbook <파일경로>`를 지정해 PPT를 만듭니다.
+- **인터뷰 입력 후 `package`를 실행하지 마세요.** Excel을 새로 만들어 입력 점수가 사라집니다. 입력한 Excel을 별도 보관하고, 복사본이 있으면 `deck --workbook <파일경로>`로 PPT를 만듭니다.
 - 다른 위치의 파일로 만들려면 `easm-agent deck --output-dir output --workbook <기입한-xlsx> --customer "<고객사명>"`을 사용합니다. PPT는 최신 실행 폴더에 저장됩니다.
 - 인터뷰 점수는 원본 JSON에 저장되지 않고 Excel에만 있습니다. 기입한 Excel을 PPT와 함께 보관하세요.
 
-## Step 5. <span style='background-color: #e5dcf7'>[고객/MS 공동]</span> 결과 확인과 종료
+## Step 5. <span style="background-color: #e5dcf7; color: #24292f;">[고객/MS 공동]</span> <span style="background-color: #ddf4ff; color: #24292f;">[Codespaces]</span> / <span style="background-color: #ffe8d6; color: #24292f;">[고객 VM]</span> - 결과 검토·정리
 
-- **6. 수집 결과** 시트의 G열 **확인상태**에서 수집 여부와 인터뷰 필요 항목을 확인합니다.
-- 시트 상단에서 등급 산정·판정 보류·자동 수집 결과 없음 건수를 먼저 확인합니다. L5는 해당 API 구성·기록의 충족률 100%이며, 조직 전체의 거버넌스 성숙도를 뜻하지 않습니다.
-- **7. 수집결과 근거**와 **8. 수집 Raw 데이터**에서 상세 설정과 원본 값을 확인합니다.
-- **7번 하단의 대상별 판정·기준 출처**에서 충족·미충족·미확인·계산 제외 대상과 직접 증적을 확인합니다. 분자·분모, 비용의 통화, 적용 기준 사본·해시와 수집기 버전은 결과 JSON에도 보관합니다.
-- **9. 수집이슈 Raw 데이터**와 **10. 필드누락사유**에서 조회 실패·자료 부족의 원인을 확인합니다.
-- 종료 후 고객은 진단 앱의 권한·인증서를 회수하고, MS는 개인키와 수집 데이터를 승인된 보관 기간에 맞춰 폐기합니다.
+| Excel 시트 | 확인할 내용 |
+| --- | --- |
+| 6. 수집 결과 | 상단의 등급 산정·보류·결과 없음 건수, G열 수집·인터뷰 상태 |
+| 7. 수집결과 근거 | 설정·분자·분모, 하단의 대상별 판정·직접 증적·적용 기준 출처 |
+| 8. 수집 Raw 데이터 | 원본 값. 기준 사본·해시·수집기 버전은 결과 JSON에도 보관 |
+| 9. 수집이슈 Raw 데이터 / 10. 필드누락사유 | 조회 실패·자료 부족 원인 |
+
+**L5는 API 구성·기록 충족률 100%이지 조직 전체의 거버넌스 성숙도를 뜻하지 않습니다.** 검토 후 권한·인증서를 회수하고 키·데이터를 승인된 보관 기간에 따라 정리합니다.
 
 ### 종료 후 정리
 
@@ -271,7 +278,7 @@ bash setup.sh cleanup-apply  # 진단 앱·SP·해당 역할 할당 삭제, 미�
 
 ## 점검 항목 (System Evidence 31개)
 
-✅ 수집 구현입니다. 31개 항목 모두 [평가 기준](docs/api-notes.md#심사기준-검토와-점수-반영-2026-11-05)의 API 구성·기록 충족률로 등급을 산정합니다. DM-SY-01·03, DP-SY-17·18, OT-SY-27은 Agent 365 등록부(라이선스 필요), DM-SY-02·DS-SY-04·BI-SY-10은 별도 관리자 읽기 증적이 필요하며, 조회 실패는 사유와 함께 판정 보류로 표시합니다.
+31개 항목 모두 [API 구성·기록 충족률](docs/api-notes.md#심사기준-검토와-점수-반영-2026-11-05)로 평가합니다. ✅는 수집 구현 여부이며 고객 환경의 충족 여부가 아닙니다.
 
 | API 구성·기록 충족률 | Level |
 | --- | --- |
@@ -281,28 +288,28 @@ bash setup.sh cleanup-apply  # 진단 앱·SP·해당 역할 할당 삭제, 미�
 | 90% 이상~100% 미만 | L4 |
 | 100% | L5 |
 
-수집 방법은 해당 설정의 플랫폼·메뉴입니다. 구현 여부는 수집 열을 따르며, 구현된 수집기는 공식 읽기 API를 사용합니다.
+조회 실패·필수 필드 미확인·빈 분모는 **판정 보류(`null`)**이며 L1·0%가 아닙니다. 아래 수집 방법은 평가표의 참고 메뉴이며 실제 API 계산 범위와 다를 수 있습니다. 등록부 5개는 라이선스가, Power Platform 3개는 [별도 관리자 읽기 증적](docs/api-notes.md#관리자-읽기-내보내기)이 필요합니다.
 
 | 코드 | 영역 | 점검 내용 | 수집 방법 | 수집 | 신규 추가 |
 | --- | --- | --- | --- | --- | --- |
-| [DM-SY-01](docs/checklist.md#dm-sy-01-agent-제작-허용-사용자-범위-및-허용-agent-유형-설정) | 1. Demand | Agent 제작 허용 범위 | M365 Admin Center → Agents → Settings | ✅ | |
-| [DM-SY-02](docs/checklist.md#dm-sy-02-copilot-studio-제작-권한-보유자-수-및-환경-현황) | 1. Demand | 제작 권한과 환경 | Power Platform Admin Center → Environments → 권한 | ✅ | |
-| [DM-SY-03](docs/checklist.md#dm-sy-03-최근-6개월-신규-생성-agent-수-추이) | 1. Demand | 신규 Agent 생성 추이 | M365 Admin Center → Agents → All agents | ✅ | |
-| [DS-SY-04](docs/checklist.md#ds-sy-04-커넥터-분류차단-정책데이터-정책-적용-현황) | 2. Design | 커넥터·데이터 정책 | Power Platform Admin Center → Policies → Data policies | ✅ | |
+| [DM-SY-01](docs/checklist.md#dm-sy-01-agent-제작-허용-사용자-범위-및-허용-agent-유형-설정) | 1. Demand | Agent 거버넌스 분류 | M365 Admin Center → Agents → Settings | ✅ | |
+| [DM-SY-02](docs/checklist.md#dm-sy-02-copilot-studio-제작-권한-보유자-수-및-환경-현황) | 1. Demand | 환경별 역할 할당 기록 | Power Platform Admin Center → Environments → 권한 | ✅ | |
+| [DM-SY-03](docs/checklist.md#dm-sy-03-최근-6개월-신규-생성-agent-수-추이) | 1. Demand | 신규 패키지 승인 요청 기록 | M365 Admin Center → Agents → All agents | ✅ | |
+| [DS-SY-04](docs/checklist.md#ds-sy-04-커넥터-분류차단-정책데이터-정책-적용-현황) | 2. Design | 데이터 정책 환경 적용 범위 | Power Platform Admin Center → Policies → Data policies | ✅ | |
 | [DS-SY-05](docs/checklist.md#ds-sy-05-agent-id의-blueprint-연결) | 2. Design | Agent ID의 Blueprint 연결 | Entra → Agents → Agent identities / Blueprints | ✅ | |
 | [DS-SY-06](docs/checklist.md#ds-sy-06-모델-배포-버전업데이트-구성) | 2. Design | 모델 배포 버전·업데이트 구성 | Azure → Microsoft Foundry → Model deployments | ✅ | |
 | [DS-SY-07](docs/checklist.md#ds-sy-07-ai-리소스-인바운드-경계-구성) | 2. Design | AI 리소스 인바운드 경계 구성 | Azure → Foundry / App Service → Networking | ✅ | ✓ |
 | [DS-SY-08](docs/checklist.md#ds-sy-08-mcp-도구-필수-승인-모드) | 2. Design | MCP 도구 필수 승인 모드 | Microsoft Foundry → Agents → Tools | ✅ | ✓ |
 | [DS-SY-09](docs/checklist.md#ds-sy-09-외부-도구-https-연결-구성) | 2. Design | 외부 도구 HTTPS 연결 구성 | Microsoft Foundry → Agents → Tools | ✅ | ✓ |
-| [BI-SY-10](docs/checklist.md#bi-sy-10-환경-분리-및-관리형-환경-적용-여부) | 3. Build | 개발·운영 환경 분리 | Power Platform Admin Center → Environments | ✅ | |
+| [BI-SY-10](docs/checklist.md#bi-sy-10-환경-분리-및-관리형-환경-적용-여부) | 3. Build | 관리형 환경 보호 수준 | Power Platform Admin Center → Environments | ✅ | |
 | [BI-SY-11](docs/checklist.md#bi-sy-11-foundry-프로젝트-평가-실행-이력) | 3. Build | Foundry 프로젝트 평가 실행 이력 | Microsoft Foundry → Evaluation | ✅ | |
 | [BI-SY-12](docs/checklist.md#bi-sy-12-ai-리소스-보안-권고-상태) | 3. Build | AI 리소스 보안 권고 상태 | Azure → Defender for Cloud → Recommendations | ✅ | |
 | [BI-SY-13](docs/checklist.md#bi-sy-13-콘텐츠-필터-정책-연결) | 3. Build | 콘텐츠 필터 정책 연결 | Azure → Microsoft Foundry → Content filters | ✅ | ✓ |
 | [BI-SY-14](docs/checklist.md#bi-sy-14-agent-버전호스트-런타임-식별) | 3. Build | Agent 버전·호스트 런타임 식별 | Foundry → Agent versions / App Service → Configuration | ✅ | ✓ |
 | [BI-SY-15](docs/checklist.md#bi-sy-15-agent-책임환경비용-메타데이터) | 3. Build | Agent 책임·환경·비용 메타데이터 | Foundry → Agent metadata / Azure → Tags | ✅ | ✓ |
 | [BI-SY-16](docs/checklist.md#bi-sy-16-ai-리소스-정책-평가-준수) | 3. Build | AI 리소스 정책 평가 준수 | Azure → Policy → Compliance | ✅ | ✓ |
-| [DP-SY-17](docs/checklist.md#dp-sy-17-전체-agent-목록과-배포-범위게시-상태소유자) | 4. Deploy | Agent 등록·배포 현황 | M365 Admin Center → Agents → All agents (Agent 365) | ✅ | |
-| [DP-SY-18](docs/checklist.md#dp-sy-18-agent-공유-허용-범위-및-사용자-설치-허용-설정) | 4. Deploy | 공유·설치 허용 범위 | M365 Admin Center → Agents → Details / Users | ✅ | |
+| [DP-SY-17](docs/checklist.md#dp-sy-17-전체-agent-목록과-배포-범위게시-상태소유자) | 4. Deploy | 패키지 소유자·배포 기록 | M365 Admin Center → Agents → All agents (Agent 365) | ✅ | |
+| [DP-SY-18](docs/checklist.md#dp-sy-18-agent-공유-허용-범위-및-사용자-설치-허용-설정) | 4. Deploy | 패키지 접근·배포 범위 제한 | M365 Admin Center → Agents → Details / Users | ✅ | |
 | [DP-SY-19](docs/checklist.md#dp-sy-19-azure-agent의-entra-blueprint-귀속) | 4. Deploy | Azure Agent의 Entra Blueprint 귀속 | Entra → Agents → Blueprints / Foundry → Agents | ✅ | |
 | [OE-SY-20](docs/checklist.md#oe-sy-20-agent-id-소유자스폰서-연결) | 5. Operate | Agent ID 소유자·스폰서 연결 | Entra → Agents → Owners / Sponsors | ✅ | |
 | [OE-SY-21](docs/checklist.md#oe-sy-21-agent-id-앱-역할-읽기-범위) | 5. Operate | Agent ID 앱 역할 읽기 범위 | Entra → Agents → Permissions | ✅ | |
@@ -311,7 +318,7 @@ bash setup.sh cleanup-apply  # 진단 앱·SP·해당 역할 할당 삭제, 미�
 | [OE-SY-24](docs/checklist.md#oe-sy-24-ai-리소스-활성-경보-범위) | 5. Operate | AI 리소스 활성 경보 범위 | Azure → Monitor → Alerts | ✅ | ✓ |
 | [OE-SY-25](docs/checklist.md#oe-sy-25-ai-경보의-작업-그룹수신자-연결) | 5. Operate | AI 경보의 작업 그룹·수신자 연결 | Azure → Monitor → Action groups | ✅ | ✓ |
 | [OE-SY-26](docs/checklist.md#oe-sy-26-리소스-지역workspace-보존-구성) | 5. Operate | 리소스 지역·workspace 보존 구성 | Azure → Resource overview / Log Analytics → Retention | ✅ | ✓ |
-| [OT-SY-27](docs/checklist.md#ot-sy-27-승인되지-않은-agentshadow-ai-탐지-결과) | 6. Optimize | 미승인 Agent 탐지 | Agent 365 → Shadow AI Detection | ✅ | |
+| [OT-SY-27](docs/checklist.md#ot-sy-27-승인되지-않은-agentshadow-ai-탐지-결과) | 6. Optimize | Azure Agent의 등록부 등록 | Agent 365 → Shadow AI Detection | ✅ | |
 | [OT-SY-28](docs/checklist.md#ot-sy-28-ai-리소스-사용량-관측-범위) | 6. Optimize | AI 리소스 사용량 관측 범위 | Azure → Monitor → Metrics | ✅ | |
 | [OT-SY-29](docs/checklist.md#ot-sy-29-ai-비용의-단일-agent-귀속) | 6. Optimize | AI 비용의 단일 Agent 귀속 | Azure → Cost Management → Cost analysis | ✅ | |
 | [OT-SY-30](docs/checklist.md#ot-sy-30-ai-민감-데이터-노출-점검-구성) | 6. Optimize | AI 민감 데이터 노출 점검 | Azure → Microsoft Defender for Cloud → Environment settings → Defender plans | ✅ | |
@@ -319,13 +326,18 @@ bash setup.sh cleanup-apply  # 진단 앱·SP·해당 역할 할당 삭제, 미�
 
 ## 개발 참고
 
-- [config/criteria.yaml](config/criteria.yaml): API 지표·분모·증거·한계와 Level 1~5 규칙. 기본 기준을 조정할 때 수정
-- [config/custom-config.yaml](config/custom-config.yaml): workers·tags·projects 등 수집 기술 설정. 없어도 기본 수집 가능.
-- [고객 권한 설정 ZIP](docs/downloads/customer-setup.zip): 권한 설정·정리용 파일 4개. 스크립트 변경 후 `python -m scripts.package_customer_setup`으로 갱신
+| 파일 | 용도 |
+| --- | --- |
+| [criteria.yaml](config/criteria.yaml) | API 지표·분모·증거·한계·Level 규칙. 설치본에도 기본 기준 포함 |
+| [custom-config.yaml](config/custom-config.yaml) | 선택 수집 설정: `workers`·`tags`·`projects`. 없어도 기본 수집 가능 |
+| [고객 권한 설정 ZIP](docs/downloads/customer-setup.zip) | 권한 설정·정리용 4개 파일. 변경 후 `python -m scripts.package_customer_setup`으로 갱신 |
+| [Excel 템플릿](docs/assessment-result-template.xlsx) / [PPT 템플릿](docs/assessment-report-template.pptx) | 평가 기준·보고서 서식 |
 
-두 파일은 저장소의 `config/` 폴더에서 관리합니다. 별도 기준 파일은 `easm-agent collect --criteria <기준.yaml> --config <고객설정.yaml>`로 지정합니다. 수집 기본값은 `config/criteria.yaml`과 `config/custom-config.yaml`이며, 기준 파일이 없는 설치 환경은 배포 패키지에 포함한 기본 기준을 사용합니다. 명시한 기준 파일이 없거나 YAML이 잘못되면 오류로 종료합니다.
+별도 설정은 `easm-agent collect --criteria <기준.yaml> --config <고객설정.yaml>`로 지정합니다. 명시한 기준 파일이 없거나 YAML이 잘못되면 오류로 종료합니다.
 
-기본 LangChain 탐지(`agent-type: langchain` 또는 이름의 `langchain`·`lc-agent`)는 유지됩니다. `tags`에는 추가로 찾을 **Azure 리소스 태그의 key: value**를 한 개만 입력해도 됩니다.
+### 자체 Agent 탐지 태그
+
+기본 LangChain 탐지(`agent-type: langchain` 또는 이름의 `langchain`·`lc-agent`)에 `tags`의 **key: value** 조건을 추가할 수 있습니다.
 
 ```yaml
 # agent-type=custom-agent인 호스트를 기본 탐지 대상에 추가
@@ -344,14 +356,21 @@ tags:
 
 `owner`·`sponsor`·`env`·`cost-center`는 메타데이터 태그의 기본 이름입니다. 이 이름을 변경하려면 탐지 조건인 `tags`와 별도로 `tag_conventions: {owner_key: service-owner}`를 사용합니다. 과거 `tags` 규약의 문자열 매핑은 `tag_conventions`로 옮깁니다. 목록형 선택자가 있는 과거 규약은 로딩 호환을 유지합니다.
 
-Level 문장과 규칙을 변경한 경우 평가 템플릿도 함께 갱신합니다: `python -m scripts.merge_assessment --source docs/assessment-result-template.xlsx --output <갱신할-템플릿.xlsx>`. 검토 후 갱신 파일을 기존 템플릿 대신 사용하세요. 기존 결과의 `package`는 저장된 점수를 다시 계산하지 않으며, 새 기준이나 관리자 증적을 판정에 반영하려면 `--reassess`를 지정합니다.
-- [docs/api-notes.md](docs/api-notes.md): 권한·API·심사 근거와 기술적 한계
+### 기준 갱신·개발 검사
+
+- Level 문장·규칙 변경 시 `python -m scripts.merge_assessment --source docs/assessment-result-template.xlsx --output <갱신할-템플릿.xlsx>`로 **별도 파일**을 만들고 검토 후 교체합니다.
+- `package`는 저장된 점수를 유지합니다. 새 기준·관리자 증적을 판정에 반영하려면 `--reassess`를 지정합니다.
 - 검사: `python -m pytest -q`, `python -m ruff check src scripts demo tests`
 
 <details>
 <summary>Excel·PPT 보고서만 다시 만들기</summary>
 
-`easm-agent package --output-dir output`을 실행합니다. 최신 실행 폴더의 `raw-data-<타임스탬프>.json`에서 `report-<타임스탬프>.xlsx`와 `EASM-report-<타임스탬프>.pptx`를 재생성합니다. `package`는 Excel을 새로 만들므로 인터뷰 점수를 기입한 뒤에는 `package` 대신 `easm-agent deck`을 사용합니다. PPT 템플릿은 `docs/assessment-report-template.pptx`이며 표지의 고객사명은 `--customer`로 지정합니다(기본 `<고객사>`).
+| 목적 | 명령 |
+| --- | --- |
+| 원본 JSON에서 Excel·PPT 재생성 | `easm-agent package --output-dir output` |
+| 인터뷰 점수를 보존하며 PPT 갱신 | `easm-agent deck --output-dir output --customer "<고객사명>"` |
+
+기본 대상은 최신 실행 폴더입니다. 특정 실행 폴더도 지정할 수 있습니다. **`package`는 Excel을 새로 만들므로 인터뷰 입력 후에는 `deck`을 사용합니다.**
 
 </details>
 
