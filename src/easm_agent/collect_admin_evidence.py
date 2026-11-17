@@ -4,9 +4,10 @@ import hashlib
 import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
+from urllib.parse import quote
 
 from easm_agent.azure import EvidenceStore
-from easm_agent.models import AdminEvidenceExport, Collection
+from easm_agent.models import AdminEvidenceExport, AdminReadResult, Collection
 
 ENVIRONMENTS_URL = "https://api.powerplatform.com/environmentmanagement/environments?api-version=2024-10-01"
 COMMANDS = {
@@ -14,6 +15,41 @@ COMMANDS = {
     "powerplatform.environment_roles": "Get-AdminPowerAppEnvironmentRoleAssignment",
     "powerplatform.dlp_policies": "Get-AdminDlpPolicy",
 }
+PORTAL_ORIGIN = "https://admin.powerplatform.microsoft.com"
+PORTAL_COMMANDS = {
+    "powerplatform.environment_roles": PORTAL_ORIGIN + "/manage/environments",
+    "powerplatform.dlp_policies": PORTAL_ORIGIN + "/security/dataprotection/dlp",
+}
+
+
+def validate_portal_read(read: AdminReadResult) -> None:
+    if read.command != PORTAL_COMMANDS.get(read.source):
+        raise ValueError("허용된 관리 센터 화면과 내보내기 원천이 다릅니다.")
+    if not read.completed:
+        if read.portal_pages:
+            raise ValueError("미완료 화면 조회를 확인된 목록으로 사용할 수 없습니다.")
+        return
+    if not read.portal_pages or any(page.observed_at > read.observed_at for page in read.portal_pages):
+        raise ValueError("완료된 관리 센터 조회에는 조회 시각 이전의 화면 증적이 필요합니다.")
+    urls = [page.url for page in read.portal_pages]
+    if len(set(urls)) != len(urls):
+        raise ValueError("같은 관리 센터 화면이 중복되었습니다.")
+    if read.source == "powerplatform.dlp_policies":
+        if urls != [read.command] or read.portal_pages[0].object_count != read.object_count:
+            raise ValueError("DLP 정책 화면의 목록 건수와 내보내기가 일치하지 않습니다.")
+        return
+    expected = {
+        f"{PORTAL_ORIGIN}/manage/environments/environment/{quote(key, safe='')}/roles/{role}": key
+        for key in read.role_counts
+        for role in ("environmentadmin", "environmentmaker")
+    }
+    if set(urls) != set(expected) or len({key.lower() for key in read.role_counts}) != len(read.role_counts):
+        raise ValueError("각 환경의 환경 관리자·환경 제작자 화면을 모두 확인해야 합니다.")
+    counts = dict.fromkeys(read.role_counts, 0)
+    for page in read.portal_pages:
+        counts[expected[page.url]] += page.object_count
+    if counts != read.role_counts:
+        raise ValueError("관리 센터의 실제 역할 할당 건수와 내보내기가 일치하지 않습니다.")
 
 
 def read_admin_evidence(
@@ -30,8 +66,11 @@ def read_admin_evidence(
     if len({read.source for read in export.reads}) != len(export.reads):
         raise ValueError("관리자 내보내기에 같은 조회 원천이 중복되었습니다.")
     for read in export.reads:
-        if read.command != COMMANDS[read.source]:
-            raise ValueError("허용된 공식 읽기 명령과 내보내기 원천이 다릅니다.")
+        if export.source_type == "official_admin_portal_read":
+            validate_portal_read(read)
+        else:
+            if read.command != COMMANDS[read.source] or read.portal_pages:
+                raise ValueError("허용된 공식 읽기 명령과 내보내기 원천이 다릅니다.")
         if read.observed_at > export.exported_at:
             raise ValueError("내보내기 시각보다 미래의 관측 자료입니다.")
         if read.environments and read.source != "powerplatform.environments":

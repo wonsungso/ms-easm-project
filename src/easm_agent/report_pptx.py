@@ -19,6 +19,7 @@ from lxml import etree
 from pptx import Presentation
 from pptx.chart.data import CategoryChartData
 from pptx.dml.color import RGBColor
+from pptx.enum.text import PP_ALIGN
 from pptx.oxml.ns import qn
 from pptx.util import Inches, Pt
 
@@ -48,8 +49,8 @@ LEVEL_COLORS = ["D13438", "F2A900", "107C10", "008575", "00566B"]
 PASTEL = ["F4C7C3", "FCE8B2", "CDE8C4", "B7E1DD", "A9CCE3"]
 PASTEL_TEXT = ["7A1F1F", "6B4A00", "1E5B1E", "0B5A52", "0B3F58"]
 GRAY = "9AA0A6"
-KIND_NAMES = {"PR": "프로세스", "PE": "사람·조직", "DA": "데이터·기록", "TE": "도구·기술", "SY": "시스템 실측"}
-KIND_SHORT = {"PR": "Process", "PE": "People", "DA": "Data", "TE": "Tech", "SY": "SE"}
+KIND_NAMES = {"PR": "프로세스", "PE": "사람·조직", "DA": "데이터·기록", "TE": "도구·기술", "SE": "시스템 실측"}
+KIND_SHORT = {"PR": "Process", "PE": "People", "DA": "Data", "TE": "Tech", "SE": "SE"}
 
 
 @dataclass
@@ -246,6 +247,42 @@ def write_presentation(workbook: Path, output: Path, context: DeckContext | None
         if ext.find("{http://schemas.microsoft.com/office/powerpoint/2010/main}sectionLst") is not None:
             ext.getparent().remove(ext)
     format_appendix_tables(prs)
+    fictional = sum("[가상 인터뷰" in item.memo for item in assessment.interview_items)
+    if fictional:
+        for shape_id in (39, 40):
+            place(Page(status)(shape_id), h=0.4)
+        pending = sum(item.score is None for item in assessment.system_items)
+        notice = (
+            f"보고서 예시 - 가상 인터뷰 {fictional}개 + 실측 SE "
+            f"{len(assessment.system_items)}개(N/A {pending}개)"
+        )
+        for slide in prs.slides:
+            box = slide.shapes.add_textbox(
+                Inches(5.1), prs.slide_height - Inches(0.22),
+                prs.slide_width - Inches(5.35), Inches(0.17),
+            )
+            box.name = "Fictional interview disclosure"
+            box.fill.solid()
+            box.fill.fore_color.rgb = RGBColor.from_string("FFFFFF")
+            frame = box.text_frame
+            frame.margin_left = frame.margin_right = frame.margin_top = frame.margin_bottom = 0
+            frame.word_wrap = False
+            paragraph = frame.paragraphs[0]
+            paragraph.alignment = PP_ALIGN.RIGHT
+            run = paragraph.add_run()
+            run.text = notice
+            run.font.name = PRESENTATION_FONT
+            run.font.size = Pt(8.5)
+            run.font.color.rgb = RGBColor.from_string("4B5563")
+            if slide == cover:
+                box.fill.background()
+                run.font.color.rgb = RGBColor.from_string("FFFFFF")
+                run.font.bold = True
+                run.font.size = Pt(9)
+                outline = etree.Element(qn("a:ln"), w="1270")
+                fill = etree.SubElement(outline, qn("a:solidFill"))
+                etree.SubElement(fill, qn("a:srgbClr"), val="000000")
+                run._r.get_or_add_rPr().insert(0, outline)
     prs.save(output)
     apply_presentation_font(output)
 
@@ -282,8 +319,10 @@ def build_status(slide, assessment: Assessment, context: DeckContext) -> None:
     set_text(page(6), "EASM 점검 결과")
     set_text(page(7), "점검 대상 현황")
     set_text(page(9), clip(context.customer, 12))
+    for shape_id in (8, 9):
+        place(page(shape_id), x=10.56, y=0.46)
     date = context.collected_at.strftime("%Y-%m-%d") if context.collected_at else "-"
-    scope = (f"Azure 구독 {context.subscriptions}개 · Agent {context.agents}개"
+    scope = (f"Azure 구독 {context.subscriptions}개 · Agent/후보 {context.agents}개"
              if context.subscriptions is not None else "-")
     level = level_of(assessment.overall)
     overall = "판정 보류" if not level else (
@@ -547,7 +586,7 @@ def build_heatmap(slide, assessment: Assessment) -> None:
     cell, cell_text = copy.deepcopy(page(16)), copy.deepcopy(page(17))
     square, square_text = copy.deepcopy(page(5)), copy.deepcopy(page(6))
     page.delete(*range(5, 90))
-    set_text(page(2), "EASM 점검 — 영역별 세부 항목 평가")
+    set_text(page(2), "EASM 점검 - 영역별 세부 항목 평가")
     set_text(page(4), "항목 점수 (Level 1-5)")
     for index in range(6):
         x = 7.95 + index * 0.85

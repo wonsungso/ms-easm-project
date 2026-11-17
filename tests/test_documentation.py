@@ -5,6 +5,27 @@ import re
 import struct
 from pathlib import Path
 from urllib.parse import unquote
+from xml.etree import ElementTree
+from zipfile import ZipFile
+
+
+def test_public_templates_do_not_publish_personal_author_metadata() -> None:
+    docs = Path(__file__).parents[1] / "docs"
+    for name in ("assessment-result-template.xlsx", "assessment-report-template.pptx"):
+        with ZipFile(docs / name) as archive:
+            root = ElementTree.fromstring(archive.read("docProps/core.xml"))
+        for tag in (
+            "{http://purl.org/dc/elements/1.1/}creator",
+            "{http://schemas.openxmlformats.org/package/2006/metadata/core-properties}lastModifiedBy",
+        ):
+            neutral_author = root.findtext(tag) in (None, "", "EASM")
+            assert neutral_author, (name, tag)
+
+
+def test_module_installation_examples_use_a_repository_placeholder() -> None:
+    notes = (Path(__file__).parents[1] / "docs" / "api-notes.md").read_text(encoding="utf-8")
+    repositories = re.findall(r"(?:Find|Save)-Module[^\n]+-Repository\s+(\S+)", notes)
+    assert repositories and set(repositories) == {"$repository"}
 
 
 def test_screenshot_guide_references_registered_existing_images() -> None:
@@ -155,18 +176,16 @@ def test_summary_table_links_resolve_to_checklist_sections_with_images() -> None
     def anchor(heading: str) -> str:
         return re.sub(r"[^\w\- ]", "", heading.lower()).replace(" ", "-")
 
-    anchors = {anchor(h) for h in re.findall(r"^## ([A-Z]{2}-SY-\d+ .+)$", detail, re.M)}
-    links = re.findall(r"^\| \[([A-Z]{2}-SY-[P\d]+)\]\(docs/checklist\.md#([^)]+)\)", readme, re.M)
-    assert len(links) == 31
+    anchors = {anchor(h) for h in re.findall(r"^## ([A-Z]{2}-SE-\d+ .+)$", detail, re.M)}
+    links = re.findall(r"^\| \[([A-Z]{2}-SE-[P\d]+)\]\(docs/checklist\.md#([^)]+)\)", readme, re.M)
+    assert len(links) == 26
     assert {target for _, target in links} == anchors
     implemented = re.findall(r"^- \*\*구현:\*\* (?!❌)", detail, re.M)
-    assert len(implemented) == 31
+    assert len(implemented) == 26
     assert len(re.findall(r"^!\[[^\]]+\]\(portal/imgs/[^)]+\.png\)$", detail, re.M)) == 22
     assert "<img" not in readme and not re.search(r"^\|.*!\[", readme, re.M)
-    assert "## Agent 365 등록부 교차 확인" in detail
-    assert "(imgs/23-agent365-admin-details.png)" in detail
-    assert "7. 수집결과 근거 J~L열" in detail
-    for code in ("DP-SY-19", "OE-SY-26"):
+    assert "## Agent 365 등록부 교차 확인" not in detail
+    for code in ("DP-SE-15", "OE-SE-22"):
         section = re.search(rf"^## {code} .+?(?=^## |\Z)", detail, re.M | re.S)
         assert section and "- **구현:** ✅ 구현 - 현재 API 기준 완료" in section[0]
 
@@ -176,14 +195,14 @@ def test_summary_lists_all_controls_without_new_item_markers() -> None:
     assert "| 점검 내용 | 수집 방법 | 수집 |" in readme
     methods = [
         line.split("|")[4].strip() for line in readme.splitlines()
-        if re.match(r"^\| \[[A-Z]{2}-SY-\d+\]", line)
+        if re.match(r"^\| \[[A-Z]{2}-SE-\d+\]", line)
     ]
-    assert len(methods) == 31 and all("→" in method for method in methods)
+    assert len(methods) == 26 and all("→" in method for method in methods)
     assert "신규 추가" not in readme
-    rows = re.findall(r"^\| \[([A-Z]{2}-SY-\d+)\].+$", readme, re.M)
-    assert len(rows) == 31
+    rows = re.findall(r"^\| \[([A-Z]{2}-SE-\d+)\].+$", readme, re.M)
+    assert len(rows) == 26
     for line in readme.splitlines():
-        match = re.match(r"^\| \[([A-Z]{2}-SY-\d+)\]", line)
+        match = re.match(r"^\| \[([A-Z]{2}-SE-\d+)\]", line)
         if match:
             fields = [field.strip() for field in line.strip("|").split("|")]
             assert len(fields) == 5 and fields[-1] == "✅"

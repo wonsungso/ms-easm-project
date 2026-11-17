@@ -79,7 +79,7 @@ def sample() -> Collection:
 
 
 def finding(**changes: object) -> Finding:
-    values = {"se_code": "BI-SY-11", "scope": "partial", "metric_value": 0, "level": "N/A",
+    values = {"se_code": "BI-SE-09", "scope": "partial", "metric_value": 0, "level": "N/A",
               "reason": "permission_denied", "rationale": "근거가 부족합니다.",
               "next_step": "조회 권한을 확인하세요.", **changes}
     return Finding.model_validate(values)
@@ -191,7 +191,7 @@ def test_fixture_cli_is_offline_and_writes_only_workbook_and_raw_data(tmp_path: 
     result = load_result(tmp_path)
     assert result["mode"] == "fixture"
     agents = result["collection"]["agents"]
-    assert len(agents) == 3 and len(result["findings"]) == 31
+    assert len(agents) == 3 and len(result["findings"]) == 26
     assert {
         "collected_at", "tenant_id", "subscription_id", "resource_group", "platform",
         "agent_id", "agent_name", "resource_id", "hosting_type", "owner", "sponsor",
@@ -238,90 +238,18 @@ def test_load_result_rejects_missing_or_unsupported_files(tmp_path: Path) -> Non
         load_result(tmp_path)
 
 
-def test_legacy_audit_code_migrates_without_reusing_retired_risk_score(tmp_path: Path) -> None:
-    data = sample().model_dump(mode="json")
-    data["agent_ca_policies"] = []
-    data["risky_agents"] = []
-    data["agents"][0]["se_codes"] = ["OE-SY-15", "OE-SY-16"]
-    data["issues"].append({
-        "collector": "risky_agents", "target": "tenant", "reason": "license_missing", "detail": "legacy",
-    })
-    payload = {
-        "schema_version": 1, "collection": data, "mode": "fixture",
-        "findings": [
-            finding(se_code="OE-SY-15", level="L1", metric_value=0).model_dump(mode="json"),
-            finding(se_code="OE-SY-16", level="L3", metric_value=365).model_dump(mode="json"),
-        ],
-    }
-    (tmp_path / raw_name(sample())).write_text(json.dumps(payload), encoding="utf-8")
-    result = load_result(tmp_path)
-    assert [(row["se_code"], row["level"], row["metric_value"]) for row in result["findings"]] == [
-        ("OE-SY-22", "L3", 365),
-    ]
-    assert "risky_agents" not in result["collection"] and "agent_ca_policies" not in result["collection"]
-    assert result["collection"]["agents"][0]["se_codes"] == ["OE-SY-22"]
-    assert not any(row["collector"] == "risky_agents" for row in result["collection"]["issues"])
-    with NO_AZURE:
-        assert main(["package", "--output-dir", str(tmp_path)]) == 0
-    headers = load_workbook(tmp_path / report_name(sample())).sheetnames
-    assert "위험Agent Raw 데이터" not in headers and "조건부접근 Raw 데이터" not in headers
-
-
-def test_previous_operate_codes_migrate_once_and_keep_audit_score(tmp_path: Path) -> None:
-    data = sample().model_dump(mode="json")
-    data["facts"]["proposal_incomplete"] = ["OE-SY-18"]
-    codes = ["OE-SY-15", "OE-SY-17", "OE-SY-18", "OE-SY-19", "OE-SY-20"]
-    payload = {
-        "schema_version": 1, "collection": data, "mode": "fixture",
-        "findings": [finding(se_code=code, level="L3").model_dump(mode="json") for code in codes],
-    }
-    source = tmp_path / raw_name(sample())
-    source.write_text(json.dumps(payload), encoding="utf-8")
-    result = load_result(tmp_path)
-    expected = ["OE-SY-22", "OE-SY-23", "OE-SY-24", "OE-SY-25", "OE-SY-26"]
-    assert [row["se_code"] for row in result["findings"]] == expected
-    assert result["collection"]["facts"]["proposal_incomplete"] == ["OE-SY-24"]
-    assert result["collection"]["facts"]["assessment_revision"] == 5
-    with NO_AZURE:
-        assert main(["package", "--output-dir", str(tmp_path)]) == 0
-    assert [row["se_code"] for row in load_result(tmp_path)["findings"]] == expected
-
-
-def test_current_operate_codes_are_not_interpreted_as_legacy_audit(tmp_path: Path) -> None:
+def test_packaged_findings_keep_their_codes_and_metrics(tmp_path: Path) -> None:
     write_reports(sample(), [
-        finding(se_code="OE-SY-22", level="L3", metric_value=365),
-        finding(se_code="OE-SY-23", level="L2", metric_value=0.5),
+        finding(se_code="OE-SE-18", level="L3", metric_value=365),
+        finding(se_code="OE-SE-19", level="L2", metric_value=0.5),
     ], tmp_path)
     result = load_result(tmp_path)
     assert [(row["se_code"], row["metric_value"]) for row in result["findings"]] == [
-        ("OE-SY-22", 365), ("OE-SY-23", 0.5),
+        ("OE-SE-18", 365), ("OE-SE-19", 0.5),
     ]
 
 
 # --- evidence attachment and provenance ---
-
-def test_revision_three_build_migration_drops_red_team_without_reusing_its_score(tmp_path: Path) -> None:
-    data = sample().model_dump(mode="json")
-    data["facts"]["assessment_revision"] = 3
-    data["agents"][0]["se_codes"] = ["BI-SY-11", "BI-SY-12", "BI-SY-13", "BI-SY-14"]
-    payload = {
-        "schema_version": 1, "collection": data, "mode": "fixture",
-        "findings": [
-            finding(se_code="BI-SY-11", level="L5").model_dump(mode="json"),
-            finding(se_code="BI-SY-12", level="L2").model_dump(mode="json"),
-            finding(se_code="BI-SY-13", level="L3").model_dump(mode="json"),
-            finding(se_code="BI-SY-14", level="L1").model_dump(mode="json"),
-        ],
-    }
-    (tmp_path / raw_name(sample())).write_text(json.dumps(payload), encoding="utf-8")
-    result = load_result(tmp_path)
-    expected = [("BI-SY-14", "L2"), ("BI-SY-15", "L3"), ("BI-SY-16", "L1")]
-    assert [(row["se_code"], row["level"]) for row in result["findings"]] == expected
-    assert result["collection"]["agents"][0]["se_codes"] == [code for code, _ in expected]
-    with NO_AZURE:
-        assert main(["package", "--output-dir", str(tmp_path)]) == 0
-    assert [(row["se_code"], row["level"]) for row in load_result(tmp_path)["findings"]] == expected
-
 
 def test_attached_evidence_is_masked_embedded_and_referenced_by_hash(tmp_path: Path) -> None:
     data, output, source, workbook = prepared(tmp_path)
@@ -574,10 +502,10 @@ def test_workbook_sheets_tables_borders_and_validation(tmp_path: Path) -> None:
     checklist = book[RESULT_SHEET]
     assert checklist["M4"].value == "평가 점수\n(1~5)" and checklist["B4"].value == "No"
     assert checklist["I4"].font.bold is True
-    assert checklist.freeze_panes == "G5" and checklist.auto_filter.ref == "B4:N89"
-    assert all(checklist.cell(row, 13).alignment.horizontal == "center" for row in range(4, 90))
+    assert checklist.freeze_panes == "G5" and checklist.auto_filter.ref == "B4:N84"
+    assert all(checklist.cell(row, 13).alignment.horizontal == "center" for row in range(4, 85))
     for row in range(5, checklist.max_row + 1):
-        if "-SY-" in str(checklist.cell(row, 2).value):
+        if "-SE-" in str(checklist.cell(row, 2).value):
             assert checklist.row_dimensions[row].height == 150
     proposals = book[TITLES["수집결과 근거"]]
     assert proposals.row_dimensions[4].height == 60 and proposals["F4"].fill.patternType is None
@@ -617,7 +545,7 @@ def test_missing_metric_is_not_converted_to_zero_and_null_differs_from_zero(tmp_
     data.agents[0].unavailable("model", "permission_denied", "관리자가 조회 역할을 확인해야 합니다.")
     data.evaluations[0].failed_items = None
     path = tmp_path / "null.xlsx"
-    write_workbook(data, [finding(se_code="DS-SY-06", metric_value=None)], path)
+    write_workbook(data, [finding(se_code="DS-SE-04", metric_value=None)], path)
     book = load_workbook(path)
     assert record(book[RESULT_SHEET])["지표"].value == "확인 자료 없음 - 분모 확인 안됨"
     evaluation = raw_record(book, "평가 Raw 데이터")
@@ -634,21 +562,21 @@ def test_result_categories_do_not_hide_partial_collection_or_failed_queries(tmp_
     path = tmp_path / "categories.xlsx"
     write_workbook(sample(), [
         finding(),
-        finding(se_code="DS-SY-06", metric_value=None),
+        finding(se_code="DS-SE-04", metric_value=None),
     ], path)
     sheet = load_workbook(path)[RESULT_SHEET]
     rows = {sheet.cell(row, 2).value: row for row in range(5, sheet.max_row + 1)}
     assert {sheet.cell(row, 7).value for row in range(5, sheet.max_row + 1)} == {
         "수집됨", "수집하지 않음", "인터뷰 필요",
     }
-    assert sheet.cell(rows["BI-SY-11"], 7).value == "수집됨"
-    assert "일부 수집" in sheet.cell(rows["BI-SY-11"], 10).value
-    assert sheet.cell(rows["DS-SY-06"], 7).value == "수집하지 않음"
-    assert "조회 권한 부족" in sheet.cell(rows["DS-SY-06"], 10).value
-    assert sheet.cell(rows["DS-SY-06"], 13).value is None
+    assert sheet.cell(rows["BI-SE-09"], 7).value == "수집됨"
+    assert "일부 수집" in sheet.cell(rows["BI-SE-09"], 10).value
+    assert sheet.cell(rows["DS-SE-04"], 7).value == "수집하지 않음"
+    assert "조회 권한 부족" in sheet.cell(rows["DS-SE-04"], 10).value
+    assert sheet.cell(rows["DS-SE-04"], 13).value is None
     assert sheet.cell(rows["DM-PR-01"], 7).value == "인터뷰 필요"
     assert sheet.cell(rows["DM-PR-01"], 13).value is None
-    assert sheet.cell(rows["DM-SY-01"], 13).value is None
+    assert sheet.cell(rows["DM-SE-01"], 13).value is None
 
 
 def test_merged_raw_preserves_evidence_references_without_a_reference_sheet(tmp_path: Path) -> None:

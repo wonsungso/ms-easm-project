@@ -21,37 +21,32 @@ CRITERIA_ROW_HEIGHT = 80
 RESULT_ROW_HEIGHT = 150
 SYSTEM_EVIDENCE_COLOR = "FFEAF3FB"
 COLLECTION_METHODS = {
-    "DM-SY-01": "M365 Admin Center → Agents → Settings",
-    "DM-SY-02": "Power Platform Admin Center → Environments → 권한",
-    "DM-SY-03": "M365 Admin Center → Agents → All agents",
-    "DS-SY-04": "Power Platform Admin Center → Policies → Data policies",
-    "DS-SY-05": "Entra → Agents → Agent identities / Blueprints",
-    "DS-SY-06": "Azure → Microsoft Foundry → Model deployments",
-    "DS-SY-07": "Azure → Foundry / App Service → Networking",
-    "DS-SY-08": "Microsoft Foundry → Agents → Tools",
-    "DS-SY-09": "Microsoft Foundry → Agents → Tools",
-    "BI-SY-10": "Power Platform Admin Center → Environments",
-    "BI-SY-11": "Microsoft Foundry → Evaluation",
-    "BI-SY-12": "Azure → Defender for Cloud → Recommendations",
-    "BI-SY-13": "Azure → Microsoft Foundry → Content filters",
-    "BI-SY-14": "Foundry → Agent versions / App Service → Configuration",
-    "BI-SY-15": "Foundry → Agent metadata / Azure → Tags",
-    "BI-SY-16": "Azure → Policy → Compliance",
-    "DP-SY-17": "M365 Admin Center → Agents → All agents (Agent 365)",
-    "DP-SY-18": "M365 Admin Center → Agents → Details / Users",
-    "DP-SY-19": "Entra → Agents → Blueprints / Foundry → Agents",
-    "OE-SY-20": "Entra → Agents → Owners / Sponsors",
-    "OE-SY-21": "Entra → Agents → Permissions",
-    "OE-SY-22": "Azure → Monitor → Diagnostic settings",
-    "OE-SY-23": "Azure → Foundry / App Service → Identity / IAM",
-    "OE-SY-24": "Azure → Monitor → Alerts",
-    "OE-SY-25": "Azure → Monitor → Action groups",
-    "OE-SY-26": "Azure → Resource overview / Log Analytics → Retention",
-    "OT-SY-27": "Agent 365 → Shadow AI Detection",
-    "OT-SY-28": "Azure → Monitor → Metrics",
-    "OT-SY-29": "Azure → Cost Management → Cost analysis",
-    "OT-SY-30": "Azure → Microsoft Defender for Cloud → Environment settings → Defender plans",
-    "OT-SY-31": "Azure → Cost Management → Budgets",
+    "DM-SE-01": "Power Platform Admin Center → Environments → 권한",
+    "DS-SE-02": "Power Platform Admin Center → Policies → Data policies",
+    "DS-SE-03": "Entra → Agents → Agent identities / Blueprints",
+    "DS-SE-04": "Azure → Microsoft Foundry → Model deployments",
+    "DS-SE-05": "Azure → Foundry / App Service → Networking",
+    "DS-SE-06": "Microsoft Foundry → Agents → Tools",
+    "DS-SE-07": "Microsoft Foundry → Agents → Tools",
+    "BI-SE-08": "Power Platform Admin Center → Environments",
+    "BI-SE-09": "Microsoft Foundry → Evaluation",
+    "BI-SE-10": "Azure → Defender for Cloud → Recommendations",
+    "BI-SE-11": "Azure → Microsoft Foundry → Content filters",
+    "BI-SE-12": "Foundry → Agent versions / App Service → Configuration",
+    "BI-SE-13": "Foundry → Agent metadata / Azure → Tags",
+    "BI-SE-14": "Azure → Policy → Compliance",
+    "DP-SE-15": "Entra → Agents → Blueprints / Foundry → Agents",
+    "OE-SE-16": "Entra → Agents → Owners / Sponsors",
+    "OE-SE-17": "Entra → Agents → Permissions",
+    "OE-SE-18": "Azure → Monitor → Diagnostic settings",
+    "OE-SE-19": "Azure → Foundry / App Service → Identity / IAM",
+    "OE-SE-20": "Azure → Monitor → Alerts",
+    "OE-SE-21": "Azure → Monitor → Action groups",
+    "OE-SE-22": "Azure → Resource overview / Log Analytics → Retention",
+    "OT-SE-23": "Azure → Monitor → Metrics",
+    "OT-SE-24": "Azure → Cost Management → Cost analysis",
+    "OT-SE-25": "Azure → Microsoft Defender for Cloud → Environment settings → Defender plans",
+    "OT-SE-26": "Azure → Cost Management → Budgets",
 }
 _MAIN = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 _DOC_REL = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
@@ -122,7 +117,7 @@ def _criteria_reference_view(root) -> bool:
         note.set("t", "inlineStr")
         inline = etree.SubElement(note, f"{_MAIN}is")
         etree.SubElement(inline, f"{_MAIN}t").text = (
-            "평가 기준표 - 인터뷰 54개 + System Evidence 31개. "
+            "평가 기준표 - 인터뷰 54개 + System Evidence 26개. "
             "답변·평가 점수·메모는 6. 수집 결과 시트에서 관리합니다."
         )
     return etree.tostring(root) != before
@@ -136,7 +131,7 @@ def format_assessment_workbook(path: Path) -> None:
         name: {
             row[1].row: str(row[1].value)
             for row in book[name].iter_rows(min_row=5, max_col=2)
-            if re.fullmatch(r"[A-Z]{2}-(?:PR|PE|DA|TE|SY)-\d+", str(row[1].value))
+            if re.fullmatch(r"[A-Z]{2}-(?:PR|PE|DA|TE|SE)-\d+", str(row[1].value))
         }
         for name in (CRITERIA_SHEET, RESULT_SHEET) if name in book.sheetnames
     }
@@ -233,7 +228,7 @@ def format_assessment_workbook(path: Path) -> None:
             dirty = False
             if name == "5. 점수 산정 방식":
                 note = root.find(f".//{_MAIN}c[@r='B61']")
-                title = "실제 평가 집계 - 시트 6 입력 점수 연동 (인터뷰 54개 + System Evidence 31개)"
+                title = "실제 평가 집계 - 시트 6 입력 점수 연동 (인터뷰 54개 + System Evidence 26개)"
                 if note is not None and "".join(note.itertext()) != title:
                     for child in list(note):
                         note.remove(child)
@@ -292,7 +287,7 @@ def format_assessment_workbook(path: Path) -> None:
                     int(xfs[int(anchor.get("s", "0"))].get("borderId", "0"))
                     if name == RESULT_SHEET and boundary else None
                 )
-                system = "-SY-" in code
+                system = "-SE-" in code
                 fill_id = blue if system else 0 if question and name == RESULT_SHEET else None
                 for cell in row.findall(f"{_MAIN}c"):
                     address = cell.get("r", "")

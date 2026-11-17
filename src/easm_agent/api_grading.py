@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any, Literal
 from urllib.parse import unquote, urlparse
 
@@ -107,12 +107,12 @@ def observation_refs(data: Collection, observation: Any) -> list[str]:
     ]
     if not properties:
         return observation.evidence_refs
-    if observation.code == "OE-SY-23":
+    if observation.code == "OE-SE-19":
         return sorted(set(properties + endpoint_refs(
             data, [f"/subscriptions/{observation.subscription_id}/providers/Microsoft.Authorization/roleAssignments"],
             observation.evidence_refs,
         )))
-    if observation.code == "DS-SY-07":
+    if observation.code == "DS-SE-05":
         host_refs = endpoint_refs(data, [observation.subject + "/config/web"]) if observation.kind == "agent_host" else []
         return sorted(set(properties + host_refs))
     return observation.evidence_refs
@@ -187,7 +187,7 @@ def measurements(
     blueprint_list_path = "/v1.0/applications/microsoft.graph.agentIdentityBlueprint"
     identity_refs = endpoint_refs(data, [identity_list_path], row_refs(identities))
     blueprint_refs = endpoint_refs(data, [blueprint_list_path], row_refs(blueprints))
-    result["DS-SY-05"] = measured([
+    result["DS-SE-03"] = measured([
         bool(row.blueprint_id) and row.blueprint_id.lower() in blueprint_ids for row in identities
     ], "수집 Agent ID 중 실제 Blueprint ID가 수집 Blueprint 목록과 연결된 비율",
         identity_refs + blueprint_refs, decisions=[
@@ -196,7 +196,7 @@ def measurements(
                      blueprint_exists=bool(row.blueprint_id) and row.blueprint_id.lower() in blueprint_ids)
             for row in identities
         ])
-    result["DS-SY-06"] = measured([
+    result["DS-SE-04"] = measured([
         and_known(
             bool(row.model) if row.model is not None else None,
             bool(row.version) if row.version is not None else None,
@@ -213,7 +213,7 @@ def measurements(
                  version_upgrade_option=row.version_upgrade_option)
         for row in data.deployments
     ])
-    network = observations(data, "DS-SY-07")
+    network = observations(data, "DS-SE-05")
     boundary = []
     for row in network:
         value = row.values
@@ -234,10 +234,10 @@ def measurements(
                 None if private is None or restricted is None else False
             )
         boundary.append(state)
-    result["DS-SY-07"] = from_observations(network, boundary, "대상 AI 계정·호스트 중 확인된 인바운드 경계 설정 비율", data)
-    tool_rows = observations(data, "DS-SY-08")
+    result["DS-SE-05"] = from_observations(network, boundary, "대상 AI 계정·호스트 중 확인된 인바운드 경계 설정 비율", data)
+    tool_rows = observations(data, "DS-SE-06")
     modes = [mode for row in tool_rows for mode in row.values.get("mcp_approval_modes", [])]
-    result["DS-SY-08"] = measured(
+    result["DS-SE-06"] = measured(
         [mode == "always" if mode in ("always", "never", "custom") else None for mode in modes],
         "MCP 도구 선언 중 require_approval=always인 비율; 함수·내장 도구는 분모 제외",
         [ref for row in tool_rows for ref in tool_refs(data, row)], decisions=[
@@ -245,13 +245,13 @@ def measurements(
             for row in tool_rows for index, mode in enumerate(row.values.get("mcp_approval_modes", []), 1)
         ],
     )
-    result["DS-SY-08"].decisions.extend(TargetAssessment(
+    result["DS-SE-06"].decisions.extend(TargetAssessment(
         subject=f"{row.subject}#non-MCP-tools", status="excluded",
         observed={"tool_types": [kind for kind in row.values.get("tool_types", []) if kind != "mcp"]},
         reason="함수·내장 도구는 MCP 비율 계산에서 제외", evidence_refs=tool_refs(data, row),
     ) for row in tool_rows if any(kind != "mcp" for kind in row.values.get("tool_types", [])))
-    endpoints = observations(data, "DS-SY-09")
-    result["DS-SY-09"] = measured(
+    endpoints = observations(data, "DS-SE-07")
+    result["DS-SE-07"] = measured(
         [value for row in endpoints for value in row.values.get("endpoint_https", [])],
         "명시된 외부 도구 URL 중 HTTPS이며 호스트가 유효하고 URL 내 인증정보가 없는 비율",
         [ref for row in endpoints for ref in tool_refs(data, row)], decisions=[
@@ -263,7 +263,7 @@ def measurements(
     complete_projects = set(data.facts.get("evaluation_complete_projects", []))
     project_ids = set(data.facts.get("foundry_project_ids", []))
     evaluated = {run.project_id.lower() for run in data.evaluations if (run.status or "").lower() in ("completed", "succeeded")}
-    result["BI-SY-11"] = measured(
+    result["BI-SE-09"] = measured(
         [project.lower() in evaluated for project in sorted(project_ids)],
         "발견한 Foundry 프로젝트 중 완료 상태 평가 실행이 있는 프로젝트 비율",
         decisions=[
@@ -274,23 +274,23 @@ def measurements(
         ],
     )
     if project_ids - complete_projects:
-        result["BI-SY-11"].unavailable = "평가 목록 수집이 완료되지 않은 프로젝트가 있음"
+        result["BI-SE-09"].unavailable = "평가 목록 수집이 완료되지 않은 프로젝트가 있음"
     recommendations = [row for row in data.security if row.status != "NotApplicable"]
-    result["BI-SY-12"] = measured([
+    result["BI-SE-10"] = measured([
         row.status == "Healthy" if row.status in ("Healthy", "Unhealthy") else None for row in recommendations
     ], "수집 AI 리소스 보안 권고 중 Healthy 비율; NotApplicable 제외",
         data.facts.get("security_evidence_refs", []), decisions=[
         decision(row.assessment_id, row.evidence_refs, resource_id=row.resource_id, status=row.status)
         for row in recommendations
     ])
-    result["BI-SY-12"].decisions.extend(TargetAssessment(
+    result["BI-SE-10"].decisions.extend(TargetAssessment(
         subject=row.assessment_id, status="excluded", observed={"resource_id": row.resource_id, "status": row.status},
         reason="적용 대상이 아닌 보안 권고", evidence_refs=row.evidence_refs,
     ) for row in data.security if row.status == "NotApplicable")
-    safety_rows = observations(data, "BI-SY-13")
+    safety_rows = observations(data, "BI-SE-11")
     policies = {row.subject.lower(): row.values["policy_filter_enabled"] for row in safety_rows
                 if isinstance(row.values.get("policy_filter_enabled"), dict)}
-    result["BI-SY-13"] = measured([
+    result["BI-SE-11"] = measured([
         policies[row.account_id.lower()].get(row.rai_policy, False)
         if row.account_id.lower() in policies else None for row in data.deployments
     ], "전체 모델 배포 중 연결 정책이 실제 목록에 존재하고 enabled 필터가 확인된 비율", decisions=[
@@ -300,7 +300,7 @@ def measurements(
                  rai_policy=row.rai_policy, filter_enabled=policies.get(row.account_id.lower(), {}).get(row.rai_policy))
         for row in data.deployments
     ])
-    versions = observations(data, "BI-SY-14")
+    versions = observations(data, "BI-SE-12")
     pinned = [bool(agent.agent_version) if agent.agent_version is not None else None
               for agent in agents if agent.platform == "foundry"]
     for row in versions:
@@ -312,14 +312,14 @@ def measurements(
             pinned.append(any(char.isdigit() for char in runtime) and "latest" not in runtime.lower())
         else:
             pinned.append(None)
-    result["BI-SY-14"] = measured(
+    result["BI-SE-12"] = measured(
         pinned, "Foundry 버전과 자체 호스트 런타임 버전·컨테이너 다이제스트 고정 비율",
         decisions=[
             decision(agent.agent_id, agent_refs(data, agent), version=agent.agent_version)
             for agent in agents if agent.platform == "foundry"
         ] + [decision(row.subject, row.evidence_refs, **row.values) for row in versions],
     )
-    result["BI-SY-15"] = measured([
+    result["BI-SE-13"] = measured([
         all((
             bool(agent.tags.get(tags["owner_key"]) or agent.owner),
             bool(agent.tags.get(tags["sponsor_key"]) or agent.sponsor),
@@ -337,17 +337,17 @@ def measurements(
                  cost_center_present=bool(agent.tags.get(tags["cost_center_key"])))
         for agent in agents
     ])
-    policy_rows = [row for row in observations(data, "BI-SY-16") if row.kind == "policy_resource"]
+    policy_rows = [row for row in observations(data, "BI-SE-14") if row.kind == "policy_resource"]
     states: list[bool | None] = []
     for row in policy_rows:
         if row.kind != "policy_resource":
             continue
         state = row.values.get("state")
         states.append(state == "Compliant" if state in ("Compliant", "NonCompliant") else None)
-    result["BI-SY-16"] = from_observations(policy_rows, states, "AI 관련 정책 평가 리소스 중 모든 평가가 Compliant인 비율", data)
+    result["BI-SE-14"] = from_observations(policy_rows, states, "AI 관련 정책 평가 리소스 중 모든 평가가 Compliant인 비율", data)
     used_blueprints = {row.blueprint_id.lower() for row in identities if row.blueprint_id}
     linked_blueprints = [row for row in blueprints if row.blueprint_id.lower() in used_blueprints]
-    result["DP-SY-19"] = measured([
+    result["DP-SE-15"] = measured([
         agent_has_entra_identity(agent, linked_blueprints) for agent in agents
     ], "전체 Azure Agent 중 구독·계정·프로젝트·Agent 이름으로 Blueprint 연결이 확인된 비율",
         identity_refs + blueprint_refs, decisions=[
@@ -357,7 +357,7 @@ def measurements(
                      blueprint_linked=agent_has_entra_identity(agent, linked_blueprints))
             for agent in agents
         ])
-    result["OE-SY-20"] = measured([
+    result["OE-SE-16"] = measured([
         and_known(
             row.owner_count > 0 if row.owner_count is not None else None,
             row.sponsor_count > 0 if row.sponsor_count is not None else None,
@@ -369,7 +369,7 @@ def measurements(
         ], row.evidence_refs), owner_count=row.owner_count, sponsor_count=row.sponsor_count)
         for row in identities
     ])
-    result["OE-SY-21"] = measured([
+    result["OE-SE-17"] = measured([
         not row.overprivileged_roles if not any(role.startswith("unresolved:") for role in row.app_roles) else None
         for row in identities
     ], "Agent ID 중 내장 쓰기·전체제어 권한 패턴에 해당하는 앱 역할이 없는 비율", decisions=[
@@ -382,7 +382,7 @@ def measurements(
     by_resource: dict[str, list[Any]] = {}
     for setting in data.logs:
         by_resource.setdefault(setting.resource_id.lower(), []).append(setting)
-    result["OE-SY-22"] = measured([
+    result["OE-SE-18"] = measured([
         any(setting.enabled and bool(setting.workspace_id) for setting in by_resource[rid])
         if rid in by_resource else None for rid in sorted(targets(data))
     ], "대상 AI 계정·호스트 중 활성 로그와 Log Analytics workspace 연결이 있는 비율", decisions=[
@@ -392,8 +392,8 @@ def measurements(
                                for setting in by_resource.get(rid, [])])
         for rid in sorted(targets(data))
     ])
-    identity_rows = observations(data, "OE-SY-23")
-    result["OE-SY-23"] = from_observations(identity_rows, [
+    identity_rows = observations(data, "OE-SE-19")
+    result["OE-SE-19"] = from_observations(identity_rows, [
         and_known(
             bool(value.get("principal_count")) and any(
                 part.strip().lower() in ("systemassigned", "userassigned")
@@ -403,7 +403,7 @@ def measurements(
             value.get("local_auth_disabled") if row.kind == "ai_account" else True,
         ) for row in identity_rows for value in [row.values]
     ], "관리 ID 연결·동일 구독 직접 광범위 역할 0건·AI 계정 키 인증 비활성을 충족한 비율", data)
-    monitor = observations(data, "OE-SY-24")
+    monitor = observations(data, "OE-SE-20")
     alerts = [row for row in monitor if row.values.get("kind") in (
         "metricalerts", "scheduledqueryrules", "activitylogalerts",
     ) and row.values.get("targets_ai")]
@@ -412,7 +412,7 @@ def measurements(
         for rid in row.values.get("target_ids", [])
     }
     monitor_refs = sorted(set(row_refs(monitor) + data.facts.get("monitoring_evidence_refs", [])))
-    result["OE-SY-24"] = measured(
+    result["OE-SE-20"] = measured(
         [rid in covered for rid in sorted(targets(data))],
         "대상 AI 계정·호스트 중 활성 경보의 실제 범위에 포함된 비율", monitor_refs, decisions=[
             decision(rid, monitor_refs,
@@ -421,7 +421,7 @@ def measurements(
             for rid in sorted(targets(data))
         ],
     )
-    result["OE-SY-25"] = from_observations(alerts, [
+    result["OE-SE-21"] = from_observations(alerts, [
         row.values.get("action_group_resolved") if row.values.get("enabled") is True else False
         for row in alerts
     ], "AI 대상 경보 중 활성 상태이며 존재하는 작업 그룹과 활성 수신자가 연결된 비율", data)
@@ -445,7 +445,7 @@ def measurements(
                 ) else None,
             ),
         )
-    result["OE-SY-26"] = measured(
+    result["OE-SE-22"] = measured(
         retention, "대상 중 리소스 지역이 식별되고 연결 workspace 보존 설정이 기준일 이상인 비율", decisions=[
             decision(rid, endpoint_refs(data, [
                 rid + "/providers/Microsoft.Insights/diagnosticSettings",
@@ -466,7 +466,7 @@ def measurements(
                 for series in metric.get("timeseries") or [] for point in series.get("data") or []
                 for key, value in point.items() if key != "timeStamp") if row is not None else None,
         )
-    result["OT-SY-28"] = measured(
+    result["OT-SE-23"] = measured(
         samples, "대상 AI 계정·호스트 중 조회 기간에 수치 메트릭 표본이 있는 비율; 0 표본도 관측으로 포함",
         decisions=[
             decision(rid, [metrics[rid]["evidence_ref"]] if metrics.get(rid, {}).get("evidence_ref") else [],
@@ -474,22 +474,17 @@ def measurements(
             for rid, sample in zip(sorted(targets(data)), samples, strict=True)
         ],
     )
-    result["OT-SY-29"] = cost_measurement(data, agents)
-    result["DM-SY-01"] = governance_measurement(data)
-    result["DM-SY-02"] = power_platform_measurement(data, "DM-SY-02")
-    result["DM-SY-03"] = new_agent_approval_measurement(data, criteria)
-    result["DS-SY-04"] = power_platform_measurement(data, "DS-SY-04")
-    result["BI-SY-10"] = power_platform_measurement(data, "BI-SY-10")
-    result["DP-SY-17"] = registry_metadata_measurement(data)
-    result["DP-SY-18"] = sharing_scope_measurement(data)
-    result["OT-SY-27"] = registered_agent_measurement(data, agents)
-    result["OT-SY-30"] = exposure_measurement(data)
+    result["OT-SE-24"] = cost_measurement(data, agents)
+    result["DM-SE-01"] = power_platform_measurement(data, "DM-SE-01")
+    result["DS-SE-02"] = power_platform_measurement(data, "DS-SE-02")
+    result["BI-SE-08"] = power_platform_measurement(data, "BI-SE-08")
+    result["OT-SE-25"] = exposure_measurement(data)
     budget_values = []
     for sid in data.subscriptions:
         budgets = [row for row in data.budgets if row.subscription_id == sid]
         checks = [budget_configured(row, data.collected_at) for row in budgets]
         budget_values.append(True if True in checks else None if None in checks else False)
-    result["OT-SY-31"] = measured(
+    result["OT-SE-26"] = measured(
         budget_values, "승인 구독 중 현재 유효한 무필터 Cost 예산·실제/예측 경보·수신자 구성이 있는 비율",
         decisions=[
             decision(sid, endpoint_refs(data, [f"/subscriptions/{sid}/providers/Microsoft.Consumption/budgets"],
@@ -505,18 +500,18 @@ def measurements(
             for sid in data.subscriptions
         ],
     )
-    for code in ("DS-SY-07", "OE-SY-23"):
+    for code in ("DS-SE-05", "OE-SE-19"):
         subjects = {row.subject.lower() for row in observations(data, code)}
         if subjects != targets(data):
             result[code].unavailable = "대상 AI 리소스의 구성 응답이 일부 누락됨"
     expected_hosts = {agent.resource_id.lower() for agent in agents
                       if agent.platform in HOSTED_AGENT_PLATFORMS and agent.resource_id}
     if {row.subject.lower() for row in versions} != expected_hosts:
-        result["BI-SY-14"].unavailable = "자체 호스트 런타임 응답이 일부 누락됨"
+        result["BI-SE-12"].unavailable = "자체 호스트 런타임 응답이 일부 누락됨"
     if not data.facts.get("deployment_inventory_complete"):
-        result["BI-SY-13"].unavailable = result["DS-SY-06"].unavailable = "모델 배포 목록 수집 미완료"
-    for code in ("DS-SY-07", "OE-SY-23", "BI-SY-14"):
-        expected = expected_hosts if code == "BI-SY-14" else targets(data)
+        result["BI-SE-11"].unavailable = result["DS-SE-04"].unavailable = "모델 배포 목록 수집 미완료"
+    for code in ("DS-SE-05", "OE-SE-19", "BI-SE-12"):
+        expected = expected_hosts if code == "BI-SE-12" else targets(data)
         actual = {entry.subject.lower() for entry in result[code].decisions}
         result[code].decisions.extend(TargetAssessment(
             subject=subject, reason="대상 구성 응답 미확보",
@@ -638,98 +633,20 @@ def agent_has_entra_identity(agent: Any, blueprints: list[Any]) -> bool:
     return bool(agent_blueprint_ids(agent, blueprints))
 
 
-def registry_measurement(
-    data: Collection, detail: str, value: Any, *, include: Any = None, empty: str = "대상 없음",
-) -> Measurement:
-    rows = [row for row in data.agent365_packages if include is None or include(row)]
-    refs = sorted({ref for row in rows for ref in row.evidence_refs} | set(data.facts.get("agent365_registry_refs", [])))
-    result = measured([value(row) for row in rows], detail, refs, decisions=[
-        decision(row.package_id, row.evidence_refs, governance=row.governance, request_status=row.request_status,
-                 available_to=row.available_to, deployed_to=row.deployed_to, owner_count=row.owner_count,
-                 is_blocked=row.is_blocked)
-        for row in rows
-    ])
-    if not rows:
-        result.unavailable = empty
-    return result
-
-
-def known(value: Any) -> bool | None:
-    return None if value is None else True
-
-
-def governance_measurement(data: Collection) -> Measurement:
-    return registry_measurement(
-        data, "등록 Agent 패키지 중 거버넌스 분류(governanceMetadata)가 Unmanaged가 아닌 관리 대상 비율",
-        lambda row: None if row.governance is None else row.governance != "Unmanaged",
-    )
-
-
-def new_agent_approval_measurement(data: Collection, criteria: dict[str, Any]) -> Measurement:
-    since = data.collected_at - timedelta(days=criteria["new_agent_window_days"])
-    return registry_measurement(
-        data, "최근 기간 신규 생성 패키지 중 게시 요청이 승인(approved)된 비율",
-        lambda row: None if row.created_at is None else row.request_status == "approved",
-        include=lambda row: row.created_at is None or row.created_at >= since,
-        empty="최근 신규 생성 패키지 없음",
-    )
-
-
-def registry_metadata_measurement(data: Collection) -> Measurement:
-    return registry_measurement(
-        data, "등록 Agent 패키지 중 소유자(owners)·배포 범위·차단 상태가 모두 확인되고 소유자가 있는 비율",
-        lambda row: and_known(
-            row.owner_count > 0 if row.owner_count is not None else None,
-            known(row.deployed_to), known(row.is_blocked),
-        ),
-    )
-
-
-def sharing_scope_measurement(data: Collection) -> Measurement:
-    return registry_measurement(
-        data, "등록 Agent 패키지 중 접근 범위와 배포 범위가 전체 사용자 대상이 아닌 제한 범위로 확인된 비율",
-        lambda row: and_known(
-            row.available_to != "allowedForAll" if row.available_to is not None else None,
-            row.deployed_to != "acquiredForAll" if row.deployed_to is not None else None,
-        ),
-    )
-
-
-def registered_agent_measurement(data: Collection, agents: list[Any]) -> Measurement:
-    registered = {row.agent_identity_id.lower() for row in data.agent365_packages if row.agent_identity_id}
-    identities: dict[str, set[str]] = {}
-    for row in data.entra_agent_identities:
-        if row.blueprint_id and row.identity_id:
-            identities.setdefault(row.blueprint_id.lower(), set()).add(row.identity_id.lower())
-    values, decisions = [], []
-    for agent in agents:
-        ids = {identity for blueprint in agent_blueprint_ids(agent, data.entra_blueprints)
-               for identity in identities.get(blueprint, set())}
-        values.append(bool(ids & registered))
-        decisions.append(decision(
-            f"{agent.platform}:{agent.agent_id}", agent_refs(data, agent),
-            entra_identity_linked=bool(ids), registered=bool(ids & registered),
-        ))
-    result = measured(values, "Azure에서 발견한 Agent 중 Entra Agent ID가 연결되고 Agent 365 등록부에 등록된 비율",
-                      decisions=decisions)
-    result.refs = sorted(set(result.refs) | set(data.facts.get("agent365_registry_refs", [])))
-    return result
-
-
 def admin_read(data: Collection, source: str) -> Any:
     return next((row for row in data.admin_evidence if row.source == source), None)
 
 
 def power_platform_measurement(data: Collection, code: str) -> Measurement:
     sources = ["powerplatform.environments"] + (
-        ["powerplatform.environment_roles"] if code == "DM-SY-02"
-        else ["powerplatform.dlp_policies"] if code == "DS-SY-04" else []
+        ["powerplatform.environment_roles"] if code == "DM-SE-01"
+        else ["powerplatform.dlp_policies"] if code == "DS-SE-02" else []
     )
     reads = {source: admin_read(data, source) for source in sources}
     detail = {
-        "DM-SY-02": "관리자에게 보이는 Power Platform 환경 중 역할 할당이 1건 이상 확인된 환경 비율",
-        "DS-SY-04": "관리자에게 보이는 Power Platform 환경 중 데이터 정책(DLP)의 적용 범위에 포함된 환경 비율",
-        "BI-SY-10": "관리자에게 보이는 Power Platform 환경 중 보호 수준이 Standard(관리형 환경)인 환경 비율",
+        "DM-SE-01": "관리자에게 보이는 Power Platform 환경 중 역할 할당이 1건 이상 확인된 환경 비율",
+        "DS-SE-02": "관리자에게 보이는 Power Platform 환경 중 데이터 정책(DLP)의 적용 범위에 포함된 환경 비율",
+        "BI-SE-08": "관리자에게 보이는 Power Platform 환경 중 보호 수준이 Standard(관리형 환경)인 환경 비율",
     }[code]
     missing = [source for source, read in reads.items() if read is None]
     failed = [read for read in reads.values() if read is not None and not read.completed]
@@ -744,10 +661,11 @@ def power_platform_measurement(data: Collection, code: str) -> Measurement:
     values: list[bool | None] = []
     for environment in environments:
         key = environment.environment_id.lower()
-        if code == "DM-SY-02":
-            counts = {name.lower(): count for name, count in reads["powerplatform.environment_roles"].role_counts.items()}
-            values.append(counts.get(key, 0) > 0)
-        elif code == "BI-SY-10":
+        if code == "DM-SE-01":
+            role_read = reads["powerplatform.environment_roles"]
+            counts = {name.lower(): count for name, count in role_read.role_counts.items()}
+            values.append(None if role_read.portal_pages and key not in counts else counts.get(key, 0) > 0)
+        elif code == "BI-SE-08":
             level = environment.protection_level
             values.append(None if level is None else level == "Standard")
         else:

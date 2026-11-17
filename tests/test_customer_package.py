@@ -61,8 +61,8 @@ def test_downloaded_archive_plan_runs_without_repository(tmp_path: Path) -> None
     assert len(payload["subscriptions"]) == 3
     assert len(payload["subscription_roles"]) == 4
     assert len(payload["foundry_custom_role"]["DataActions"]) == 3
-    assert len(payload["graph_application_roles"]) == 4
-    assert "CopilotPackages.Read.All" in payload["graph_application_roles"]
+    assert len(payload["graph_application_roles"]) == 3
+    assert "CopilotPackages.Read.All" not in payload["graph_application_roles"]
     assert not (tmp_path / ".easm-agent").exists()
     help_result = subprocess.run(
         [executable, "setup.sh", "cleanup-plan", "--help"], cwd=customer,

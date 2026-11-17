@@ -17,10 +17,6 @@ from azure.identity import DefaultAzureCredential
 from easm_agent.azure import AccessError, EvidenceStore
 from easm_agent.collect import collect
 from easm_agent.collect_admin_evidence import read_admin_evidence
-from easm_agent.collect_agent365 import (
-    Agent365Collector,
-    crosscheck_agent365,
-)
 from easm_agent.collect_entra import EntraCollector
 from easm_agent.evaluation import evaluate
 from easm_agent.models import (
@@ -152,7 +148,6 @@ def main(argv: list[str] | None = None) -> int:
                     proposal for proposal in data.proposals
                     if not (proposal.evidence_only and proposal.code in criteria["items"])
                 ]
-                data.agent365_crosschecks = crosscheck_agent365(data, criteria)
                 findings = evaluate(
                     data, criteria, {}, conventions,
                     interviews={row.se_code: row.interview_level for row in findings if row.interview_level is not None},
@@ -201,7 +196,7 @@ def main(argv: list[str] | None = None) -> int:
                     "Reader", "Cost Management Reader", "Log Analytics Reader", "Security Reader",
                     "Foundry: agents/read, evaluations/read, assets/read",
                 ]
-                + ["Graph: " + ", ".join(EntraCollector.required_roles + Agent365Collector.required_roles)],
+                + ["Graph: " + ", ".join(EntraCollector.required_roles)],
                 "entra": True,
                 "azure_calls": False,
             }, ensure_ascii=False, indent=2))

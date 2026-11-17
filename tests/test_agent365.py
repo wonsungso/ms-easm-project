@@ -101,8 +101,8 @@ def test_registry_failure_is_explicit_and_never_complete(reason: str, tmp_path: 
     assert result.issues[0].reason == reason
     assert result.issues[0].evidence_refs
     rows = checks(result)
-    assert rows["DS-SY-05"].status == "unavailable" and rows["DS-SY-05"].reason == reason
-    assert rows["DS-SY-05"].compared is None
+    assert rows["DS-SE-03"].status == "unavailable" and rows["DS-SE-03"].reason == reason
+    assert rows["DS-SE-03"].compared is None
 
 
 @pytest.mark.parametrize("rows", [
@@ -163,30 +163,30 @@ def test_invalid_registry_pagination_is_an_explicit_failure(next_link: object) -
 
 def test_partial_id_crosschecks_do_not_compare_unrelated_fields_or_same_graph_source() -> None:
     result = checks(snapshot())
-    assert len(result) == 31
-    for code in ("DS-SY-05", "DP-SY-19"):
+    assert len(result) == 26
+    for code in ("DS-SE-03", "DP-SE-15"):
         assert result[code].status == "partial_match"
         assert result[code].matched == result[code].compared == 1
-    for code in set(result) - {"DS-SY-05", "DP-SY-19"}:
+    for code in set(result) - {"DS-SE-03", "DP-SE-15"}:
         assert result[code].status == "not_comparable"
         assert result[code].matched is None
-    assert "다른 필드" in result["BI-SY-14"].detail
-    assert "동일 원천" in result["OE-SY-20"].detail and "동일 원천" in result["OE-SY-21"].detail
+    assert "다른 필드" in result["BI-SE-12"].detail
+    assert "동일 원천" in result["OE-SE-16"].detail and "동일 원천" in result["OE-SE-17"].detail
 
 
 def test_registry_reference_missing_from_complete_graph_is_mismatch() -> None:
     data = snapshot()
     data.agent365_packages[0].agent_identity_id = OTHER
     result = checks(data)
-    assert result["DS-SY-05"].status == "mismatch"
-    assert result["DS-SY-05"].mismatched == 1
-    assert result["DP-SY-19"].status == "unavailable"
+    assert result["DS-SE-03"].status == "mismatch"
+    assert result["DS-SE-03"].mismatched == 1
+    assert result["DP-SE-15"].status == "unavailable"
 
 
 def test_missing_graph_blueprint_field_is_unknown_not_mismatch() -> None:
     data = snapshot()
     data.entra_agent_identities[0].blueprint_id = None
-    result = checks(data)["DS-SY-05"]
+    result = checks(data)["DS-SE-03"]
     assert result.status == "unavailable" and result.unverified == 1 and result.mismatched == 0
 
 
@@ -196,7 +196,7 @@ def test_missing_graph_blueprint_field_is_unknown_not_mismatch() -> None:
 def test_incomplete_inventories_cannot_match(marker: str) -> None:
     data = snapshot()
     data.facts.pop(marker)
-    assert checks(data)["DP-SY-19"].status == "unavailable"
+    assert checks(data)["DP-SE-15"].status == "unavailable"
 
 
 def test_missing_identity_field_empty_registry_and_unpublished_agents_are_not_failure_proof() -> None:
@@ -205,43 +205,43 @@ def test_missing_identity_field_empty_registry_and_unpublished_agents_are_not_fa
     for row in checks(data).values():
         assert row.status != "mismatch"
     data.agent365_packages = []
-    assert checks(data)["DS-SY-05"].status == "unavailable"
+    assert checks(data)["DS-SE-03"].status == "unavailable"
 
 
 def test_display_names_are_never_join_keys_and_ambiguous_connections_do_not_match() -> None:
     data = snapshot()
     data.entra_agent_identities[0].display_name = "unrelated name"
-    assert checks(data)["DP-SY-19"].status == "partial_match"
+    assert checks(data)["DP-SE-15"].status == "partial_match"
     data.entra_agent_identities.append(EntraAgentIdentity(identity_id=OTHER, blueprint_id=BLUEPRINT))
-    result = checks(data)["DP-SY-19"]
+    result = checks(data)["DP-SE-15"]
     assert result.status == "unavailable" and result.unverified == 1
 
 
 def test_duplicate_graph_id_does_not_create_false_match() -> None:
     data = snapshot()
     data.entra_agent_identities.append(data.entra_agent_identities[0].model_copy())
-    assert checks(data)["DS-SY-05"].reason == "error"
-    assert checks(data)["DP-SY-19"].status == "unavailable"
+    assert checks(data)["DS-SE-03"].reason == "error"
+    assert checks(data)["DP-SE-15"].status == "unavailable"
 
 
 def test_report_keeps_grades_and_separates_crosscheck_details(tmp_path: Path) -> None:
     data = snapshot()
     data.agent365_crosschecks = list(checks(data).values())
-    finding = Finding(se_code="DS-SY-05", scope="in_scope", level="L5", metric_value=1, rationale="primary grade")
+    finding = Finding(se_code="DS-SE-03", scope="in_scope", level="L5", metric_value=1, rationale="primary grade")
     path = tmp_path / "report.xlsx"
     write_workbook(data, [
         finding,
-        Finding(se_code="OE-SY-21", scope="in_scope", level="L5", metric_value=1, rationale="primary role grade"),
+        Finding(se_code="OE-SE-17", scope="in_scope", level="L5", metric_value=1, rationale="primary role grade"),
     ], path)
     book = load_workbook(path)
     details = book["7. 수집결과 근거"]
     table = next(table for table in details.tables.values() if table.ref.startswith("A3:"))
     rows = {details.cell(row, 1).value: row for row in range(4, range_boundaries(table.ref)[3] + 1)}
-    assert details.cell(rows["DS-SY-05"], 10).value == "일부 일치"
-    assert "기존 등급 유지" in details.cell(rows["DS-SY-05"], 11).value
-    assert details.cell(rows["OE-SY-21"], 10).value == "동일 정보 미제공"
-    assert "기존 Azure/Graph API로 평가" in details.cell(rows["OE-SY-21"], 11).value
-    assert "평가 제외 아님" in details.cell(rows["OE-SY-21"], 11).value
+    assert details.cell(rows["DS-SE-03"], 10).value == "일부 일치"
+    assert "기존 등급 유지" in details.cell(rows["DS-SE-03"], 11).value
+    assert details.cell(rows["OE-SE-17"], 10).value == "동일 정보 미제공"
+    assert "기존 Azure/Graph API로 평가" in details.cell(rows["OE-SE-17"], 11).value
+    assert "평가 제외 아님" in details.cell(rows["OE-SE-17"], 11).value
     assert len(book["8. 수집 Raw 데이터"].tables) == 16
     assert finding.level == "L5"
 
@@ -250,7 +250,7 @@ def graded(data: Collection) -> dict:
     return {row.se_code: row for row in evaluate(data, load_criteria(), {}, DEFAULT_TAGS)}
 
 
-def test_registry_fields_grade_governance_approval_ownership_scope_and_registration() -> None:
+def test_registry_data_does_not_restore_retired_assessment_items() -> None:
     data = snapshot()
     data.facts["inventory_complete"] = True
     data.agent365_packages = [
@@ -265,23 +265,12 @@ def test_registry_fields_grade_governance_approval_ownership_scope_and_registrat
         ),
     ]
     rows = graded(data)
-    for code, level, ratio in (
-        ("DM-SY-01", "L2", 0.5), ("DM-SY-03", "L5", 1), ("DP-SY-17", "L2", 0.5),
-        ("DP-SY-18", "L2", 0.5), ("OT-SY-27", "L5", 1),
-    ):
-        assert (rows[code].level, rows[code].metric_value) == (level, ratio), code
-    assert rows["DM-SY-03"].measurement.denominator == 1
-    data.agent365_packages[0].request_status = None
-    assert graded(data)["DM-SY-03"].level == "L1"
-    data.agent365_packages[0].created_at = None
-    assert graded(data)["DM-SY-03"].level == "N/A"
+    assert len(rows) == 26
 
 
-def test_registry_items_stay_ungraded_with_the_original_reason_when_registry_is_denied() -> None:
+def test_registry_permissions_do_not_change_active_findings() -> None:
     source = http()
     source.list_graph.side_effect = AccessError("license_missing", "Agent 365 license required")
     data = Agent365Collector(source, NOW).discover()
     rows = graded(data)
-    for code in ("DM-SY-01", "DM-SY-03", "DP-SY-17", "DP-SY-18", "OT-SY-27"):
-        assert rows[code].level == "N/A" and rows[code].metric_value is None, code
-        assert rows[code].reason == "license_missing", code
+    assert len(rows) == 26 and set(rows) == load_criteria()["items"].keys()

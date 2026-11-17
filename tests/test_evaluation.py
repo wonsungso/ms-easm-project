@@ -43,7 +43,7 @@ ACCOUNT = f"/subscriptions/{SID}/resourceGroups/rg/providers/Microsoft.Cognitive
 PROJECT = ACCOUNT + "/projects/p"
 BLUEPRINT = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 CODES = list(load_criteria()["items"])
-POWER_PLATFORM_CODES = ("DM-SY-02", "DS-SY-04", "BI-SY-10")
+POWER_PLATFORM_CODES = ("DM-SE-01", "DS-SE-02", "BI-SE-08")
 
 
 def grade(data: Collection, criteria: dict | None = None, facts: dict | None = None) -> dict:
@@ -78,10 +78,10 @@ def test_control_evidence_is_specific_and_target_decisions_reconcile(data: Colle
         row.evidence_refs = [f"source:{row.code}"]
     data.costs[0].evidence_refs = ["cost-query"]
     results = grade(data)
-    assert set(results["DS-SY-05"].evidence_refs) == {"identity-list", "blueprint-list"}
-    assert results["DS-SY-08"].evidence_refs == ["source:DS-SY-08"]
-    assert "cost-query" not in results["DS-SY-08"].evidence_refs
-    assert results["DS-SY-08"].measurement.targets[0].observed == {"require_approval": "always"}
+    assert set(results["DS-SE-03"].evidence_refs) == {"identity-list", "blueprint-list"}
+    assert results["DS-SE-06"].evidence_refs == ["source:DS-SE-06"]
+    assert "cost-query" not in results["DS-SE-06"].evidence_refs
+    assert results["DS-SE-06"].measurement.targets[0].observed == {"require_approval": "always"}
     for result in results.values():
         measurement = result.measurement
         assert measurement is not None
@@ -92,14 +92,14 @@ def test_control_evidence_is_specific_and_target_decisions_reconcile(data: Colle
         assert sum(target.contribution or 0 for target in measurement.targets) == measurement.numerator
         if measurement.unit == "count":
             assert sum(target.status != "excluded" for target in measurement.targets) == measurement.denominator
-    amount = results["OT-SY-29"].measurement
+    amount = results["OT-SE-24"].measurement
     assert amount.unit == "amount" and amount.currency == "USD"
     assert amount.numerator == amount.denominator == 10
 
 
 def test_incomplete_measurement_keeps_null_counts_and_missing_targets(data: Collection) -> None:
-    data.proposal_observations = [row for row in data.proposal_observations if row.code != "DS-SY-07"]
-    result = grade(data)["DS-SY-07"]
+    data.proposal_observations = [row for row in data.proposal_observations if row.code != "DS-SE-05"]
+    result = grade(data)["DS-SE-05"]
     assert result.level == "N/A" and result.metric_value is None
     assert result.measurement.numerator is result.measurement.denominator is None
     assert not result.measurement.complete
@@ -177,16 +177,16 @@ def data() -> Collection:
     value.security = [SecurityRecommendation(subscription_id=SID, resource_id=ACCOUNT,
                                             assessment_id="/assessment", severity="Low", status="Healthy")]
     entries = [
-        ("DS-SY-07", "ai_account", {"public_network_access": "Disabled", "approved_private_endpoints": 1}),
-        ("DS-SY-08", "agent_tools", {"mcp_approval_modes": ["always"]}),
-        ("DS-SY-09", "tool_endpoints", {"endpoint_https": [True]}),
-        ("BI-SY-13", "ai_account", {"enabled_policy_names": ["safe"], "policy_filter_enabled": {"safe": True}}),
-        ("BI-SY-16", "policy_resource", {"state": "Compliant"}),
-        ("OE-SY-23", "ai_account", {
+        ("DS-SE-05", "ai_account", {"public_network_access": "Disabled", "approved_private_endpoints": 1}),
+        ("DS-SE-06", "agent_tools", {"mcp_approval_modes": ["always"]}),
+        ("DS-SE-07", "tool_endpoints", {"endpoint_https": [True]}),
+        ("BI-SE-11", "ai_account", {"enabled_policy_names": ["safe"], "policy_filter_enabled": {"safe": True}}),
+        ("BI-SE-14", "policy_resource", {"state": "Compliant"}),
+        ("OE-SE-19", "ai_account", {
             "identity_type": "SystemAssigned", "principal_count": 1,
             "privileged_assignments": 0, "local_auth_disabled": True,
         }),
-        ("OE-SY-24", "metricalerts", {
+        ("OE-SE-20", "metricalerts", {
             "kind": "metricalerts", "targets_ai": True, "target_ids": [ACCOUNT],
             "enabled": True, "action_group_resolved": True,
         }),
@@ -242,9 +242,9 @@ def defender_plans(
     ]
 
 
-def test_complete_api_snapshot_grades_all_31_controls_without_qualitative_inputs(data: Collection) -> None:
+def test_complete_api_snapshot_grades_all_26_controls_without_qualitative_inputs(data: Collection) -> None:
     rows = grade(data)
-    assert len(rows) == 31
+    assert len(rows) == 26
     assert all(row.level == "L5" and row.metric_value == 1 for row in rows.values()), {
         code: (row.level, row.reason) for code, row in rows.items() if row.level != "L5"
     }
@@ -252,11 +252,10 @@ def test_complete_api_snapshot_grades_all_31_controls_without_qualitative_inputs
     assert data.facts["grading_profile"] == "api_configuration_v1"
 
 
-REGISTRY_CODES = ("DM-SY-01", "DM-SY-03", "DP-SY-17", "DP-SY-18", "OT-SY-27")
 
 
 @pytest.mark.parametrize("reason", ["permission_denied", "license_missing", "error"])
-def test_agent365_registry_failures_only_leave_registry_items_ungraded(data: Collection, reason: str) -> None:
+def test_agent365_registry_failures_do_not_affect_remaining_items(data: Collection, reason: str) -> None:
     from easm_agent.collect_agent365 import crosscheck_agent365
     from easm_agent.models import Issue
 
@@ -267,14 +266,11 @@ def test_agent365_registry_failures_only_leave_registry_items_ungraded(data: Col
     data.facts["agent365_registry_complete"] = False
     data.agent365_crosschecks = crosscheck_agent365(data, load_criteria())
     after = grade(data)
-    assert {c: r.model_dump() for c, r in after.items() if c not in REGISTRY_CODES} == {
-        c: r for c, r in before.items() if c not in REGISTRY_CODES
-    }
-    for code in REGISTRY_CODES:
-        assert after[code].level == "N/A" and after[code].metric_value is None
+    assert {c: r.model_dump() for c, r in after.items()} == before
+    assert len(after) == 26
 
 
-def test_power_platform_and_registry_items_use_their_own_ratios(data: Collection) -> None:
+def test_power_platform_items_use_their_own_ratios(data: Collection) -> None:
     data.admin_evidence = power_platform_reads(managed=False, with_role=False, covered=False)
     data.agent365_packages = [
         registry_package(IDENTITY_ID, "a"),
@@ -282,19 +278,16 @@ def test_power_platform_and_registry_items_use_their_own_ratios(data: Collection
                          request_status="pending"),
     ]
     rows = grade(data)
-    for code in ("BI-SY-10", "DM-SY-02", "DS-SY-04"):
+    for code in ("BI-SE-08", "DM-SE-01", "DS-SE-02"):
         assert (rows[code].level, rows[code].measurement.numerator, rows[code].measurement.denominator) == ("L1", 0, 1)
-    for code in ("DM-SY-01", "DM-SY-03", "DP-SY-17", "DP-SY-18"):
-        assert (rows[code].level, rows[code].measurement.numerator, rows[code].measurement.denominator) == ("L2", 1, 2)
-    assert rows["OT-SY-27"].level == "L5"
+    assert len(rows) == 26
 
 
-def test_registry_items_are_not_graded_when_registry_was_unavailable(data: Collection) -> None:
+def test_removed_registry_items_are_absent_without_registry_data(data: Collection) -> None:
     data.agent365_packages = []
     data.facts["agent365_registry_complete"] = False
     rows = grade(data)
-    for code in ("DM-SY-01", "DM-SY-03", "DP-SY-17", "DP-SY-18", "OT-SY-27"):
-        assert rows[code].level == "N/A" and rows[code].metric_value is None
+    assert len(rows) == 26
 
 
 @pytest.mark.parametrize("changes,level", [
@@ -307,7 +300,7 @@ def test_sensitive_data_protection_requires_ai_plan_cspm_and_discovery(
     data: Collection, changes: dict, level: str,
 ) -> None:
     data.defender_plans = defender_plans(**changes)
-    row = grade(data)["OT-SY-30"]
+    row = grade(data)["OT-SE-25"]
     assert row.level == level
     assert row.measurement.denominator == 1 and row.evidence_refs == ["fixture://defender"]
     assert row.measurement.targets[0].observed["prompt_evidence"] is True
@@ -321,7 +314,7 @@ def test_sensitive_data_protection_requires_ai_plan_cspm_and_discovery(
 ])
 def test_missing_defender_plan_fields_are_unknown_not_l1(data: Collection, plans: list[DefenderPlan]) -> None:
     data.defender_plans = plans
-    row = grade(data)["OT-SY-30"]
+    row = grade(data)["OT-SE-25"]
     assert row.level == "N/A" and row.metric_value is None and row.reason == "not_found"
     assert row.measurement.numerator is None and row.measurement.denominator is None
 
@@ -386,17 +379,17 @@ def test_real_api_field_combinations_reach_every_level_for_all23_controls(
         for original in data.proposal_observations:
             row = original.model_copy(deep=True, update={"subscription_id": sid, "subject": account})
             field_values = deepcopy(row.values)
-            if row.code == "DS-SY-07":
+            if row.code == "DS-SE-05":
                 field_values["public_network_access"] = "Disabled" if complete else "Enabled"
-            elif row.code == "DS-SY-08":
+            elif row.code == "DS-SE-06":
                 field_values["mcp_approval_modes"] = ["always" if complete else "never"]
-            elif row.code == "DS-SY-09":
+            elif row.code == "DS-SE-07":
                 field_values["endpoint_https"] = [complete]
-            elif row.code == "BI-SY-16":
+            elif row.code == "BI-SE-14":
                 field_values["state"] = "Compliant" if complete else "NonCompliant"
-            elif row.code == "OE-SY-23":
+            elif row.code == "OE-SE-19":
                 field_values["principal_count"] = 1 if complete else 0
-            elif row.code == "OE-SY-24":
+            elif row.code == "OE-SE-20":
                 field_values.update({"enabled": complete, "target_ids": [account], "action_group_resolved": complete})
             row.values = field_values
             snapshot.proposal_observations.append(row)
@@ -437,7 +430,7 @@ def test_real_api_field_combinations_reach_every_level_for_all23_controls(
         for key in config.get("complete_subscriptions", []):
             snapshot.facts[key] = snapshot.subscriptions
     rows = grade(snapshot)
-    assert len(rows) == 31
+    assert len(rows) == 26
     for code, row in rows.items():
         assert row.metric_value == pytest.approx(good / 10), (code, row.rationale)
         assert row.level == level, (code, row.rationale)
@@ -506,12 +499,12 @@ def test_ten_blueprints_and_ten_linked_identities_receive_level5(data: Collectio
     data.entra_blueprints = [EntraBlueprint(blueprint_id=f"blueprint-{i}") for i in range(10)]
     data.entra_agent_identities = [EntraAgentIdentity(identity_id=f"id-{i}", blueprint_id=f"blueprint-{i}")
                                     for i in range(10)]
-    row = grade(data)["DS-SY-05"]
+    row = grade(data)["DS-SE-03"]
     assert row.level == "L5" and row.metric_value == 1
     data.entra_agent_identities[0].blueprint_id = "outside"
-    assert grade(data)["DS-SY-05"].level == "L4"
+    assert grade(data)["DS-SE-03"].level == "L4"
     data.entra_agent_identities[1].blueprint_id = None
-    assert grade(data)["DS-SY-05"].level == "L3"
+    assert grade(data)["DS-SE-03"].level == "L3"
 
 
 @pytest.mark.parametrize("field,value", [
@@ -523,94 +516,94 @@ def test_budget_must_be_effective_and_include_both_notification_types(
     data: Collection, field: str, value: object,
 ) -> None:
     setattr(data.budgets[0], field, value)
-    row = grade(data)["OT-SY-31"]
+    row = grade(data)["OT-SE-26"]
     assert row.level == "L1" and row.metric_value == 0
 
 
 def test_missing_budget_fields_are_unknown_not_zero(data: Collection) -> None:
     data.budgets[0].period_end = None
-    assert grade(data)["OT-SY-31"].level == "N/A"
+    assert grade(data)["OT-SE-26"].level == "N/A"
     data.budgets = []
-    assert grade(data)["OT-SY-31"].level == "L1"
+    assert grade(data)["OT-SE-26"].level == "L1"
 
 
 def test_model_unknown_update_option_does_not_count_as_configured(data: Collection) -> None:
     data.deployments[0].version_upgrade_option = None
-    assert grade(data)["DS-SY-06"].level == "N/A"
+    assert grade(data)["DS-SE-04"].level == "N/A"
     data.deployments[0].version_upgrade_option = "unrecognized"
-    assert grade(data)["DS-SY-06"].level == "L1"
+    assert grade(data)["DS-SE-04"].level == "L1"
 
 
 def test_mcp_never_custom_and_missing_modes_are_not_always(data: Collection) -> None:
-    tool = next(row for row in data.proposal_observations if row.code == "DS-SY-08")
+    tool = next(row for row in data.proposal_observations if row.code == "DS-SE-06")
     tool.values["mcp_approval_modes"] = ["never"]
-    assert grade(data)["DS-SY-08"].level == "L1"
+    assert grade(data)["DS-SE-06"].level == "L1"
     tool.values["mcp_approval_modes"] = ["custom"]
-    assert grade(data)["DS-SY-08"].level == "L1"
+    assert grade(data)["DS-SE-06"].level == "L1"
     tool.values["mcp_approval_modes"] = [None]
-    assert grade(data)["DS-SY-08"].level == "N/A"
+    assert grade(data)["DS-SE-06"].level == "N/A"
     tool.values["mcp_approval_modes"] = []
-    assert grade(data)["DS-SY-08"].level == "N/A"
+    assert grade(data)["DS-SE-06"].level == "N/A"
 
 
 def test_cost_shared_resources_are_not_attributed_twice(data: Collection) -> None:
     data.agents.append(data.agents[0].model_copy(update={"agent_id": "other"}))
-    assert grade(data)["OT-SY-29"].metric_value == 0
+    assert grade(data)["OT-SE-24"].metric_value == 0
     data.costs[0].amount = 0
-    assert grade(data)["OT-SY-29"].level == "N/A"
+    assert grade(data)["OT-SE-24"].level == "N/A"
     data.costs[0].amount = -1
-    assert grade(data)["OT-SY-29"].level == "N/A"
+    assert grade(data)["OT-SE-24"].level == "N/A"
 
 
 def test_not_applicable_recommendations_and_unknown_fields_do_not_mean_healthy(data: Collection) -> None:
     data.security[0].status = "NotApplicable"
-    assert grade(data)["BI-SY-12"].level == "N/A"
+    assert grade(data)["BI-SE-10"].level == "N/A"
     data.security[0].status = None
-    assert grade(data)["BI-SY-12"].level == "N/A"
+    assert grade(data)["BI-SE-10"].level == "N/A"
 
 
 def test_missing_filter_configuration_is_unknown_not_disabled(data: Collection) -> None:
-    row = next(row for row in data.proposal_observations if row.code == "BI-SY-13")
+    row = next(row for row in data.proposal_observations if row.code == "BI-SE-11")
     row.values["policy_filter_enabled"] = {"safe": None}
-    assert grade(data)["BI-SY-13"].level == "N/A"
+    assert grade(data)["BI-SE-11"].level == "N/A"
     row.values["policy_filter_enabled"] = {"safe": False}
-    assert grade(data)["BI-SY-13"].level == "L1"
+    assert grade(data)["BI-SE-11"].level == "L1"
 
 
 def test_noncompliance_and_exemption_are_not_perfect_policy_coverage(data: Collection) -> None:
-    row = next(row for row in data.proposal_observations if row.code == "BI-SY-16")
+    row = next(row for row in data.proposal_observations if row.code == "BI-SE-14")
     row.values["state"] = "NonCompliant"
-    assert grade(data)["BI-SY-16"].level == "L1"
+    assert grade(data)["BI-SE-14"].level == "L1"
     row.values["state"] = "Unknown"
-    assert grade(data)["BI-SY-16"].level == "N/A"
+    assert grade(data)["BI-SE-14"].level == "N/A"
 
 
 def test_missing_owner_counts_and_unresolved_role_names_are_unknown(data: Collection) -> None:
     data.entra_agent_identities[0].owner_count = None
     data.entra_agent_identities[0].app_roles = ["unresolved:abc"]
-    assert grade(data)["OE-SY-20"].level == grade(data)["OE-SY-21"].level == "N/A"
+    assert grade(data)["OE-SE-16"].level == grade(data)["OE-SE-17"].level == "N/A"
 
 
 def test_fully_linked_blueprint_must_have_actual_agent_identity_for_azure_link(data: Collection) -> None:
     data.entra_agent_identities[0].blueprint_id = "other"
-    assert grade(data)["DP-SY-19"].level == "L1"
+    assert grade(data)["DP-SE-15"].level == "L1"
 
 
 def test_metric_zero_is_observed_but_missing_timeseries_is_not(data: Collection) -> None:
-    assert grade(data)["OT-SY-28"].level == "L5"
+    assert grade(data)["OT-SE-23"].level == "L5"
     data.facts["resource_metrics"][0]["metrics"] = []
-    assert grade(data)["OT-SY-28"].level == "L1"
+    assert grade(data)["OT-SE-23"].level == "L1"
     data.facts["resource_metrics"] = []
-    assert grade(data)["OT-SY-28"].level == "N/A"
+    assert grade(data)["OT-SE-23"].level == "N/A"
 
 
 def test_configuration_name_count_does_not_prove_a_network_boundary(data: Collection) -> None:
-    row = next(row for row in data.proposal_observations if row.code == "DS-SY-07")
+    row = next(row for row in data.proposal_observations if row.code == "DS-SE-05")
     row.values["public_network_access"] = "Enabled"
-    assert grade(data)["DS-SY-07"].level == "L1"
+    assert grade(data)["DS-SE-05"].level == "L1"
     row.values["public_network_access"] = "Disabled"
     row.values["approved_private_endpoints"] = None
-    assert grade(data)["DS-SY-07"].level == "N/A"
+    assert grade(data)["DS-SE-05"].level == "N/A"
 
 
 def test_qualitative_facts_cannot_elevate_api_grades(data: Collection) -> None:
@@ -627,7 +620,7 @@ def test_rules_reject_unknown_operator_and_missing_values() -> None:
 
 def test_all_criteria_have_exactly_api_metrics_and_exhaustive_level_definitions() -> None:
     criteria = load_criteria()
-    assert len(criteria["items"]) == 31
+    assert len(criteria["items"]) == 26
     assert "configuration_grading" not in criteria
     for config in criteria["items"].values():
         assert list(config["levels"]) == ["L1", "L2", "L3", "L4", "L5"]

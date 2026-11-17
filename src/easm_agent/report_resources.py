@@ -41,31 +41,25 @@ def resource_names(data: Collection, code: str) -> list[ResourceName]:
         add(category, identifier, row.agent_name, row.subscription_id)
 
     agents = [row for row in data.agents if row.platform in AZURE_AGENT_PLATFORMS]
-    if code in ("DM-SY-02", "DS-SY-04", "BI-SY-10"):
+    if code in ("DM-SE-01", "DS-SE-02", "BI-SE-08"):
         for read in data.admin_evidence:
             if read.source == "powerplatform.environments" and read.completed:
                 for environment in read.environments:
                     add("Power Platform 환경", environment.environment_id, environment.display_name)
-    elif code in ("DS-SY-05", "OE-SY-20", "OE-SY-21"):
+    elif code in ("DS-SE-03", "OE-SE-16", "OE-SE-17"):
         for row in data.entra_agent_identities:
             add("Entra Agent ID", row.identity_id, row.display_name)
-        if code == "DS-SY-05":
+        if code == "DS-SE-03":
             for blueprint in data.entra_blueprints:
                 add("Blueprint", blueprint.blueprint_id, blueprint.display_name)
-    elif code in ("DM-SY-01", "DM-SY-03", "DP-SY-17", "DP-SY-18"):
-        for package in data.agent365_packages:
-            add("Agent 365 패키지", package.package_id, package.display_name)
-    elif code == "OT-SY-27":
-        for row in agents:
-            agent(row)
-    elif code in ("DS-SY-06", "BI-SY-13"):
+    elif code in ("DS-SE-04", "BI-SE-11"):
         for deployment in data.deployments:
             add("모델 배포", deployment.resource_id, deployment.name, deployment.subscription_id)
-    elif code in ("DS-SY-08", "DS-SY-09"):
+    elif code in ("DS-SE-06", "DS-SE-07"):
         for observation in data.proposal_observations:
             if observation.code != code:
                 continue
-            if code == "DS-SY-08" and not observation.values.get("mcp_approval_modes"):
+            if code == "DS-SE-06" and not observation.values.get("mcp_approval_modes"):
                 continue
             matches = [
                 row for row in agents if row.subscription_id == observation.subscription_id
@@ -75,53 +69,53 @@ def resource_names(data: Collection, code: str) -> list[ResourceName]:
                 agent(matches[0])
             else:
                 add("도구 선언 Agent ID", observation.subject, sid=observation.subscription_id)
-            if code == "DS-SY-09":
+            if code == "DS-SE-07":
                 for host in observation.values.get("hosts", []):
                     if isinstance(host, str) and host:
                         add("외부 도구 호스트", host, host)
-    elif code == "BI-SY-11":
+    elif code == "BI-SE-09":
         for project in data.facts.get("foundry_project_ids", []):
             add("Foundry 프로젝트", project)
         for run in data.evaluations:
             add("Foundry 프로젝트", run.project_id, sid=run.subscription_id)
             add("평가 실행 ID", run.run_id, sid=run.subscription_id)
-    elif code == "BI-SY-12":
+    elif code == "BI-SE-10":
         for recommendation in data.security:
             if recommendation.status != "NotApplicable":
                 add("보안 권고 대상", recommendation.resource_id, sid=recommendation.subscription_id)
-    elif code in ("BI-SY-14", "BI-SY-15", "DP-SY-19"):
+    elif code in ("BI-SE-12", "BI-SE-13", "DP-SE-15"):
         for row in agents:
             agent(row)
-    elif code in ("DS-SY-07", "BI-SY-16", "OE-SY-23"):
+    elif code in ("DS-SE-05", "BI-SE-14", "OE-SE-19"):
         categories = {
             "ai_account": "AI 계정", "agent_host": "Agent 호스트", "policy_resource": "정책 평가 대상",
         }
         for observation in data.proposal_observations:
             if observation.code == code and observation.kind in categories:
                 add(categories[observation.kind], observation.subject, sid=observation.subscription_id)
-    elif code in ("OE-SY-22", "OE-SY-24", "OE-SY-26", "OT-SY-28"):
+    elif code in ("OE-SE-18", "OE-SE-20", "OE-SE-22", "OT-SE-23"):
         resource_ids = targets(data)
         for identifier in resource_ids:
             add("AI 리소스", identifier)
-        if code in ("OE-SY-22", "OE-SY-26"):
+        if code in ("OE-SE-18", "OE-SE-22"):
             for log in data.logs:
                 if log.resource_id.lower() not in resource_ids:
                     add("로그 연결 대상", log.resource_id, sid=log.subscription_id)
                 if log.workspace_id:
                     add("Log Analytics", log.workspace_id)
-    elif code == "OE-SY-25":
+    elif code == "OE-SE-21":
         for observation in data.proposal_observations:
-            if observation.code == "OE-SY-24" and observation.values.get("targets_ai") and (
+            if observation.code == "OE-SE-20" and observation.values.get("targets_ai") and (
                 observation.values.get("kind") in ("metricalerts", "scheduledqueryrules", "activitylogalerts")
             ):
                 add("AI 경보", observation.subject, sid=observation.subscription_id)
-    elif code == "OT-SY-29":
+    elif code == "OT-SE-24":
         for cost in data.costs:
             add("비용 리소스", cost.resource_id, sid=cost.subscription_id)
-    elif code == "OT-SY-31":
+    elif code == "OT-SE-26":
         for budget in data.budgets:
             add("예산", budget.budget_id, sid=budget.subscription_id)
-    elif code == "OT-SY-30":
+    elif code == "OT-SE-25":
         for plan in data.defender_plans:
             add("Defender 플랜 구독", plan.subscription_id, "AI·CloudPosture 플랜", plan.subscription_id)
     return sorted(found.values(), key=lambda row: (

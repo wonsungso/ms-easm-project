@@ -211,6 +211,7 @@ def test_three_subscription_pipeline_and_cross_subscription_model_link(tmp_path:
                 {"name": "Containers", "properties": {"pricingTier": "Free"}},
             ]}
         elif urlparse(url).hostname == "graph.microsoft.com":
+            assert "/copilot/admin/" not in path, "Agent 365 registry must not be queried"
             payload = {"value": []}
         else:
             raise AssertionError(f"Unmocked API: {method} {path}")
@@ -219,6 +220,8 @@ def test_three_subscription_pipeline_and_cross_subscription_model_link(tmp_path:
     with patch("requests.Session.request", side_effect=request):
         data = collect(settings, fake_credential(), NOW)
     assert len(data.agents) == 3
+    assert not data.agent365_packages and not data.agent365_crosschecks
+    assert "agent365_requested" not in data.facts
     assert len(data.completed_subscriptions) == 3
     assert {agent.platform for agent in data.agents} == {"foundry", "custom" if custom else "langchain"}
     assert all(agent.model == "gpt-4o-mini" for agent in data.agents)
@@ -581,7 +584,7 @@ def test_auto_enumeration_handles_hundreds_and_filters_tenant_and_state(tmp_path
     assert set(result.completed_subscriptions) == set(ids)
     assert worker.call_count == 200
     assert result.facts["inventory_complete"] is True
-    assert http.close.call_count == 3
+    assert http.close.call_count == 2
     assert result.facts["entra_blueprints_complete"] and result.facts["entra_agents_complete"]
 
 

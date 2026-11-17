@@ -321,6 +321,20 @@ class AdminPolicyScope(EvidenceModel):
     environment_ids: list[str] = Field(default_factory=list)
 
 
+class AdminPortalPage(EvidenceModel):
+    url: str
+    observed_at: AwareDatetime
+    http_status: StrictInt
+    state: Literal["empty", "populated"]
+    object_count: StrictInt = Field(ge=0)
+
+    @model_validator(mode="after")
+    def validate_page(self) -> AdminPortalPage:
+        if self.http_status != 200 or (self.state == "empty") != (self.object_count == 0):
+            raise ValueError("관리 센터 증적은 HTTP 200과 실제 목록·빈 상태의 일치가 필요합니다.")
+        return self
+
+
 class AdminReadResult(EvidenceModel):
     source: Literal[
         "powerplatform.environments", "powerplatform.environment_roles", "powerplatform.dlp_policies",
@@ -334,6 +348,7 @@ class AdminReadResult(EvidenceModel):
     environments: list[AdminEnvironment] = Field(default_factory=list)
     role_counts: dict[str, StrictInt] = Field(default_factory=dict)
     policies: list[AdminPolicyScope] = Field(default_factory=list)
+    portal_pages: list[AdminPortalPage] = Field(default_factory=list)
     reason: Reason | None = None
     detail: str
     evidence_refs: list[str] = Field(default_factory=list)
@@ -357,7 +372,7 @@ class AdminReadResult(EvidenceModel):
 
 class AdminEvidenceExport(EvidenceModel):
     schema_version: Literal[1]
-    source_type: Literal["official_admin_read"]
+    source_type: Literal["official_admin_read", "official_admin_portal_read"]
     tenant_id: str
     tenant_verified: StrictBool
     exported_at: AwareDatetime

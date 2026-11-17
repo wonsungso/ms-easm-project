@@ -33,7 +33,7 @@ def output(tmp_path: Path) -> Path:
     findings = [
         Finding(se_code=code, scope="partial", level="L2", rationale="실제 구성 확인",
                 evidence_refs=["fixture://observed"], metric_value=0.25)
-        for code in ("BI-SY-11", "DS-SY-06")
+        for code in ("BI-SE-09", "DS-SE-04")
     ]
     write_workbook(Collection(collected_at=datetime.now(UTC)), findings, path, "fixture")
     return path
@@ -104,13 +104,13 @@ def test_result_preserves_source_columns_and_inserts_collection_methods(output: 
     for name in ("A", "B", "C", "D", "E", "F"):
         assert result.column_dimensions[name].width == source.column_dimensions[name].width
     rows = {result.cell(row, 2).value: row for row in range(5, result.max_row + 1)}
-    for code in ("BI-SY-11", "DS-SY-06"):
+    for code in ("BI-SE-09", "DS-SE-04"):
         assert result.cell(rows[code], 9).value == f"Level 2 ({source.cell(rows[code], 8).value})"
         assert "실제 구성 확인" in result.cell(rows[code], 10).value
     assert result.cell(rows["DM-PR-01"], 7).value == "인터뷰 필요"
     assert result.cell(rows["DM-PR-01"], 9).value is None
-    assert result.cell(rows["DM-SY-01"], 7).value == "수집하지 않음"
-    assert result.cell(rows["DM-SY-01"], 9).value is None
+    assert result.cell(rows["DM-SE-01"], 7).value == "수집하지 않음"
+    assert result.cell(rows["DM-SE-01"], 9).value is None
     assert book.sheetnames[6:] == [
         "7. 수집결과 근거", "8. 수집 Raw 데이터", "9. 수집이슈 Raw 데이터", "10. 필드누락사유",
     ]
@@ -161,28 +161,28 @@ def test_collection_methods_match_all_readme_rows() -> None:
     readme = (Path(__file__).parents[1] / "README.md").read_text(encoding="utf-8")
     methods = {}
     for line in readme.splitlines():
-        if re.match(r"\| \[[A-Z]{2}-SY-\d{2}\]", line):
+        if re.match(r"\| \[[A-Z]{2}-SE-\d{2}\]", line):
             fields = line.split("|")
-            code = re.search(r"\[([A-Z]{2}-SY-\d{2})\]", fields[1])[1]
+            code = re.search(r"\[([A-Z]{2}-SE-\d{2})\]", fields[1])[1]
             methods[code] = fields[4].strip()
-    assert len(methods) == 31
+    assert len(methods) == 26
     assert COLLECTION_METHODS == methods
 
 
 def test_assessment_heights_and_system_evidence_blue_fill_match_each_sheet(tmp_path: Path) -> None:
     path = tmp_path / "heights.xlsx"
     write_workbook(Collection(collected_at=datetime.now(UTC)), [Finding(
-        se_code="DS-SY-06", scope="partial", level="N/A", reason="permission_denied",
+        se_code="DS-SE-04", scope="partial", level="N/A", reason="permission_denied",
         rationale="조회 실패의 상세 근거입니다. " * 20,
     )], path)
     book = load_workbook(path)
     for name, height in ((RESULT_SHEET, 150), (CRITERIA_SHEET, 80)):
         sheet = book[name]
         questions = [row for row in range(5, sheet.max_row + 1) if sheet.cell(row, 2).value]
-        assert len(questions) == 85
+        assert len(questions) == 80
         assert all(sheet.row_dimensions[row].height == height for row in questions)
-        rows = [row for row in range(5, sheet.max_row + 1) if "-SY-" in str(sheet.cell(row, 2).value)]
-        assert len(rows) == 31
+        rows = [row for row in range(5, sheet.max_row + 1) if "-SE-" in str(sheet.cell(row, 2).value)]
+        assert len(rows) == 26
         last_column = 12 if name == CRITERIA_SHEET else 14
         assert all(
             sheet.cell(row, column).fill.fgColor.rgb == "FFEAF3FB"
@@ -278,15 +278,15 @@ def test_unknown_result_code_fails_explicitly_without_writing(tmp_path: Path) ->
 def test_historical_grade_is_not_described_with_new_api_thresholds(tmp_path: Path) -> None:
     path = tmp_path / "historical.xlsx"
     data = Collection(collected_at=datetime.now(UTC), facts={
-        "assessment_revision": 5, "entra_blueprints_complete": True,
+        "assessment_revision": 7, "entra_blueprints_complete": True,
     })
     finding = Finding(
-        se_code="DS-SY-05", scope="in_scope", level="L2", rationale="수집 당시 평가 근거",
+        se_code="DS-SE-03", scope="in_scope", level="L2", rationale="수집 당시 평가 근거",
         next_step="수집 당시 다음 단계",
     )
     write_workbook(data, [finding], path)
     sheet = load_workbook(path)[RESULT_SHEET]
-    row = next(row for row in range(5, sheet.max_row + 1) if sheet.cell(row, 2).value == "DS-SY-05")
+    row = next(row for row in range(5, sheet.max_row + 1) if sheet.cell(row, 2).value == "DS-SE-03")
     assert "수집 당시 기준의 등급" in sheet.cell(row, 9).value
     assert sheet.cell(row, 12).value == "수집 당시 다음 단계"
     assert finding.level == "L2"
@@ -294,14 +294,14 @@ def test_historical_grade_is_not_described_with_new_api_thresholds(tmp_path: Pat
 
 def test_historical_terms_are_localized_without_rewriting_original_evidence(tmp_path: Path) -> None:
     finding = Finding(
-        se_code="OE-SY-20", scope="in_scope", level="L3", metric_value=0.8,
+        se_code="OE-SE-16", scope="in_scope", level="L3", metric_value=0.8,
         level_criterion="소유자·후원자 모두 연결 비율 80% 이상",
         rationale="소유자와 후원자가 연결됨",
     )
     path = tmp_path / "localized.xlsx"
     write_workbook(Collection(collected_at=datetime.now(UTC)), [finding], path)
     sheet = load_workbook(path)[RESULT_SHEET]
-    row = next(row for row in range(5, 90) if sheet.cell(row, 2).value == "OE-SY-20")
+    row = next(row for row in range(5, 90) if sheet.cell(row, 2).value == "OE-SE-16")
     assert "스폰서" in sheet.cell(row, 9).value and "후원자" not in sheet.cell(row, 9).value
     assert "스폰서" in sheet.cell(row, 10).value and "후원자" not in sheet.cell(row, 10).value
     assert finding.rationale == "소유자와 후원자가 연결됨"
@@ -322,7 +322,7 @@ def test_all_findings_link_to_the_matching_detail_row_and_preserve_existing_metr
     table = next(table for table in details.tables.values() if table.ref.startswith("A3:"))
     last_detail = range_boundaries(table.ref)[3]
     detail_rows = {details.cell(row, 1).value: row for row in range(4, last_detail + 1)}
-    assert len(detail_rows) == len(findings) == 31
+    assert len(detail_rows) == len(findings) == 26
     expected_metrics = {item.code: item.metrics for item in data.proposals}
     for code, row in detail_rows.items():
         if code in expected_metrics:
@@ -346,13 +346,13 @@ def test_all_findings_link_to_the_matching_detail_row_and_preserve_existing_metr
         assert link.hyperlink.target is None and link.hyperlink.id is None
         assert link.hyperlink.location == f"'7. 수집결과 근거'!A{detail_rows[code]}"
         linked += 1
-    assert linked == 31
+    assert linked == 26
 
 
 @pytest.mark.parametrize("level", ["L1", "L2", "L3", "L4", "L5", "N/A"])
 def test_result_level_display_preserves_machine_grade(tmp_path: Path, level: str) -> None:
     finding = Finding(
-        se_code="DS-SY-06", scope="partial", level=level, rationale="fixture",
+        se_code="DS-SE-04", scope="partial", level=level, rationale="fixture",
         next_step="L5 운영 증적을 지속 확인" if level == "L5" else "부족 증적 확인",
     )
     path = tmp_path / "levels.xlsx"
@@ -395,7 +395,7 @@ def test_result_level_display_preserves_machine_grade(tmp_path: Path, level: str
 @pytest.mark.parametrize(("text", "bold"), [
     ("API 충족 1 / 대상 3, 비율 33.33%", ["1", "3", "33.33%"]),
     ("비용 -1,234.50, 보존 90일, 비율 0/0개", ["-1,234.50", "90", "0/0"]),
-    ("westus2, DS-SY-07, L4, /subscriptions/123, 2026-11-09", []),
+    ("westus2, DS-SE-05, L4, /subscriptions/123, 2026-11-09", []),
     ("수집 결과 없음", []),
     (" 1\n2 ", ["1", "2"]),
     ("수집 결과: 1개\n관련리소스: resource\n판정 근거: 100%",
@@ -415,11 +415,11 @@ def test_evidence_labels_and_numbers_are_bold_and_cause_column_is_removed(tmp_pa
     path = tmp_path / "rich.xlsx"
     data = Collection(collected_at=datetime.now(UTC), facts={"deployment_inventory_complete": True})
     write_workbook(data, [Finding(
-        se_code="DS-SY-06", level="L2", scope="partial", metric_value=0,
+        se_code="DS-SE-04", level="L2", scope="partial", metric_value=0,
         rationale="실제 근거: 충족 1 / 대상 3, 비율 33.33%", reason="permission_denied",
     )], path)
     sheet = load_workbook(path, rich_text=True)[RESULT_SHEET]
-    row = next(row for row in range(5, sheet.max_row + 1) if sheet.cell(row, 2).value == "DS-SY-06")
+    row = next(row for row in range(5, sheet.max_row + 1) if sheet.cell(row, 2).value == "DS-SE-04")
     assert sheet.max_column == 14
     assert [sheet.cell(4, column).value for column in range(9, 15)] == [
         "판정", "근거", "수집결과", "다음조치", "평가 점수\n(1~5)", "검토메모",

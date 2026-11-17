@@ -19,7 +19,7 @@ AREAS = [
     ("OE", "5. Operate", "운영", "Operate", "운영 및 변경 관리"),
     ("OT", "6. Optimize", "최적화", "Optimize", "현황·비용·성과 관리, 감사 및 포트폴리오"),
 ]
-KINDS = [("PR", "Process"), ("PE", "People"), ("DA", "Data"), ("TE", "Technology"), ("SY", "System Evidence")]
+KINDS = [("PR", "Process"), ("PE", "People"), ("DA", "Data"), ("TE", "Technology"), ("SE", "System Evidence")]
 LEVEL_NAMES = ["Initial", "Managed", "Defined", "Governed", "Optimized"]
 LEVEL_DEFINITIONS = [
     "공식 절차·담당·기록이 없으며 개인 판단과 사후 대응에 의존",
@@ -54,7 +54,7 @@ class Item:
 
     @property
     def is_system(self) -> bool:
-        return self.kind == "SY"
+        return self.kind == "SE"
 
     @property
     def number(self) -> str:
@@ -147,13 +147,13 @@ def compute_scores(items: list[Item]) -> tuple[dict[str, AreaScore], float | Non
             rows = [item for item in items if item.area == prefix and item.kind == kind]
             scores = [item.score for item in rows if item.score is not None]
             area.perspectives[kind] = _average(scores)
-            if kind == "SY":
+            if kind == "SE":
                 area.system_total, area.system_scored = len(rows), len(scores)
             else:
                 area.interview_total += len(rows)
                 area.interview_scored += len(scores)
         persp = [area.perspectives[kind] for kind, _ in KINDS[:4]]
-        area.system = area.perspectives["SY"]
+        area.system = area.perspectives["SE"]
         if all(value is not None for value in persp):
             area.interview = round1(sum(persp) / 4)
         if area.interview is not None and area.system is not None:
@@ -184,6 +184,8 @@ def read_assessment(path: Path) -> Assessment:
         if not re.fullmatch(r"[A-Z]{2}-[A-Z]{2}-\d+", code):
             continue
         kind = code.split("-")[1]
+        if kind not in {key for key, _ in KINDS}:
+            raise ValueError(f"지원되지 않는 평가 코드입니다: {code}")
         score = _score(result.cell(row, 13).value)
         detail = _text(result.cell(row, 10).value)
         items.append(Item(

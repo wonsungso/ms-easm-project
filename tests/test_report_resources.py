@@ -32,10 +32,10 @@ def test_host_names_keep_custom_classification(platform: str, category: str) -> 
         detection_confidence="tag",
     )
     data = Collection(collected_at=NOW, agents=[host])
-    resources = resource_names(data, "BI-SY-15")
+    resources = resource_names(data, "BI-SE-13")
     assert len(resources) == 1 and resources[0].category == category
     assert resources[0].name == "support-host"
-    assert [row.identifier for row in resource_names(data, "OT-SY-28")] == [host.resource_id.lower()]
+    assert [row.identifier for row in resource_names(data, "OT-SE-23")] == [host.resource_id.lower()]
 
 
 def resource_rows(book: Workbook) -> tuple[Worksheet, range]:
@@ -52,7 +52,7 @@ def test_same_names_are_not_deduplicated_across_resource_ids() -> None:
             subscription_id=sid, resource_id=f"{ACCOUNT.replace(SID, sid)}/deployments/shared-name",
             account_id=ACCOUNT.replace(SID, sid), name="shared-name", model=None, version=None, format=None,
         ))
-    resources = resource_names(data, "DS-SY-06")
+    resources = resource_names(data, "DS-SE-04")
     assert len(resources) == 2
     assert all(row.name == "shared-name" and row.resource_group == "rg" for row in resources)
     assert SID in resource_summary(resources)
@@ -66,17 +66,17 @@ def test_graph_permission_names_do_not_include_unrelated_azure_agents() -> None:
         collected_at=NOW, platform="langchain", agent_id="host", agent_name="azure-host",
         detection_confidence="tag",
     )])
-    assert [row.name for row in resource_names(data, "OE-SY-21")] == ["graph-agent"]
+    assert [row.name for row in resource_names(data, "OE-SE-17")] == ["graph-agent"]
 
 
 def test_tool_lists_include_only_mcp_agents_and_preserve_missing_names() -> None:
     data = Collection(collected_at=NOW, proposal_observations=[
-        ProposalObservation(code="DS-SY-08", subject="function", kind="agent_tools",
+        ProposalObservation(code="DS-SE-06", subject="function", kind="agent_tools",
                             values={"mcp_approval_modes": []}),
-        ProposalObservation(code="DS-SY-08", subject="mcp-id", kind="agent_tools",
+        ProposalObservation(code="DS-SE-06", subject="mcp-id", kind="agent_tools",
                             values={"mcp_approval_modes": ["always"]}),
     ])
-    resources = resource_names(data, "DS-SY-08")
+    resources = resource_names(data, "DS-SE-06")
     assert len(resources) == 1 and resources[0].identifier == "mcp-id"
     assert resources[0].name is None
 
@@ -87,12 +87,12 @@ def test_full_list_keeps_every_resource_while_summary_explicitly_points_to_it(tm
         data.entra_agent_identities.append(EntraAgentIdentity(
             identity_id=f"identity-{index}", display_name=f"agent-{index}",
         ))
-    finding = Finding(se_code="OE-SY-21", level="L5", scope="in_scope", metric_value=1, rationale="verified")
+    finding = Finding(se_code="OE-SE-17", level="L5", scope="in_scope", metric_value=1, rationale="verified")
     path = tmp_path / "resources.xlsx"
     write_workbook(data, [finding], path)
     book = load_workbook(path)
     sheet = book["6. 수집 결과"]
-    row = next(row for row in range(5, 90) if sheet.cell(row, 2).value == "OE-SY-21")
+    row = next(row for row in range(5, 90) if sheet.cell(row, 2).value == "OE-SE-17")
     text = sheet.cell(row, 10).value
     assert "agent-0" in text and "외 5개" in text and "전체 8개" in text
     assert "11. 리소스 목록" not in text and len(book.sheetnames) == 10
@@ -114,7 +114,7 @@ def test_resource_names_cannot_be_excel_formulas(tmp_path: Path) -> None:
     )])
     path = tmp_path / "safe.xlsx"
     write_workbook(data, [Finding(
-        se_code="OE-SY-21", level="N/A", scope="in_scope", rationale="unknown",
+        se_code="OE-SE-17", level="N/A", scope="in_scope", rationale="unknown",
     )], path)
     sheet, rows = resource_rows(load_workbook(path))
     cell = sheet.cell(rows.start, 3)
@@ -127,7 +127,7 @@ def test_resource_name_emails_are_masked_in_summary_and_full_list(tmp_path: Path
     )])
     path = tmp_path / "masked.xlsx"
     write_workbook(data, [Finding(
-        se_code="OE-SY-21", level="N/A", scope="in_scope", rationale="unknown",
+        se_code="OE-SE-17", level="N/A", scope="in_scope", rationale="unknown",
     )], path)
     book = load_workbook(path)
     for sheet_name in ("6. 수집 결과", "7. 수집결과 근거"):

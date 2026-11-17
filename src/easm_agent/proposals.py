@@ -13,63 +13,63 @@ from easm_agent.models import (
 )
 
 TITLES = {
-    "BI-SY-15": "Agent 책임·환경·비용 메타데이터",
-    "OE-SY-23": "관리 ID·키 인증·직접 ARM 역할 구성",
-    "DS-SY-07": "AI 리소스 인바운드 경계 구성",
-    "BI-SY-13": "콘텐츠 필터 정책 연결",
-    "OE-SY-24": "AI 리소스 활성 경보 범위",
-    "DS-SY-08": "MCP 도구 필수 승인 모드",
-    "DS-SY-09": "외부 도구 HTTPS 연결 구성",
-    "OE-SY-25": "AI 경보의 작업 그룹·수신자 연결",
-    "OT-SY-31": "구독 예산·실제·예측 경보 구성",
-    "OE-SY-26": "리소스 지역·workspace 보존 구성",
-    "BI-SY-16": "AI 리소스 정책 평가 준수",
-    "BI-SY-14": "Agent 버전·호스트 런타임 식별",
+    "BI-SE-13": "Agent 책임·환경·비용 메타데이터",
+    "OE-SE-19": "관리 ID·키 인증·직접 ARM 역할 구성",
+    "DS-SE-05": "AI 리소스 인바운드 경계 구성",
+    "BI-SE-11": "콘텐츠 필터 정책 연결",
+    "OE-SE-20": "AI 리소스 활성 경보 범위",
+    "DS-SE-06": "MCP 도구 필수 승인 모드",
+    "DS-SE-07": "외부 도구 HTTPS 연결 구성",
+    "OE-SE-21": "AI 경보의 작업 그룹·수신자 연결",
+    "OT-SE-26": "구독 예산·실제·예측 경보 구성",
+    "OE-SE-22": "리소스 지역·workspace 보존 구성",
+    "BI-SE-14": "AI 리소스 정책 평가 준수",
+    "BI-SE-12": "Agent 버전·호스트 런타임 식별",
 }
 # (주 영역, 보조 영역, 근거): 영역 정의와 질문은 평가 모델 Excel '2. 질문 및 확인사항' 기준
 DOMAINS = {
-    "BI-SY-15": ("3. Build", "4. Deploy", "개발·배포 시 Agent 자산 대장과 책임 태그(Owner·Sponsor) 표준을 적용(Build 개발 표준). 배포 후 현황 점검은 Deploy·Optimize 보조"),
-    "OE-SY-23": ("5. Operate", "4. Deploy", "Agent 권한의 정기 검토·회수와 권한 현황 관리(Operate 질문)"),
-    "DS-SY-07": ("2. Design", "3. Build", "실행 환경·플랫폼과 보안 요건을 정하는 기술 설계 리뷰(Design 질문). 환경 분리는 Build 보조"),
-    "BI-SY-13": ("3. Build", "2. Design", "데이터 유출·유해 입출력 등 보안 위협을 배포 전에 점검하는 개발 및 검증(Build 질문)"),
-    "OE-SY-24": ("5. Operate", "6. Optimize", "Agent의 비정상 행동을 자동 탐지하는 수단과 장애 감시(Operate 기술)"),
-    "DS-SY-08": ("2. Design", "3. Build", "Agent 자율성 수준(조회 전용·사람 승인 후 실행·자율 실행)을 설계 단계에서 결정(Design 질문)"),
-    "DS-SY-09": ("2. Design", "5. Operate", "외부 연계(커넥터·API·MCP)의 허용 기준과 사전 승인 목록(Design 기술)"),
-    "OE-SY-25": ("5. Operate", "", "장애 접수와 보안 사고 시 즉시 중지·격리하는 긴급 절차(Operate 질문)"),
-    "OT-SY-31": ("6. Optimize", "", "Agent별·조직별 비용 산정과 자동 측정 체계(Optimize 질문)"),
-    "OE-SY-26": ("5. Operate", "2. Design", "로그·운영 기록의 보존·삭제 관리(OE-SY-22 보완). 데이터 지역 결정은 Design 보조"),
-    "BI-SY-16": ("3. Build", "4. Deploy", "개발·테스트·운영 환경 구성을 Azure Policy로 통제(Build 기술: 환경 분리). 승인되지 않은 구성의 배포 제한은 Deploy 보조"),
-    "BI-SY-14": ("3. Build", "5. Operate", "프롬프트·설정·모델·소스의 버전 관리(Build 기술). 변경 승인과 원복은 Deploy·Operate 보조"),
+    "BI-SE-13": ("3. Build", "4. Deploy", "개발·배포 시 Agent 자산 대장과 책임 태그(Owner·Sponsor) 표준을 적용(Build 개발 표준). 배포 후 현황 점검은 Deploy·Optimize 보조"),
+    "OE-SE-19": ("5. Operate", "4. Deploy", "Agent 권한의 정기 검토·회수와 권한 현황 관리(Operate 질문)"),
+    "DS-SE-05": ("2. Design", "3. Build", "실행 환경·플랫폼과 보안 요건을 정하는 기술 설계 리뷰(Design 질문). 환경 분리는 Build 보조"),
+    "BI-SE-11": ("3. Build", "2. Design", "데이터 유출·유해 입출력 등 보안 위협을 배포 전에 점검하는 개발 및 검증(Build 질문)"),
+    "OE-SE-20": ("5. Operate", "6. Optimize", "Agent의 비정상 행동을 자동 탐지하는 수단과 장애 감시(Operate 기술)"),
+    "DS-SE-06": ("2. Design", "3. Build", "Agent 자율성 수준(조회 전용·사람 승인 후 실행·자율 실행)을 설계 단계에서 결정(Design 질문)"),
+    "DS-SE-07": ("2. Design", "5. Operate", "외부 연계(커넥터·API·MCP)의 허용 기준과 사전 승인 목록(Design 기술)"),
+    "OE-SE-21": ("5. Operate", "", "장애 접수와 보안 사고 시 즉시 중지·격리하는 긴급 절차(Operate 질문)"),
+    "OT-SE-26": ("6. Optimize", "", "Agent별·조직별 비용 산정과 자동 측정 체계(Optimize 질문)"),
+    "OE-SE-22": ("5. Operate", "2. Design", "로그·운영 기록의 보존·삭제 관리(OE-SE-18 보완). 데이터 지역 결정은 Design 보조"),
+    "BI-SE-14": ("3. Build", "4. Deploy", "개발·테스트·운영 환경 구성을 Azure Policy로 통제(Build 기술: 환경 분리). 승인되지 않은 구성의 배포 제한은 Deploy 보조"),
+    "BI-SE-12": ("3. Build", "5. Operate", "프롬프트·설정·모델·소스의 버전 관리(Build 기술). 변경 승인과 원복은 Deploy·Operate 보조"),
 }
 PRODUCTS = {
-    "BI-SY-15": "Azure 리소스 태그", "OE-SY-23": "Azure Resource Graph, Azure RBAC",
-    "DS-SY-07": "Azure AI Services, App Service", "BI-SY-13": "Microsoft Foundry - 콘텐츠 필터",
-    "OE-SY-24": "Azure Monitor",
-    "DS-SY-08": "Microsoft Foundry Agent 정의", "DS-SY-09": "Microsoft Foundry Agent 정의",
-    "OE-SY-25": "Azure Monitor - 작업 그룹", "OT-SY-31": "Azure Cost Management",
-    "OE-SY-26": "Azure 리소스 위치, Log Analytics", "BI-SY-16": "Azure Policy",
-    "BI-SY-14": "Azure OpenAI 배포, App Service",
+    "BI-SE-13": "Azure 리소스 태그", "OE-SE-19": "Azure Resource Graph, Azure RBAC",
+    "DS-SE-05": "Azure AI Services, App Service", "BI-SE-11": "Microsoft Foundry - 콘텐츠 필터",
+    "OE-SE-20": "Azure Monitor",
+    "DS-SE-06": "Microsoft Foundry Agent 정의", "DS-SE-07": "Microsoft Foundry Agent 정의",
+    "OE-SE-21": "Azure Monitor - 작업 그룹", "OT-SE-26": "Azure Cost Management",
+    "OE-SE-22": "Azure 리소스 위치, Log Analytics", "BI-SE-14": "Azure Policy",
+    "BI-SE-12": "Azure OpenAI 배포, App Service",
 }
 LIMITS = {
-    "BI-SY-15": "같은 Agent의 태그·메타데이터 존재를 확인. 값의 업무 승인·인사 상태를 뜻하지 않음",
-    "OE-SY-23": "관리 ID 연결과 동일 구독의 직접 ARM 역할 할당만 확인. 타 구독·상속·Graph·데이터 평면 권한과 실제 인증 사용은 별도 검증 필요",
-    "DS-SY-07": "ARM 네트워크 설정만 확인. 실제 연결 차단, 앱 내부 우회, 송신 허용 목록 검증은 확인 불가",
-    "BI-SY-13": "정책 연결과 구성만 확인. 필터의 실제 방어 효과와 입력·출력 시험 결과는 확인 불가",
-    "OE-SY-24": "경보 규칙과 Application Insights 존재만 확인. 계측·샘플링·SLO 승인과 대응 이력은 확인 불가",
-    "DS-SY-08": "MCP require_approval 모드 기준이며 함수·내장 도구와 런타임 승인 우회 효과는 포함하지 않음",
-    "DS-SY-09": "외부 도구 URL의 HTTPS 구성 확인. 업무 승인·상대 서버 신뢰·인증 성공을 뜻하지 않음",
-    "OE-SY-25": "작업 그룹 수신자 유형 수와 경보 연결만 확인(주소 미수집). SOC 수신, 중단·복구 훈련은 확인 불가",
-    "OT-SY-31": "구독 예산의 예측 경보 설정만 확인. Agent 단위 비용 귀속과 통보 후 조치 이력은 확인 불가",
-    "OE-SY-26": "리소스 위치와 로그 보존 설정만 확인. 실제 처리 지역, 앱 메모리, 삭제 검증은 확인 불가",
-    "BI-SY-16": "정책 준수 상태만 확인. 예외 만료 승인과 편차 검토 기록은 확인 불가. 정책 준수가 앱 동작 안전을 보장하지 않음",
-    "BI-SY-14": "Foundry Agent 버전·호스트 런타임·이미지 다이제스트 확인. 소스·빌드 출처와 배포 승인은 포함하지 않음",
+    "BI-SE-13": "같은 Agent의 태그·메타데이터 존재를 확인. 값의 업무 승인·인사 상태를 뜻하지 않음",
+    "OE-SE-19": "관리 ID 연결과 동일 구독의 직접 ARM 역할 할당만 확인. 타 구독·상속·Graph·데이터 평면 권한과 실제 인증 사용은 별도 검증 필요",
+    "DS-SE-05": "ARM 네트워크 설정만 확인. 실제 연결 차단, 앱 내부 우회, 송신 허용 목록 검증은 확인 불가",
+    "BI-SE-11": "정책 연결과 구성만 확인. 필터의 실제 방어 효과와 입력·출력 시험 결과는 확인 불가",
+    "OE-SE-20": "경보 규칙과 Application Insights 존재만 확인. 계측·샘플링·SLO 승인과 대응 이력은 확인 불가",
+    "DS-SE-06": "MCP require_approval 모드 기준이며 함수·내장 도구와 런타임 승인 우회 효과는 포함하지 않음",
+    "DS-SE-07": "외부 도구 URL의 HTTPS 구성 확인. 업무 승인·상대 서버 신뢰·인증 성공을 뜻하지 않음",
+    "OE-SE-21": "작업 그룹 수신자 유형 수와 경보 연결만 확인(주소 미수집). SOC 수신, 중단·복구 훈련은 확인 불가",
+    "OT-SE-26": "구독 예산의 예측 경보 설정만 확인. Agent 단위 비용 귀속과 통보 후 조치 이력은 확인 불가",
+    "OE-SE-22": "리소스 위치와 로그 보존 설정만 확인. 실제 처리 지역, 앱 메모리, 삭제 검증은 확인 불가",
+    "BI-SE-14": "정책 준수 상태만 확인. 예외 만료 승인과 편차 검토 기록은 확인 불가. 정책 준수가 앱 동작 안전을 보장하지 않음",
+    "BI-SE-12": "Foundry Agent 버전·호스트 런타임·이미지 다이제스트 확인. 소스·빌드 출처와 배포 승인은 포함하지 않음",
 }
 ISSUE_COLLECTORS = {
-    "OE-SY-23": ("proposal_OE-SY-23",), "DS-SY-07": ("proposal_DS-SY-07",), "BI-SY-13": ("proposal_BI-SY-13", "model_deployments"),
-    "OE-SY-24": ("proposal_OE-SY-24",), "DS-SY-08": ("foundry_agents",),
-    "DS-SY-09": ("foundry_agents",), "OE-SY-25": ("proposal_OE-SY-24",), "OT-SY-31": ("budgets",),
-    "OE-SY-26": ("logs", "subscription"), "BI-SY-16": ("proposal_BI-SY-16",),
-    "BI-SY-14": ("proposal_DS-SY-07", "model_deployments"),
+    "OE-SE-19": ("proposal_OE-SE-19",), "DS-SE-05": ("proposal_DS-SE-05",), "BI-SE-11": ("proposal_BI-SE-11", "model_deployments"),
+    "OE-SE-20": ("proposal_OE-SE-20",), "DS-SE-06": ("foundry_agents",),
+    "DS-SE-07": ("foundry_agents",), "OE-SE-21": ("proposal_OE-SE-20",), "OT-SE-26": ("budgets",),
+    "OE-SE-22": ("logs", "subscription"), "BI-SE-14": ("proposal_BI-SE-14",),
+    "BI-SE-12": ("proposal_DS-SE-05", "model_deployments"),
 }
 PRIORITY = {"permission_denied": 0, "error": 1, "license_missing": 2, "feature_unavailable": 3, "not_found": 4}
 
@@ -88,7 +88,7 @@ def azure_agents(data: Collection) -> list[Any]:
 
 def build(code: str, data: Collection, tags: dict[str, Any]) -> tuple[dict[str, Any], str, bool]:
     """Return metrics, a one-line Korean summary and whether any evidence was collected."""
-    if code == "BI-SY-15":
+    if code == "BI-SE-13":
         agents = azure_agents(data)
         keys = {
             "owner": tags["owner_key"], "sponsor": tags["sponsor_key"], "env": tags["environment_key"],
@@ -104,7 +104,7 @@ def build(code: str, data: Collection, tags: dict[str, Any]) -> tuple[dict[str, 
             f"Azure Agent {len(agents)}개 중 소유자 {metrics['with_owner']}, 스폰서 {metrics['with_sponsor']}, "
             f"환경 {metrics['with_env']}, 비용센터 {metrics['with_cost_center']}개에 태그가 있음"
         ), bool(agents)
-    if code == "OE-SY-23":
+    if code == "OE-SE-19":
         rows = [item.values for item in observations(data, code)]
         accounts = [item.values for item in observations(data, code) if item.kind == "ai_account"]
         metrics = {
@@ -127,7 +127,7 @@ def build(code: str, data: Collection, tags: dict[str, Any]) -> tuple[dict[str, 
             f"구독 범위 {metrics['subscription_scope_assignments']}건), AI 계정 {metrics['accounts']}개 중 "
             f"키 인증 비활성 {metrics['accounts_local_auth_disabled']}개"
         ), bool(rows)
-    if code == "DS-SY-07":
+    if code == "DS-SE-05":
         rows = observations(data, code)
         accounts = [item.values for item in rows if item.kind == "ai_account"]
         hosts = [item.values for item in rows if item.kind == "agent_host"]
@@ -147,7 +147,7 @@ def build(code: str, data: Collection, tags: dict[str, Any]) -> tuple[dict[str, 
             f"Agent 호스트 {metrics['hosts']}개 중 HTTPS 전용 {metrics['hosts_https_only']}, VNet 통합 "
             f"{metrics['hosts_vnet_integrated']}, 비기본 IP 제한 규칙 보유 {metrics['hosts_ip_restricted']}개"
         ), bool(rows)
-    if code == "BI-SY-13":
+    if code == "BI-SE-11":
         rows = observations(data, code)
         custom = {
             item.subject.lower(): set(item.values.get("custom_policy_names") or []) for item in rows
@@ -166,14 +166,14 @@ def build(code: str, data: Collection, tags: dict[str, Any]) -> tuple[dict[str, 
             f"모델 배포 {metrics['deployments']}개 중 정책 연결 {metrics['with_policy']}개, 사용자 지정 정책 "
             f"연결 {metrics['with_custom_policy']}개 (사용자 지정 정책 {metrics['custom_policies']}개)"
         ), bool(rows)
-    if code in ("OE-SY-24", "OE-SY-25"):
-        rows = observations(data, "OE-SY-24")
+    if code in ("OE-SE-20", "OE-SE-21"):
+        rows = observations(data, "OE-SE-20")
         alerts = [item.values for item in rows if item.values.get("kind") in (
             "metricalerts", "scheduledqueryrules", "activitylogalerts",
         )]
         groups = [item.values for item in rows if item.values.get("kind") == "actiongroups"]
         components = [item.values for item in rows if item.values.get("kind") == "components"]
-        if code == "OE-SY-24":
+        if code == "OE-SE-20":
             metrics = {
                 "alert_rules": len(alerts), "enabled": count([row["enabled"] for row in alerts]),
                 "targeting_ai": count([row["targets_ai"] for row in alerts]),
@@ -197,7 +197,7 @@ def build(code: str, data: Collection, tags: dict[str, Any]) -> tuple[dict[str, 
             f"작업 그룹 {metrics['action_groups']}개(수신자 보유 {metrics['with_receivers']}개, 유형 "
             f"{', '.join(sorted(types)) or '없음'}), 작업 그룹에 연결된 경보 {metrics['alerts_with_action_group']}개"
         ), bool(rows)
-    if code == "DS-SY-08":
+    if code == "DS-SE-06":
         agents = azure_agents(data)
         rows = observations(data, code)
         types = Counter(tool for item in rows for tool in item.values["tool_types"])
@@ -211,7 +211,7 @@ def build(code: str, data: Collection, tags: dict[str, Any]) -> tuple[dict[str, 
             f"{', '.join(f'{key} {value}' for key, value in sorted(types.items())) or '없음'}; "
             f"MCP 승인 모드 {', '.join(f'{key} {value}' for key, value in sorted(approvals.items())) or '해당 없음'})"
         ), bool(agents)
-    if code == "DS-SY-09":
+    if code == "DS-SE-07":
         rows = observations(data, code)
         hosts = sorted({host for item in rows for host in item.values["hosts"]})
         metrics = {"agents_with_endpoints": len(rows), "hosts": hosts}
@@ -219,7 +219,7 @@ def build(code: str, data: Collection, tags: dict[str, Any]) -> tuple[dict[str, 
             f"외부 도구 엔드포인트를 가진 Agent {len(rows)}개, 호스트 {len(hosts)}종"
             + (f" ({', '.join(hosts)})" if hosts else "")
         ), bool(azure_agents(data))
-    if code == "OT-SY-31":
+    if code == "OT-SE-26":
         budgets = data.budgets
         metrics = {
             "subscriptions": len(data.subscriptions), "budgets": len(budgets),
@@ -230,7 +230,7 @@ def build(code: str, data: Collection, tags: dict[str, Any]) -> tuple[dict[str, 
             f"구독 {metrics['subscriptions']}개에서 예산 {metrics['budgets']}개 (경보 설정 {metrics['with_alerts']}개, "
             f"예측 경보 {metrics['with_forecast_alert']}개)"
         ), bool(data.facts.get("budget_complete_subscriptions"))
-    if code == "OE-SY-26":
+    if code == "OE-SE-22":
         interesting = (
             "microsoft.cognitiveservices/accounts", "microsoft.web/sites", "microsoft.app/containerapps",
             "microsoft.operationalinsights/workspaces",
@@ -242,7 +242,7 @@ def build(code: str, data: Collection, tags: dict[str, Any]) -> tuple[dict[str, 
         retention = sorted({
             entry.retention_days for entry in data.logs if entry.retention_days is not None
         } | {
-            item.values["retention_days"] for item in observations(data, "OE-SY-24")
+            item.values["retention_days"] for item in observations(data, "OE-SE-20")
             if item.values.get("retention_days") is not None
         })
         metrics = {"regions": locations, "retention_days": retention}
@@ -250,7 +250,7 @@ def build(code: str, data: Collection, tags: dict[str, Any]) -> tuple[dict[str, 
             f"사용 지역 {len(locations)}곳({', '.join(locations) or '없음'}), 로그·Application Insights 보존 "
             f"설정값 {', '.join(str(value) + '일' for value in retention) or '확인 자료 없음'}"
         ), bool(locations)
-    if code == "BI-SY-16":
+    if code == "BI-SE-14":
         rows = [item for item in observations(data, code) if item.kind == "policy_state"]
         states: Counter[str] = Counter()
         for item in rows:
@@ -262,7 +262,7 @@ def build(code: str, data: Collection, tags: dict[str, Any]) -> tuple[dict[str, 
             "AI 관련 리소스 정책 준수 상태: "
             + (", ".join(f"{key} {value}개" for key, value in sorted(states.items())) or "평가 결과 0건(할당 없음 또는 평가 전)")
         ), bool(data.facts.get("proposal_policy_subscriptions"))
-    rows = observations(data, "BI-SY-14")
+    rows = observations(data, "BI-SE-12")
     options = Counter(item.version_upgrade_option or "unknown" for item in data.deployments)
     runtimes = [item.values.get("runtime") for item in rows if item.values.get("runtime")]
     images = [item.values for item in rows if item.values.get("image")]

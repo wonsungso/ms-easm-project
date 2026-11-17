@@ -128,7 +128,7 @@ class LangChainCollector:
                     ] if value
                 ],
                 detection_confidence="tag" if tagged or custom else "name_heuristic",
-                evidence_refs=self.store.refs(sid), se_codes=["OT-SY-28", "OT-SY-29", "OE-SY-22"],
+                evidence_refs=self.store.refs(sid), se_codes=["OT-SE-23", "OT-SE-24", "OE-SE-18"],
             ).mark_unknowns()
             record.unavailable("tools", "feature_unavailable", "호스팅 메타데이터로 실제 Agent 도구는 확인 불가")
             record.unavailable(

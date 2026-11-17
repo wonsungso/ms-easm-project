@@ -10,9 +10,9 @@ from pathlib import Path, PureWindowsPath
 from typing import Any
 from urllib.parse import unquote
 
-from easm_agent.assessment_codes import ASSESSMENT_REVISION, migrate_revision_4_codes
+from easm_agent.assessment_codes import ASSESSMENT_REVISION
 from easm_agent.azure import redact
-from easm_agent.models import Collection, Finding
+from easm_agent.models import Collection, Finding, load_criteria
 from easm_agent.proposals import azure_agents
 from easm_agent.provenance import digest
 from easm_agent.report_excel import write_workbook
@@ -98,55 +98,11 @@ def load_result(output: Path) -> dict[str, Any]:
     if result.get("schema_version") != 1:
         raise ValueError("지원되지 않는 결과 스키마입니다.")
     revision = result["collection"].get("facts", {}).get("assessment_revision")
-    if revision not in (None, 1, 2, 3, 4, ASSESSMENT_REVISION):
+    if revision not in (None, ASSESSMENT_REVISION):
         raise ValueError(f"지원되지 않는 심사 기준 버전입니다: {revision}")
-    if revision not in (4, ASSESSMENT_REVISION):
-        collection = result["collection"]
-        legacy_audit = revision != 3 and any(
-            row.get("se_code") == "OE-SY-16" for row in result.get("findings", [])
-        )
-        numbering = {
-            "BI-SY-12": "BI-SY-11", "BI-SY-13": "BI-SY-12", "BI-SY-14": "BI-SY-13",
-        }
-        if revision != 3:
-            numbering.update({
-                "OE-SY-17": "OE-SY-16", "OE-SY-18": "OE-SY-17",
-                "OE-SY-19": "OE-SY-18", "OE-SY-20": "OE-SY-19",
-            })
-        if legacy_audit:
-            numbering["OE-SY-16"] = "OE-SY-15"
-        result["findings"] = [
-            {**row, "se_code": numbering.get(row["se_code"], row["se_code"])}
-            for row in result.get("findings", [])
-            if row["se_code"] != "BI-SY-11" and not (legacy_audit and row["se_code"] == "OE-SY-15")
-        ]
-        for field in ("agent_ca_policies", "risky_agents"):
-            collection.pop(field, None)
-        collection["issues"] = [
-            row for row in collection.get("issues", [])
-            if row.get("collector") not in ("conditional_access", "risky_agents", "foundry_red_teams")
-        ]
-        for agent in collection.get("agents", []):
-            agent["se_codes"] = [
-                numbering.get(code, code) for code in agent.get("se_codes", [])
-                if code != "BI-SY-11" and not (legacy_audit and code == "OE-SY-15")
-            ]
-        for field in ("proposals", "proposal_observations"):
-            collection[field] = [row for row in collection.get(field, []) if row["code"] != "BI-SY-11"]
-            for row in collection[field]:
-                row["code"] = numbering.get(row["code"], row["code"])
-        for row in collection.get("issues", []):
-            name = row["collector"].removeprefix("proposal_")
-            if name in numbering and row["collector"].startswith("proposal_"):
-                row["collector"] = "proposal_" + numbering[name]
-        facts = collection.setdefault("facts", {})
-        if "proposal_incomplete" in facts:
-            facts["proposal_incomplete"] = [
-                numbering.get(code, code) for code in facts["proposal_incomplete"] if code != "BI-SY-11"
-            ]
-        facts["assessment_revision"] = 4
-    if revision != ASSESSMENT_REVISION:
-        migrate_revision_4_codes(result)
+    codes = load_criteria()["items"]
+    if any(row.get("se_code") not in codes for row in result.get("findings", [])):
+        raise ValueError("알 수 없는 System Evidence 코드가 있습니다.")
     # Administrator reads from retired sources are not part of the current evidence contract.
     collection = result["collection"]
     if collection.get("admin_evidence"):

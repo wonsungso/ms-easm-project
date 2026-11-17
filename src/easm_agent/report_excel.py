@@ -84,16 +84,16 @@ SE_AREAS = {
     "DP": "4. Deploy", "OE": "5. Operate", "OT": "6. Optimize",
 }
 SE_NAMES = {
-    "DS-SY-06": "모델 배포 버전·업데이트 구성",
-    "BI-SY-11": "Foundry 프로젝트 평가 실행 이력",
-    "BI-SY-12": "AI 리소스 보안 권고 상태",
-    "OE-SY-22": "Agent 리소스 실행 로그 연결",
-    "OT-SY-28": "AI 리소스 사용량 관측 범위",
-    "OT-SY-29": "AI 비용의 단일 Agent 귀속",
-    "DS-SY-05": "Agent ID의 Blueprint 연결",
-    "DP-SY-19": "Agent ID 부여율(Azure Agent 기준)",
-    "OE-SY-20": "소유자·스폰서 미지정 Agent",
-    "OE-SY-21": "Agent 부여 권한·과다 권한",
+    "DS-SE-04": "모델 배포 버전·업데이트 구성",
+    "BI-SE-09": "Foundry 프로젝트 평가 실행 이력",
+    "BI-SE-10": "AI 리소스 보안 권고 상태",
+    "OE-SE-18": "Agent 리소스 실행 로그 연결",
+    "OT-SE-23": "AI 리소스 사용량 관측 범위",
+    "OT-SE-24": "AI 비용의 단일 Agent 귀속",
+    "DS-SE-03": "Agent ID의 Blueprint 연결",
+    "DP-SE-15": "Agent ID 부여율(Azure Agent 기준)",
+    "OE-SE-16": "소유자·스폰서 미지정 Agent",
+    "OE-SE-17": "Agent 부여 권한·과다 권한",
     **TITLES,
 }
 FIELD_NAMES = {
@@ -167,7 +167,7 @@ def metric(finding: Finding) -> str:
     value = finding.metric_value
     if finding.se_code in RATIOS:
         return f"{value * 100:.2f}%"
-    return f"{value:g}" + ("일" if finding.se_code == "OE-SY-22" else "건")
+    return f"{value:g}" + ("일" if finding.se_code == "OE-SE-18" else "건")
 
 
 def _value(value: Any) -> Any:
@@ -330,41 +330,37 @@ def collection_summary(data: Collection, finding: Finding) -> tuple[str, str | N
         return proposal.status, proposal.observation
     code = finding.se_code
     summary = None
-    if code == "DS-SY-06" and (data.deployments or data.facts.get("deployment_inventory_complete")):
+    if code == "DS-SE-04" and (data.deployments or data.facts.get("deployment_inventory_complete")):
         summary = f"모델 배포 {len(data.deployments)}개"
-    elif code == "BI-SY-11" and (data.evaluations or data.facts.get("evaluation_complete_projects")):
+    elif code == "BI-SE-09" and (data.evaluations or data.facts.get("evaluation_complete_projects")):
         summary = f"평가 실행 {len(data.evaluations)}건, Azure Agent {len(agents)}개"
-    elif code == "BI-SY-12" and (data.security or data.secure_scores):
+    elif code == "BI-SE-10" and (data.security or data.secure_scores):
         summary = f"보안 권고 {len(data.security)}건, 구독 보안 점수 {len(data.secure_scores)}건"
-    elif code == "OE-SY-22" and data.logs:
+    elif code == "OE-SE-18" and data.logs:
         retention = [item.retention_days for item in data.logs if item.retention_days is not None]
         scope = "Agent 실행 로그" if data.facts.get("audit_log_scope") == "agent_resource_execution" else "진단 로그"
         summary = (
             f"{scope} 대상 {len(data.logs)}개, 활성 {sum(item.enabled for item in data.logs)}개"
             + (f", 확인한 최소 보존 {min(retention)}일" if retention else ", 보존기간 미확보")
         )
-    elif code == "OT-SY-28" and agents:
+    elif code == "OT-SE-23" and agents:
         summary = f"Azure Agent {len(agents)}개 중 최근 사용일 확인 {sum(item.last_used_at is not None for item in agents)}개"
-    elif code == "OT-SY-29" and (data.costs or data.budgets):
+    elif code == "OT-SE-24" and (data.costs or data.budgets):
         summary = f"비용 행 {len(data.costs)}건, 예산 {len(data.budgets)}개"
-    elif code in ("DM-SY-01", "DM-SY-03", "DP-SY-17", "DP-SY-18") and data.agent365_packages:
-        summary = f"Agent 365 등록 패키지 {len(data.agent365_packages)}개"
-    elif code == "OT-SY-27" and data.agent365_packages:
-        summary = f"Azure Agent {len(agents)}개, Agent 365 등록 패키지 {len(data.agent365_packages)}개"
-    elif code in ("DM-SY-02", "DS-SY-04", "BI-SY-10"):
+    elif code in ("DM-SE-01", "DS-SE-02", "BI-SE-08"):
         reads = [row for row in data.admin_evidence if row.source == "powerplatform.environments" and row.completed]
         if reads:
             summary = f"Power Platform 환경 {len(reads[0].environments)}개"
-    elif code == "OT-SY-30" and data.defender_plans:
+    elif code == "OT-SE-25" and data.defender_plans:
         summary = (
             f"Defender 플랜 {len(data.defender_plans)}건, AI 위협 방지 Standard "
             f"{sum(row.plan == 'AI' and row.tier == 'Standard' for row in data.defender_plans)}개 구독, "
             f"민감 데이터 검색 활성 "
             f"{sum(row.plan == 'CloudPosture' and row.extensions.get('SensitiveDataDiscovery') is True for row in data.defender_plans)}개 구독"
         )
-    elif code == "DS-SY-05" and data.facts.get("entra_blueprints_complete"):
+    elif code == "DS-SE-03" and data.facts.get("entra_blueprints_complete"):
         summary = f"Blueprint {len(data.entra_blueprints)}개"
-    elif code == "OE-SY-21" and (
+    elif code == "OE-SE-17" and (
         data.entra_agent_identities or data.facts.get("entra_agents_complete")
     ):
         identities = data.entra_agent_identities
@@ -372,7 +368,7 @@ def collection_summary(data: Collection, finding: Finding) -> tuple[str, str | N
             f"Entra Agent ID {len(identities)}개, 수집 앱 역할 이름 {sum(len(row.app_roles) for row in identities)}건, "
             f"쓰기·전체제어 패턴 해당 {sum(len(row.overprivileged_roles) for row in identities)}건"
         )
-    elif code == "OE-SY-20" and (
+    elif code == "OE-SE-16" and (
         data.entra_agent_identities or data.facts.get("entra_agents_complete")
     ):
         identities = data.entra_agent_identities
@@ -385,7 +381,7 @@ def collection_summary(data: Collection, finding: Finding) -> tuple[str, str | N
                 f" (소유자 수 미확인 {sum(row.owner_count is None for row in identities)}개, "
                 f"스폰서 수 미확인 {sum(row.sponsor_count is None for row in identities)}개)"
             )
-    elif code == "DP-SY-19" and (
+    elif code == "DP-SE-15" and (
         data.entra_agent_identities or data.facts.get("entra_agents_complete")
     ):
         summary = f"Graph Agent ID {len(data.entra_agent_identities)}개, Azure Agent {len(agents)}개"
@@ -473,7 +469,7 @@ def _scope_summary(
 ) -> None:
     system_codes = {
         sheet.cell(row, 2).value for row in range(5, sheet.max_row + 1)
-        if "-SY-" in str(sheet.cell(row, 2).value)
+        if "-SE-" in str(sheet.cell(row, 2).value)
     }
     graded = {item.se_code for item in findings if item.level != "N/A" and item.se_code not in evidence_only_codes}
     pending = {item.se_code for item in findings if item.se_code not in graded}
@@ -591,10 +587,10 @@ def _result_sheet(
         finding = by_code.get(str(code))
         if finding is None:
             values = (
-                "수집하지 않음" if "-SY-" in str(code) else "인터뷰 필요",
+                "수집하지 않음" if "-SE-" in str(code) else "인터뷰 필요",
                 None, None,
                 "자동 수집 결과 없음 또는 자동 수집 범위 밖 - 수동 확인 필요"
-                if "-SY-" in str(code) else "인터뷰를 통해 확인하는 수동 심사 항목",
+                if "-SE-" in str(code) else "인터뷰를 통해 확인하는 수동 심사 항목",
                 None, None, None, None,
             )
         else:

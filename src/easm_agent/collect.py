@@ -16,7 +16,6 @@ from easm_agent.azure import (
     verify_identity,
 )
 from easm_agent.collect_admin_evidence import read_admin_evidence
-from easm_agent.collect_agent365 import Agent365Collector, crosscheck_agent365
 from easm_agent.collect_entra import EntraCollector
 from easm_agent.collect_foundry import FoundryCollector
 from easm_agent.collect_inventory import (
@@ -156,12 +155,6 @@ def collect(settings: Settings, credential: Credential, now: datetime | None = N
         result.facts["inventory_complete"]
         and not any(item.collector in ("foundry_agents", "foundry_projects") for item in result.issues)
     )
-    registry = ReaderHTTP(credential)
-    try:
-        merge(result, Agent365Collector(registry, instant, store).discover())
-    finally:
-        registry.close()
-    result.agent365_crosschecks = crosscheck_agent365(result, criteria)
     result.facts["admin_evidence_requested"] = bool(settings.admin_evidence_files)
     for path in settings.admin_evidence_files:
         incoming = read_admin_evidence(path, settings.tenant_id, instant, store)

@@ -37,7 +37,7 @@ def test_ip_boundaries_use_unmatched_action_and_exclude_allow_all(rules: list, d
     result = Collection(collected_at=NOW)
     with patch.object(collector, "targets", return_value=([], [{"id": HOST, "type": "microsoft.web/sites"}])):
         collector.network(SID, result)
-    row = next(row for row in result.proposal_observations if row.code == "DS-SY-07")
+    row = next(row for row in result.proposal_observations if row.code == "DS-SE-05")
     assert row.values["ip_default_deny"] is expected
 
 
