@@ -23,7 +23,7 @@ from easm_agent.paths import state_path
 from easm_agent.report import RUN_PATTERN, load_result
 from scripts.setup_account import AzureCLI
 
-WORKSPACE = "/workspaces/ms-internal-easm-project"
+WORKSPACE = "/workspaces/ms-easm-project"
 
 
 def gh(*arguments: str, allowed: tuple[int, ...] = (0,)) -> subprocess.CompletedProcess[str]:
@@ -244,3 +244,4 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
