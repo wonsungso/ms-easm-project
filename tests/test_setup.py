@@ -254,8 +254,9 @@ def test_login_is_device_code_and_does_not_change_parent_environment(config_file
 
 
 @pytest.mark.parametrize("supplied_principal", [None, PRINCIPAL, "dddddddd-dddd-4ddd-8ddd-dddddddddddd"])
+@pytest.mark.parametrize("agent365", [False, True])
 def test_apply_reuses_identity_and_persists_only_allowlisted_metadata(
-    config_file: Path, tmp_path: Path, supplied_principal: str | None,
+    config_file: Path, tmp_path: Path, supplied_principal: str | None, agent365: bool,
 ) -> None:
     config = json.loads(config_file.read_text(encoding="utf-8"))
     config["principal_id"] = supplied_principal
@@ -289,9 +290,13 @@ def test_apply_reuses_identity_and_persists_only_allowlisted_metadata(
     cli.run.side_effect = run
     with patch.object(setup, "AzureCLI", return_value=cli), patch.object(
         setup, "ensure_assignment",
-    ) as assign, patch.object(setup, "ensure_graph_roles", return_value=list(setup.ENTRA_GRAPH_ROLES)) as graph:
+    ) as assign, patch.object(
+        setup, "ensure_graph_roles",
+        side_effect=lambda _cli, _principal, roles=setup.ENTRA_GRAPH_ROLES: list(roles),
+    ) as graph:
         assert setup.main([
             "--config-file", str(config_file), "--result-file", str(output), "--apply",
+            *(["--agent365-reader"] if agent365 else []),
         ]) == 0
     text = output.read_text(encoding="utf-8")
     payload = json.loads(text)
@@ -300,10 +305,24 @@ def test_apply_reuses_identity_and_persists_only_allowlisted_metadata(
     assert payload["verified_assignments"][0]["role"] == "Reader"
     assert payload["diagnostic_preflight"] == "not_run"
     assert assign.call_count == len(setup.DEFAULT_ROLES) + 1
-    graph.assert_called_once_with(cli, PRINCIPAL)
-    assert payload["verified_graph_roles"] == list(setup.ENTRA_GRAPH_ROLES)
+    graph.assert_any_call(cli, PRINCIPAL)
+    assert graph.call_count == (2 if agent365 else 1)
+    if agent365:
+        graph.assert_any_call(cli, PRINCIPAL, ("CopilotPackages.Read.All",))
+    expected_roles = [*setup.ENTRA_GRAPH_ROLES, *(["CopilotPackages.Read.All"] if agent365 else [])]
+    assert payload["verified_graph_roles"] == expected_roles
     assert "must-not-be-persisted" not in text
     assert "passwordCredentials" not in text
+
+
+def test_agent365_reader_is_explicit_in_dry_run_and_rejected_during_verify(
+    config_file: Path, capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert setup.main(["--config-file", str(config_file), "--dry-run", "--agent365-reader"]) == 0
+    plan = json.loads(capsys.readouterr().out.split("\n", 1)[1])
+    assert plan["graph_application_roles"] == [*setup.ENTRA_GRAPH_ROLES, "CopilotPackages.Read.All"]
+    with patch.object(setup, "run_verify", side_effect=AssertionError("must not authenticate")):
+        assert setup.main(["--config-file", str(config_file), "--verify", "--agent365-reader"]) == 1
 
 
 def test_failed_apply_does_not_replace_previous_result(config_file: Path, tmp_path: Path) -> None:
@@ -581,6 +600,32 @@ def test_bash_plan_runs_end_to_end_without_azure(config_file: Path, tmp_path: Pa
     assert payload["account_name"] == "diagnostic"
     assert payload["subscription_roles"] == [*setup.DEFAULT_ROLES, "Monitoring Reader"]
     assert not output.exists()
+
+
+def test_repository_setup_uses_an_isolated_absolute_state_directory(
+    config_file: Path, tmp_path: Path,
+) -> None:
+    script = Path(__file__).parents[1] / "scripts" / "setup.sh"
+    isolated = tmp_path / "isolated"
+    isolated.mkdir()
+    shutil.copyfile(config_file, isolated / "setup.json")
+    environment = {
+        **os.environ, "EASM_AGENT_PYTHON": sys.executable, "PYTHONIOENCODING": "utf-8",
+        "EASM_AGENT_STATE_DIR": str(isolated),
+    }
+    result = subprocess.run(
+        [bash_executable(), str(script), "plan"], capture_output=True, text=True,
+        encoding="utf-8", env=environment, check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout.split("\n", 1)[1])["account_name"] == "diagnostic"
+    environment["EASM_AGENT_STATE_DIR"] = "relative-state"
+    invalid = subprocess.run(
+        [bash_executable(), str(script), "plan"], capture_output=True, text=True,
+        encoding="utf-8", env=environment, check=False,
+    )
+    assert invalid.returncode != 0
+    assert "absolute path" in invalid.stderr
 
 
 def test_customer_handoff_plan_runs_without_repository_or_installed_collector(

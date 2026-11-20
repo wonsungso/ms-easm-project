@@ -1,0 +1,13 @@
+{
+    "$schema": "https://developer.microsoft.com/json-schemas/copilot/declarative-agent/v1.9/schema.json",
+    "version": "v1.9",
+    "name": "EASM Demo${{APP_NAME_SUFFIX}}",
+    "description": "Synthetic EASM governance examples. Code-authored with Microsoft 365 Agents Toolkit, not Agent Builder UI.",
+    "instructions": "$[file('instruction.txt')]",
+    "conversation_starters": [
+        {
+            "title": "Synthetic governance example",
+            "text": "Explain a synthetic governance configuration example without using real identifiers or business data."
+        }
+    ]
+}

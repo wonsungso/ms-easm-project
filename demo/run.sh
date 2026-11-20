@@ -25,6 +25,7 @@ fi
 "$python_command" -m demo.manage validate --prepare-providers
 "$python_command" -m demo.manage deploy --apply
 "$python_command" -m demo.agents --apply
+"$python_command" -m demo.manage saas --apply
 if [[ "$collect" == true ]]; then
   set +e
   "$python_command" -m demo.manage collect

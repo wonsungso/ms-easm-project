@@ -63,8 +63,14 @@ def configure(
     cli: AzureCLI, arm: AdminARM, graph: GraphCertificates, setup: dict, lab: dict,
     host: dict, allowed_oids: list[str],
 ) -> dict:
+    if not allowed_oids:
+        raise ValueError("허용할 사용자 Object ID가 필요합니다.")
     sid = host["id"].split("/")[2]
     group = host["id"].split("/")[4]
+    cli.run(
+        "webapp", "config", "appsettings", "set", "--name", host["name"], "--resource-group", group,
+        "--subscription", sid, "--settings", "EASMAGENT_CHAT_ALLOWED_OIDS=",
+    )
     identity_id = (
         f"/subscriptions/{sid}/resourceGroups/{group}/providers/"
         f"Microsoft.ManagedIdentity/userAssignedIdentities/{host['name']}-login"
@@ -123,14 +129,33 @@ def configure(
         "webapp", "config", "appsettings", "set", "--name", host["name"], "--resource-group", group,
         "--subscription", sid, "--settings",
         "OVERRIDE_USE_MI_FIC_ASSERTION_CLIENTID=" + identity["properties"]["clientId"],
-        "EASMAGENT_CHAT_ALLOWED_OIDS=" + ",".join(allowed_oids),
         "--slot-settings", "OVERRIDE_USE_MI_FIC_ASSERTION_CLIENTID=" + identity["properties"]["clientId"],
     )
     settings = auth_settings(setup["tenant_id"], app_id, allowed_oids)
     arm.request("PUT", host["id"] + "/config/authsettingsV2", "2024-11-01", settings)
     actual = arm.request("GET", host["id"] + "/config/authsettingsV2", "2024-11-01")
-    if actual["properties"]["globalValidation"]["requireAuthentication"] is not True:
-        raise RuntimeError("App Service의 인증 필수 설정이 반영되지 않았습니다.")
+    try:
+        properties = actual["properties"]
+        validation = properties["globalValidation"]
+        provider = properties["identityProviders"]["azureActiveDirectory"]
+        accepted = provider["validation"]["defaultAuthorizationPolicy"]["allowedPrincipals"]["identities"]
+        verified = (
+            properties["platform"]["enabled"] is True
+            and validation["requireAuthentication"] is True
+            and validation["unauthenticatedClientAction"] == "RedirectToLoginPage"
+            and validation["excludedPaths"] == ["/health"]
+            and provider["enabled"] is True
+            and provider["registration"]["clientId"] == app_id
+            and set(accepted) == set(allowed_oids)
+        )
+    except (KeyError, TypeError):
+        verified = False
+    if not verified:
+        raise RuntimeError("App Service의 인증 설정과 허용 사용자가 확인되지 않았습니다.")
+    cli.run(
+        "webapp", "config", "appsettings", "set", "--name", host["name"], "--resource-group", group,
+        "--subscription", sid, "--settings", "EASMAGENT_CHAT_ALLOWED_OIDS=" + ",".join(allowed_oids),
+    )
     return {"client_id": app_id, "identity_id": identity_id, "secret_created": False,
             "allowed_user_count": len(allowed_oids), "authentication_required": True}
 

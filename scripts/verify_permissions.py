@@ -26,6 +26,7 @@ from easm_agent.azure import (
     verify_identity,
 )
 from easm_agent.azure import time as time
+from easm_agent.paths import state_path
 
 ARM = "https://management.azure.com"
 ARM_SCOPE = ARM + "/.default"
@@ -212,8 +213,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--subscriptions", nargs="+", type=uuid_arg)
     parser.add_argument("--projects-file", type=Path)
     parser.add_argument("--foundry-profile", choices=["agents_v1", "classic_v1"], default="agents_v1")
-    parser.add_argument("--rbac-path", type=Path, default=Path(".easm-agent") / "permissions.md")
-    parser.add_argument("--output", type=Path, default=Path(".easm-agent") / "permissions.json")
+    parser.add_argument("--rbac-path", type=Path, default=state_path(Path("."), "permissions.md"))
+    parser.add_argument("--output", type=Path, default=state_path(Path("."), "permissions.json"))
     args = parser.parse_args(argv)
     from azure.core.exceptions import ClientAuthenticationError
     from azure.identity import DefaultAzureCredential

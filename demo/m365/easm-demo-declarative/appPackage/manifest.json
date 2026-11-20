@@ -1,0 +1,37 @@
+{
+    "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.30/MicrosoftTeams.schema.json",
+    "manifestVersion": "1.30",
+    "version": "1.0.0",
+    "id": "${{TEAMS_APP_ID}}",
+    "developer": {
+        "name": "${{PUBLISHER_NAME}}",
+        "websiteUrl": "${{PUBLISHER_WEBSITE}}",
+        "privacyUrl": "${{PUBLISHER_PRIVACY}}",
+        "termsOfUseUrl": "${{PUBLISHER_TERMS}}"
+    },
+    "icons": {
+        "color": "color.png",
+        "outline": "outline.png"
+    },
+    "name": {
+        "short": "EASM Demo${{APP_NAME_SUFFIX}}",
+        "full": "EASM Synthetic Governance Demo"
+    },
+    "description": {
+        "short": "Synthetic EASM governance examples",
+        "full": "Code-first declarative agent for synthetic EASM governance examples. No business data, external knowledge, tools or connectors."
+    },
+    "accentColor": "#FFFFFF",
+    "supportsChannelFeatures": "tier1",
+    "composeExtensions": [],
+    "permissions": [],
+    "copilotAgents": {
+        "declarativeAgents": [            
+            {
+                "id": "declarativeAgent",
+                "file": "declarativeAgent.json"
+            }
+        ]
+    },
+    "validDomains": []
+}

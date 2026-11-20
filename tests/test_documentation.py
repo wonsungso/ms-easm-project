@@ -118,8 +118,8 @@ def test_screenshot_notes_match_the_documented_example() -> None:
     step3 = readme.split("## Step 3.", 1)[1].split("## Step 4.", 1)[0]
     for image in ("10-reader-role.png", "17-foundry-reader.png", "12-entra-consent.png"):
         assert f"(docs/imgs/{image})" in step3
-    assert "https://github.com/wonsungso/ms-internal-easm-project/raw/refs/heads/main/docs/downloads/customer-setup.zip" in step3
     assert "[**customer-setup.zip**](docs/downloads/customer-setup.zip)" in step3
+    assert (root / "docs" / "downloads" / "customer-setup.zip").is_file()
     assert "python3 -m zipfile -e customer-setup.zip customer-setup" in step3
     assert "bash setup.sh login" in step3 and "bash setup.sh apply" in step3
     assert "bash scripts/setup.sh login" not in step3
@@ -143,7 +143,7 @@ def test_setup_success_example_masks_identifiers_and_covers_all_grants() -> None
 def test_ms_collection_step_uses_existing_certificate_without_shell_variable_dependency() -> None:
     readme = (Path(__file__).parents[1] / "README.md").read_text(encoding="utf-8")
     step4 = readme.split("## Step 4.", 1)[1].split("## Step 5.", 1)[0]
-    assert "cd /workspaces/ms-internal-easm-project" in step4
+    assert "저장소 루트" in step4
     assert "Step 1에서 사용한 동일 Codespaces 터미널" in step4
     assert 'AZURE_CLIENT_CERTIFICATE_PATH="$(python3 scripts/certificate_path.py)" &&' in step4
     assert "read -r -p '위 인증서의 전체 경로: '" not in step4

@@ -12,6 +12,27 @@ retention_days: 90
 after_run: retain
 auto_grant_needed_read_roles: true
 collect_all_subscriptions: true
+# Agent 365 라이선스와 별도 승인된 CopilotPackages.Read.All 동의가 있을 때만 활성화한다.
+agent365_registry: false
+# 새 테넌트 - 기존 인증 - Dataverse 환경을 준비한 후 명시적으로 입력한다.
+# E7 보유만으로 Studio 용량/Dataverse 준비를 추론하지 않는다.
+saas:
+  enabled: true
+  authoring_method: code_first
+  tenant_id: ""
+  environment_id: ""
+  publisher:
+    name: ""
+    website: ""
+    privacy: ""
+    terms: ""
+    studio_prefix: ""
+  licenses_confirmed:
+    m365_copilot: false
+    copilot_studio: false
+    existing_capacity: false
+  msagent_executable: ""
+  timeout_seconds: 600
 # 허용 모델(주 모델)에 없는 모델 - 모델 허용 비율을 낮춰 평가 결과를 다양하게 만든다
 extra_models:
   - deploymentName: governance-extra-model

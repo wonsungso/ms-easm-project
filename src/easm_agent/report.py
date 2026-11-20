@@ -15,6 +15,7 @@ from easm_agent.azure import redact
 from easm_agent.models import Collection, Finding, load_criteria
 from easm_agent.proposals import azure_agents
 from easm_agent.provenance import digest
+from easm_agent.report_backdata import metrics_by_key
 from easm_agent.report_excel import write_workbook
 from easm_agent.report_pptx import DEFAULT_CUSTOMER, DeckContext, write_presentation
 
@@ -291,10 +292,11 @@ def write_reports(
     staging = output / f".report.{uuid.uuid4().hex}.pending.xlsx"
     deck_staging = output / f".report.{uuid.uuid4().hex}.pending.pptx"
     try:
-        write_workbook(normalized, rows, staging, mode, result["provenance"]["references"])
+        write_workbook(normalized, rows, staging)
         write_presentation(staging, deck_staging, DeckContext(
             customer=customer, collected_at=normalized.collected_at,
             subscriptions=len(normalized.subscriptions), agents=len(azure_agents(normalized)),
+            metrics=metrics_by_key(normalized, rows, mode), collection=normalized,
         ))
         payload = staging.read_bytes()
         deck_payload = deck_staging.read_bytes()

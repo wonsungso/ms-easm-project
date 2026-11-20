@@ -84,14 +84,15 @@ class SignalCollector:
         )
         return ids
 
-    def costs(self, sid: str, result: Collection) -> None:
+    def costs(self, sid: str, result: Collection, *, start: datetime | None = None) -> None:
         ids = sorted(self.ai_ids(sid))
         if not ids:
             raise AccessError("not_found", "비용 분모에 포함할 Azure AI/자체 Agent 리소스가 없음")
+        previous_count = len(result.costs)
         body = {
             "type": "Usage", "timeframe": "Custom",
             "timePeriod": {
-                "from": (self.now - timedelta(days=self.criteria["cost_window_days"])).isoformat(),
+                "from": (start or self.now - timedelta(days=self.criteria["cost_window_days"])).isoformat(),
                 "to": self.now.isoformat(),
             },
             "dataset": {
@@ -127,9 +128,9 @@ class SignalCollector:
                         evidence_refs=[self.http.last_ref] if self.http.last_ref else [],
                     ))
             url = properties.get("nextLink") or ""
+        if len(result.costs) == previous_count:
+            raise AccessError("not_found", "지정 기간 비용 행이 없음; 청구 반영 지연 또는 사용 없음")
         result.facts.setdefault("cost_complete_subscriptions", []).append(sid)
-        if not result.costs:
-            raise AccessError("not_found", "최근 30일 비용 행이 없음; 청구 반영 지연 또는 사용 없음")
 
     def logs(self, sid: str, result: Collection) -> None:
         result.facts["audit_log_scope"] = "agent_resource_execution"

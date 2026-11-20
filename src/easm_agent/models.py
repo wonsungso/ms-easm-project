@@ -5,7 +5,7 @@ import uuid
 from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Literal, Protocol
+from typing import Annotated, Any, Literal, Protocol
 
 import yaml
 from pydantic import (
@@ -37,6 +37,26 @@ class FieldStatus(EvidenceModel):
 class Usage(EvidenceModel):
     calls: int | None = Field(default=None, ge=0)
     tokens: int | None = Field(default=None, ge=0)
+
+
+class CopilotAgentEvidence(EvidenceModel):
+    agent_id: StrictStr
+    environment_id: StrictStr
+    platform: Literal["agent_builder", "copilot_studio", "unclassified_copilot"]
+    display_name: StrictStr | None = None
+    created_in: StrictStr | None = None
+    created_at: AwareDatetime | None = None
+    last_published_at: AwareDatetime | None = None
+    owner_present: StrictBool | None = None
+    entra_agent_id: StrictStr | None = None
+    blueprint_id: StrictStr | None = None
+    model: StrictStr | None = None
+    authentication: StrictStr | None = None
+    channels: list[StrictStr] | None = None
+    is_quarantined: StrictBool | None = None
+    shared_with_tenant: StrictBool | None = None
+    field_status: dict[str, FieldStatus] = Field(default_factory=dict)
+    evidence_refs: list[str] = Field(default_factory=list)
 
 
 class AgentEvidence(EvidenceModel):
@@ -270,6 +290,7 @@ class Issue(EvidenceModel):
 
 class Agent365Package(EvidenceModel):
     package_id: str
+    manifest_id: str | None = None
     agent_identity_id: str | None = None
     version: str | None = None
     display_name: str | None = None
@@ -278,11 +299,44 @@ class Agent365Package(EvidenceModel):
     deployed_to: str | None = None
     is_blocked: bool | None = None
     created_at: AwareDatetime | None = None
+    last_modified_at: AwareDatetime | None = None
     request_status: str | None = None
+    request_type: str | None = None
     governance: str | None = None
     owner_count: int | None = Field(default=None, ge=0)
+    active_users_30d: StrictInt | None = Field(default=None, ge=0, le=2147483647)
+    total_sessions_30d: StrictInt | None = Field(default=None, ge=0, le=2147483647)
+    total_run_time_hours_30d: float | None = Field(default=None, ge=0, strict=True, allow_inf_nan=False)
+    exception_count_30d: float | None = Field(default=None, ge=0, strict=True, allow_inf_nan=False)
+    last_used_at: AwareDatetime | None = None
+    package_type: StrictStr | None = None
+    manifest_version: StrictStr | None = None
+    app_id: StrictStr | None = None
+    supported_hosts: list[StrictStr] | None = Field(default=None, max_length=64)
+    element_types: list[StrictStr] | None = Field(default=None, max_length=64)
+    categories: list[StrictStr] | None = Field(default=None, max_length=64)
+    category_count: StrictInt | None = Field(default=None, ge=0)
+    sensitivity: StrictStr | None = None
+    sensitivity_present: StrictBool | None = None
+    metadata_complete: bool = False
+    metadata_field_sources: dict[str, Literal["catalog", "detail", "not_requested"]] = Field(default_factory=dict)
+    metadata_evidence_refs: dict[str, list[str]] = Field(default_factory=dict)
+    detail_complete: bool = False
+    detail_evidence_refs: list[str] = Field(default_factory=list)
     field_status: dict[str, FieldStatus] = Field(default_factory=dict)
     evidence_refs: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def mark_missing_metadata(self) -> Agent365Package:
+        for field in (
+            "package_type", "manifest_version", "app_id", "supported_hosts", "element_types",
+            "categories", "category_count", "sensitivity", "sensitivity_present",
+        ):
+            if getattr(self, field) is None:
+                self.field_status.setdefault(
+                    field, FieldStatus(reason="not_found", detail="메타데이터 미수집 또는 응답에서 미확인"),
+                )
+        return self
 
 
 class Agent365Crosscheck(EvidenceModel):
@@ -338,6 +392,7 @@ class AdminPortalPage(EvidenceModel):
 class AdminReadResult(EvidenceModel):
     source: Literal[
         "powerplatform.environments", "powerplatform.environment_roles", "powerplatform.dlp_policies",
+        "powerplatform.dataverse_roles",
     ]
     command: str
     module_version: str
@@ -361,7 +416,7 @@ class AdminReadResult(EvidenceModel):
             raise ValueError("실패한 관리자 조회는 사유와 null 건수를 유지해야 합니다.")
         if not self.completed and (self.environments or self.role_counts or self.policies):
             raise ValueError("미완료 조회를 완전한 집계나 목록으로 사용할 수 없습니다.")
-        if self.role_counts and self.source != "powerplatform.environment_roles":
+        if self.role_counts and self.source not in ("powerplatform.environment_roles", "powerplatform.dataverse_roles"):
             raise ValueError("환경별 역할 건수를 다른 명령 결과로 사용할 수 없습니다.")
         if self.policies and self.source != "powerplatform.dlp_policies":
             raise ValueError("정책 범위를 다른 명령 결과로 사용할 수 없습니다.")
@@ -425,9 +480,216 @@ class AssessmentMeasurement(EvidenceModel):
     targets: list[TargetAssessment] = Field(default_factory=list)
 
 
+class ReportTarget(EvidenceModel):
+    subject: StrictStr = Field(min_length=1, max_length=512, pattern=r"^[A-Za-z0-9_:/.-]+$")
+    evidence_ids: list[StrictStr] = Field(default_factory=list)
+
+
+class CreationApprovalRecord(ReportTarget):
+    created_at: AwareDatetime
+    approval_found: StrictBool | None
+    approval_id: StrictStr | None = Field(min_length=1, max_length=512, pattern=r"^[A-Za-z0-9_:/.-]+$")
+    approved_at: AwareDatetime | None
+
+    @model_validator(mode="after")
+    def approval_consistent(self) -> CreationApprovalRecord:
+        if self.approval_found is True and (not self.approval_id or self.approved_at is None):
+            raise ValueError("매칭된 승인에는 요청 ID·승인 시각이 필요합니다.")
+        if self.approval_found is not True and (self.approval_id is not None or self.approved_at is not None):
+            raise ValueError("미확인·미매칭 승인을 승인 기록으로 채울 수 없습니다.")
+        return self
+
+
+class RegistryRecord(ReportTarget):
+    owner_present: StrictBool | None
+    deployment_scope_present: StrictBool | None
+
+
+class PredeploymentRecord(ReportTarget):
+    version: StrictStr = Field(min_length=1)
+    deployed_at: AwareDatetime
+    evaluation_found: StrictBool | None
+    evaluation_version: StrictStr | None
+    evaluation_completed_at: AwareDatetime | None
+    evaluation_status: Literal["completed", "succeeded", "failed", "error"] | None
+
+    @model_validator(mode="after")
+    def evaluation_consistent(self) -> PredeploymentRecord:
+        values = (self.evaluation_version, self.evaluation_completed_at, self.evaluation_status)
+        if self.evaluation_found is True and any(value is None for value in values):
+            raise ValueError("평가 기록에는 버전·완료 시각·상태가 필요합니다.")
+        if self.evaluation_found is not True and any(value is not None for value in values):
+            raise ValueError("미확인·미확보 평가를 실행 이력으로 채울 수 없습니다.")
+        return self
+
+
+class AgentUsageRecord(ReportTarget):
+    created_at: AwareDatetime
+    coverage_start: AwareDatetime
+    coverage_end: AwareDatetime
+    calls_30d: StrictInt | None = Field(ge=0)
+    calls_90d: StrictInt | None = Field(ge=0)
+
+    @model_validator(mode="after")
+    def usage_consistent(self) -> AgentUsageRecord:
+        if self.coverage_start >= self.coverage_end or self.created_at > self.coverage_end:
+            raise ValueError("사용 관측 기간·생성 시각이 올바르지 않습니다.")
+        if self.calls_30d is not None and self.calls_90d is not None and self.calls_30d > self.calls_90d:
+            raise ValueError("30일 호출 수가 90일 호출 수보다 많습니다.")
+        return self
+
+
+class ExposureRecord(ReportTarget):
+    category: Literal["national_id", "personal", "legal", "financial", "other"]
+    severity: Literal["high", "medium", "low"] | None
+    remediation: Literal["remediated", "open"] | None
+
+
+class AuditRetentionRecord(ReportTarget):
+    retention_duration: Literal["ThreeMonths", "SixMonths", "NineMonths", "TwelveMonths", "TenYears"] | None
+    priority: StrictInt | None = Field(default=None, ge=0)
+
+
+class BooleanControlRecord(ReportTarget):
+    value: StrictBool | None
+
+
+class HistoricalCostRecord(ReportTarget):
+    occurred_at: AwareDatetime
+    amount: float = Field(strict=True, ge=0, allow_inf_nan=False)
+    attributed_amount: float | None = Field(default=None, strict=True, ge=0, allow_inf_nan=False)
+    currency: StrictStr = Field(pattern=r"^[A-Z]{3}$")
+
+    @model_validator(mode="after")
+    def attribution_bounded(self) -> HistoricalCostRecord:
+        if self.attributed_amount is not None and self.attributed_amount > self.amount:
+            raise ValueError("귀속 금액은 전체 금액을 초과할 수 없습니다.")
+        return self
+
+
+class ReportDatasetBase(EvidenceModel):
+    scope: StrictStr = Field(min_length=1, max_length=240)
+    source_kind: Literal[
+        "official_admin_read", "organization_registry", "approval_workflow",
+        "deployment_records", "hr_export",
+    ]
+    source_ref: StrictStr = Field(min_length=1, max_length=160, pattern=r"^[A-Za-z0-9_.-]+$")
+    observed_at: AwareDatetime
+    period_start: AwareDatetime | None = None
+    period_end: AwareDatetime | None = None
+    complete: StrictBool
+    population_complete: StrictBool
+    reason: Reason | None
+    evidence_refs: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def dataset_consistent(self) -> ReportDatasetBase:
+        if self.complete != (self.reason is None):
+            raise ValueError("조회 완료와 실패 사유가 일치하지 않습니다.")
+        if (self.period_start is None) != (self.period_end is None):
+            raise ValueError("기간 증적에는 시작·종료 시각이 모두 필요합니다.")
+        if self.period_start is not None and self.period_end is not None and (
+            self.period_start >= self.period_end or self.period_end > self.observed_at
+        ):
+            raise ValueError("증적 기간은 관측 시각 이전의 유효한 반개구간이어야 합니다.")
+        records = getattr(self, "records", [])
+        if len({record.subject for record in records}) != len(records):
+            raise ValueError("같은 추가 증적의 대상 ID가 중복되었습니다.")
+        return self
+
+
+class CreationEvidence(ReportDatasetBase):
+    kind: Literal["creation_approvals"]
+    code: Literal["DM-SE-27"] = "DM-SE-27"
+    records: list[CreationApprovalRecord]
+
+
+class RegistryEvidence(ReportDatasetBase):
+    kind: Literal["registry"]
+    code: Literal["DP-SE-28"] = "DP-SE-28"
+    observed_subjects: list[StrictStr]
+    records: list[RegistryRecord]
+
+    @model_validator(mode="after")
+    def registry_population(self) -> RegistryEvidence:
+        if self.source_kind != "organization_registry" or len(set(self.observed_subjects)) != len(self.observed_subjects):
+            raise ValueError("독립 등록부 원천과 중복 없는 관측 인벤토리가 필요합니다.")
+        for subject in self.observed_subjects:
+            ReportTarget(subject=subject)
+        return self
+
+
+class PredeploymentEvidence(ReportDatasetBase):
+    kind: Literal["predeployment_evaluations"]
+    code: Literal["BI-SE-29"] = "BI-SE-29"
+    records: list[PredeploymentRecord]
+
+
+class BooleanControlEvidence(ReportDatasetBase):
+    kind: Literal["target_controls"]
+    code: Literal["OE-SE-30", "OE-SE-39"]
+    records: list[BooleanControlRecord]
+
+    @model_validator(mode="after")
+    def control_source(self) -> BooleanControlEvidence:
+        if self.code == "OE-SE-39" and self.source_kind != "hr_export":
+            raise ValueError("재직 여부는 계정 활성 상태가 아닌 별도 인사 대사 증적이 필요합니다.")
+        if self.code == "OE-SE-30" and self.source_kind != "official_admin_read":
+            raise ValueError("조건부 접근은 해당 정책의 실제 관리자 읽기 증적이 필요합니다.")
+        return self
+
+
+class AuditRetentionEvidence(ReportDatasetBase):
+    kind: Literal["audit_retention"]
+    code: Literal["OE-SE-31"] = "OE-SE-31"
+    records: list[AuditRetentionRecord]
+
+
+class UsageEvidence(ReportDatasetBase):
+    kind: Literal["usage"]
+    code: Literal["OT-SE-32"] = "OT-SE-32"
+    records: list[AgentUsageRecord]
+
+
+class ExposureEvidence(ReportDatasetBase):
+    kind: Literal["exposures"]
+    code: Literal["OT-SE-33"] = "OT-SE-33"
+    records: list[ExposureRecord]
+
+
+class CostHistoryEvidence(ReportDatasetBase):
+    kind: Literal["cost_history"]
+    code: Literal["OT-SE-34"] = "OT-SE-34"
+    records: list[HistoricalCostRecord]
+
+
+ReportEvidenceDataset = Annotated[
+    CreationEvidence | RegistryEvidence | PredeploymentEvidence | BooleanControlEvidence
+    | AuditRetentionEvidence | UsageEvidence | ExposureEvidence | CostHistoryEvidence,
+    Field(discriminator="kind"),
+]
+
+
+class ReportEvidenceRawRecord(EvidenceModel):
+    code: str
+    scope: str
+    source_kind: str
+    source_ref: str
+    complete: bool
+    population_complete: bool
+    observed_at: AwareDatetime
+    period_start: AwareDatetime | None
+    period_end: AwareDatetime | None
+    reason: Reason | None
+    values: dict[str, Any]
+    evidence_refs: list[str] = Field(default_factory=list)
+
+
 class Collection(EvidenceModel):
     collected_at: AwareDatetime
     agents: list[AgentEvidence] = Field(default_factory=list)
+    copilot_agents: list[CopilotAgentEvidence] = Field(default_factory=list)
+    report_evidence: list[ReportEvidenceDataset] = Field(default_factory=list)
     deployments: list[ModelDeployment] = Field(default_factory=list)
     evaluations: list[EvaluationRun] = Field(default_factory=list)
     costs: list[CostRecord] = Field(default_factory=list)
@@ -539,6 +801,10 @@ class Settings(BaseModel):
     projects: list[ProjectSettings] = Field(default_factory=list)
     manual_agents: Path | None = None
     admin_evidence_files: list[Path] = Field(default_factory=list)
+    copilot_inventory_files: list[Path] = Field(default_factory=list)
+    report_evidence_files: list[Path] = Field(default_factory=list)
+    report_cost_history: bool = False
+    agent365_registry: bool = False
     allowed_models: list[AllowedModel] = Field(default_factory=list)
     tags: dict[str, StrictStr] = Field(default_factory=dict)
     tag_conventions: dict[str, Any] = Field(default_factory=dict)
@@ -625,7 +891,3 @@ def load_criteria(settings: Settings | None = None) -> dict[str, Any]:
 
 def load_conventions(settings: Settings) -> dict[str, Any]:
     return {**DEFAULT_TAGS, **settings.tag_conventions, "custom_tag_filters": settings.tags}
-
-
-def allowed_models(settings: Settings) -> dict[str, Any]:
-    return {"models": [model.model_dump() for model in settings.allowed_models]}

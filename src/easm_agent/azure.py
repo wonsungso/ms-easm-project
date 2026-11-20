@@ -23,6 +23,10 @@ AI_SCOPE = "https://ai.azure.com/.default"
 LOG_SCOPE = "https://api.loganalytics.io/.default"
 MSGRAPH = "https://graph.microsoft.com"
 MSGRAPH_SCOPE = MSGRAPH + "/.default"
+PP_SCOPE = "https://api.powerplatform.com/.default"
+PP_INVENTORY_URL = (
+    "https://api.powerplatform.com/resourcequery/resources/query?api-version=2024-10-01"
+)
 GRAPH_URL = ARM + "/providers/Microsoft.ResourceGraph/resources?api-version=2022-10-01"
 
 
@@ -35,9 +39,45 @@ class Credential(Protocol):
 
 
 class AccessError(RuntimeError):
-    def __init__(self, reason: Reason, detail: str) -> None:
+    def __init__(self, reason: Reason, detail: str, *, status_code: int | None = None) -> None:
         super().__init__(detail)
         self.reason = reason
+        self.status_code = status_code
+
+
+class DelegatedReaderCredential:
+    """Verify tenant/user claims on every token before sending delegated read requests."""
+
+    def __init__(self, credential: Credential, tenant: str, scope: str = PP_SCOPE) -> None:
+        if scope not in (PP_SCOPE, MSGRAPH_SCOPE):
+            raise ValueError("승인된 위임 읽기 대상만 허용합니다.")
+        self.credential, self.tenant, self.scope = credential, str(uuid.UUID(tenant)), scope
+        self.verified = False
+
+    def get_token(self, *scopes: str) -> Token:
+        if scopes != (self.scope,):
+            raise AccessError("permission_denied", "위임 사용자 읽기 범위 불일치")
+        token = self.credential.get_token(*scopes)
+        try:
+            parts = token.token.split(".")
+            if len(parts) != 3:
+                raise ValueError("JWT")
+            claims = json.loads(base64.urlsafe_b64decode(parts[1] + "=" * (-len(parts[1]) % 4)))
+            if (
+                not isinstance(claims, dict)
+                or not isinstance(claims.get("tid"), str)
+                or str(uuid.UUID(claims["tid"])) != self.tenant
+                or not isinstance(claims.get("scp"), str) or not claims["scp"].strip()
+                or claims.get("idtyp") == "app" or not isinstance(claims.get("oid"), str)
+            ):
+                raise ValueError("위임 사용자 확인 실패")
+            uuid.UUID(claims["oid"])
+        except (ValueError, KeyError, TypeError, IndexError) as exc:
+            raise AccessError(
+                "permission_denied", "대상 테넌트 위임 사용자 토큰 확인 실패 - 토큰 원문 미저장",
+            ) from exc
+        self.verified = True
+        return token
 
 
 def credential_token(credential: Credential, scope: str) -> Token:
@@ -66,6 +106,8 @@ def trusted_url(url: str, audience: str) -> None:
         allowed = parsed.hostname in ("api.loganalytics.azure.com", "api.loganalytics.io")
     elif audience == MSGRAPH_SCOPE:
         allowed = parsed.hostname == "graph.microsoft.com"
+    elif audience == PP_SCOPE:
+        allowed = url == PP_INVENTORY_URL
     else:
         allowed = False
     if not allowed:
@@ -115,6 +157,7 @@ class ReaderHTTP:
             raise ValueError("읽기 전용 API의 GET/승인된 query POST만 허용합니다.")
         if method == "POST" and not (
             url == GRAPH_URL
+            or (audience == PP_SCOPE and url == PP_INVENTORY_URL)
             or re.fullmatch(r"/subscriptions/[0-9a-f-]+/providers/microsoft.costmanagement/query", path)
             or (audience == LOG_SCOPE and re.fullmatch(r"/v1/workspaces/[0-9a-f-]+/query", path))
         ):
@@ -136,6 +179,17 @@ class ReaderHTTP:
                 raise AccessError("error", "network_error; 요청 본문/토큰은 기록하지 않음") from exc
             code = response.status_code
             if code in (429, 500, 502, 503, 504) and attempt < 3:
+                retry_after = response.headers.get("Retry-After", "")
+                if (
+                    code == 429 and urlparse(url).hostname == "graph.microsoft.com"
+                    and retry_after and not retry_after.isdigit()
+                ):
+                    self.capture_error(url, response)
+                    response.close()
+                    raise AccessError(
+                        "error", "HTTP 429; Retry-After 형식 미확인 - 추정 재시도하지 않음",
+                        status_code=code,
+                    )
                 delays = [
                     response.headers.get(name, "") for name in (
                         "Retry-After",
@@ -149,13 +203,18 @@ class ReaderHTTP:
                 if seconds > 60:
                     self.capture_error(url, response)
                     response.close()
-                    raise AccessError("error", f"HTTP {code}; 서버가 {seconds}초 대기를 요청하여 이번 수집은 중단")
+                    raise AccessError(
+                        "error", f"HTTP {code}; 서버가 {seconds}초 대기를 요청하여 이번 수집은 중단",
+                        status_code=code,
+                    )
                 response.close()
                 time.sleep(max(seconds, 2**attempt))
                 continue
             if code in (401, 403):
                 self.capture_error(url, response)
-                licensed = code == 403 and urlparse(url).hostname == "graph.microsoft.com" and unlicensed(response)
+                licensed = code == 403 and urlparse(url).hostname in (
+                    "graph.microsoft.com", "api.powerplatform.com",
+                ) and unlicensed(response)
                 response.close()
                 if licensed:
                     raise AccessError("license_missing", "HTTP 403; 서비스가 테넌트 라이선스 없음으로 응답함")
@@ -174,7 +233,7 @@ class ReaderHTTP:
             if not 200 <= code < 300:
                 self.capture_error(url, response)
                 response.close()
-                raise AccessError("error", f"HTTP {code}; 오류 본문은 출력하지 않음")
+                raise AccessError("error", f"HTTP {code}; 오류 본문은 출력하지 않음", status_code=code)
             try:
                 payload = response.json()
             except ValueError as exc:

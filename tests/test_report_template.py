@@ -35,7 +35,7 @@ def output(tmp_path: Path) -> Path:
                 evidence_refs=["fixture://observed"], metric_value=0.25)
         for code in ("BI-SE-09", "DS-SE-04")
     ]
-    write_workbook(Collection(collected_at=datetime.now(UTC)), findings, path, "fixture")
+    write_workbook(Collection(collected_at=datetime.now(UTC)), findings, path)
     return path
 
 

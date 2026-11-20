@@ -8,6 +8,12 @@ repository_mode=false
 if [[ -f "$script_dir/verify_permissions.py" ]]; then
   config_file="$root_dir/.easm-agent/setup.json"
   repository_mode=true
+  if [[ -v EASM_AGENT_STATE_DIR ]]; then
+    case "$EASM_AGENT_STATE_DIR" in
+      /*|[A-Za-z]:[\\/]*) config_file="${EASM_AGENT_STATE_DIR%/}/setup.json" ;;
+      *) printf '%s\n' 'EASM_AGENT_STATE_DIR must be an absolute path.' >&2; exit 1 ;;
+    esac
+  fi
 fi
 python_command="${EASM_AGENT_PYTHON:-python3}"
 command="${1:-help}"
@@ -28,6 +34,7 @@ case "$command" in
       "Default config: $config_file (no secrets)." \
       'Defaults: Reader, Cost Management Reader, Log Analytics Reader, Security Reader,' \
       '  Foundry read-only DataActions, and the three required Graph application roles.' \
+      'Optional: --agent365-reader grants CopilotPackages.Read.All with administrator consent.' \
       'Options: --config-file FILE, --certificate-path FILE, --projects-file FILE.' \
       'login: human administrator device-code login; SP authentication is separate.' \
       'plan: no Azure calls. apply: explicit role changes. verify: read-only SP checks.' \

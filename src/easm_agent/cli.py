@@ -15,20 +15,22 @@ from azure.core.exceptions import ClientAuthenticationError
 from azure.identity import DefaultAzureCredential
 
 from easm_agent.azure import AccessError, EvidenceStore
-from easm_agent.collect import collect
+from easm_agent.collect import collect, merge
 from easm_agent.collect_admin_evidence import read_admin_evidence
+from easm_agent.collect_copilot import read_copilot_inventory
 from easm_agent.collect_entra import EntraCollector
 from easm_agent.evaluation import evaluate
 from easm_agent.models import (
     Collection,
     Finding,
-    allowed_models,
     load_conventions,
     load_criteria,
     load_settings,
 )
 from easm_agent.proposals import evaluate_proposals
 from easm_agent.report import latest_raw, load_result, write_reports
+from easm_agent.report_backdata import metrics_by_key
+from easm_agent.report_evidence import read_report_evidence
 from easm_agent.report_excel import refresh_interview_summary
 from easm_agent.report_pptx import DEFAULT_CUSTOMER, context_from_workbook, write_presentation
 
@@ -51,6 +53,17 @@ def main(argv: list[str] | None = None) -> int:
     command.add_argument("--expected-principal-id")
     command.add_argument("--manual-agents", type=Path)
     command.add_argument("--admin-evidence-file", action="append", type=Path, default=[])
+    command.add_argument("--copilot-inventory-file", action="append", type=Path, default=[])
+    command.add_argument("--report-evidence-file", action="append", type=Path, default=[])
+    command.add_argument("--report-cost-history", action="store_true", help="현재 Azure AI 리소스의 과거 비용 읽기 - 과거 Agent 귀속은 추론하지 않음")
+    command.add_argument(
+        "--copilot-only", action="store_true",
+        help="Azure/Graph 호출 없이 승인된 Copilot 인벤토리 파일만 보고서로 생성",
+    )
+    command.add_argument(
+        "--agent365-registry", action="store_true",
+        help="선택적 Microsoft Agent365 등록부 읽기 - 별도 권한 및 라이선스 필요",
+    )
     command.add_argument("--output-dir", type=Path, default=Path("output"))
     command.add_argument("--fixture", type=Path)
     command.add_argument("--dry-run", action="store_true")
@@ -60,6 +73,8 @@ def main(argv: list[str] | None = None) -> int:
     package.add_argument("--customer", default=DEFAULT_CUSTOMER, help="PPT 표지의 고객사명")
     package.add_argument("--mode", choices=["live", "fixture"])
     package.add_argument("--admin-evidence-file", action="append", type=Path, default=[])
+    package.add_argument("--copilot-inventory-file", action="append", type=Path, default=[])
+    package.add_argument("--report-evidence-file", action="append", type=Path, default=[])
     package.add_argument("--tenant-id")
     package.add_argument(
         "--reassess", action="store_true",
@@ -93,7 +108,12 @@ def main(argv: list[str] | None = None) -> int:
                 [Finding.model_validate(row) for row in result["findings"]],
             )
             deck_path = source.parent / f"EASM-report-{stamp}.pptx"
-            write_presentation(workbook, deck_path, context_from_workbook(workbook, args.customer))
+            collection = Collection.model_validate(result["collection"])
+            findings = [Finding.model_validate(row) for row in result["findings"]]
+            mode = result.get("mode") or collection.facts.get("data_mode") or "live"
+            write_presentation(workbook, deck_path, context_from_workbook(
+                workbook, args.customer, metrics_by_key(collection, findings, mode), collection,
+            ))
             print(f"PPT 보고서: {deck_path}")
             return 0
         if args.command == "package":
@@ -137,6 +157,38 @@ def main(argv: list[str] | None = None) -> int:
                     seen_sources.update(sources)
                     data.admin_evidence = [read for read in data.admin_evidence if read.source not in sources]
                     data.admin_evidence.extend(incoming.admin_evidence)
+            if args.report_evidence_file and not args.reassess:
+                raise ValueError("추가 보고서 증적 첨부에는 --reassess로 현재 기준 출처를 기록해야 합니다.")
+            if args.copilot_inventory_file or args.report_evidence_file:
+                if mode != "live" or not args.tenant_id:
+                    raise ValueError("Copilot 첨부에는 live 결과와 명시적 단일 --tenant-id가 필요합니다.")
+                tenant = str(uuid.UUID(args.tenant_id))
+                tenants = {
+                    str(uuid.UUID(agent.tenant_id)) for agent in data.agents if agent.tenant_id
+                } | {
+                    str(uuid.UUID(value))
+                    for value in data.facts.get("copilot_inventory_tenant_ids", [])
+                } | {
+                    str(uuid.UUID(value))
+                    for value in data.facts.get("report_evidence_tenant_ids", [])
+                } | {tenant}
+                if len(tenants) != 1:
+                    raise ValueError("Copilot 첨부 대상 수집 테넌트가 일치하지 않습니다.")
+                recorded_directory = data.facts.get("evidence_directory")
+                if recorded_directory == "embedded:evidence":
+                    directory = source.parent / "evidence"
+                    directory.mkdir(exist_ok=True)
+                elif recorded_directory and Path(recorded_directory).is_dir():
+                    directory = Path(recorded_directory)
+                else:
+                    raise FileNotFoundError("기존 증적 보관 경로가 없습니다.")
+                store = EvidenceStore(directory)
+                data.facts["evidence_directory"] = str(directory.resolve())
+                for path in args.copilot_inventory_file:
+                    merge(data, read_copilot_inventory(path, tenant, datetime.now(UTC), store))
+                for path in args.report_evidence_file:
+                    merge(data, read_report_evidence(path, tenant, datetime.now(UTC), store))
+                data.evidence_sources.extend(store.sources())
             data.facts["data_mode"] = mode
             if args.reassess:
                 settings = load_settings(args.config)
@@ -149,7 +201,7 @@ def main(argv: list[str] | None = None) -> int:
                     if not (proposal.evidence_only and proposal.code in criteria["items"])
                 ]
                 findings = evaluate(
-                    data, criteria, {}, conventions,
+                    data, criteria, conventions,
                     interviews={row.se_code: row.interview_level for row in findings if row.interview_level is not None},
                     provenance_origin="saved_snapshot_reassessment",
                 )
@@ -159,6 +211,24 @@ def main(argv: list[str] | None = None) -> int:
         settings = load_settings(args.config)
         if args.admin_evidence_file:
             settings.admin_evidence_files = args.admin_evidence_file
+        if args.copilot_inventory_file:
+            settings.copilot_inventory_files = args.copilot_inventory_file
+        if args.report_evidence_file:
+            settings.report_evidence_files = args.report_evidence_file
+        if args.report_cost_history:
+            settings.report_cost_history = True
+        if settings.report_cost_history and (args.fixture or args.copilot_only):
+            raise ValueError("Azure 비용 이력 읽기는 --fixture 또는 --copilot-only와 함께 사용할 수 없습니다.")
+        if args.fixture and settings.report_evidence_files:
+            raise ValueError("실제 추가 보고서 증적은 fixture 수집에 혼합하지 않습니다.")
+        if args.agent365_registry:
+            settings.agent365_registry = True
+        if settings.agent365_registry and (args.copilot_only or args.fixture):
+            raise ValueError("Agent 365 등록부 API는 --copilot-only 또는 --fixture와 함께 사용할 수 없습니다.")
+        if args.copilot_only and args.fixture:
+            raise ValueError("--copilot-only와 --fixture는 함께 사용할 수 없습니다.")
+        if args.fixture and settings.copilot_inventory_files:
+            raise ValueError("실제 Copilot 인벤토리는 fixture 수집에 혼합하지 않습니다.")
         if args.fixture and settings.admin_evidence_files:
             raise ValueError("실제 관리자 증적은 fixture 수집에 혼합하지 않습니다.")
         if args.config != Path("config") / "custom-config.yaml" and not args.config.is_file():
@@ -184,24 +254,41 @@ def main(argv: list[str] | None = None) -> int:
         if args.manual_agents:
             settings.manual_agents = args.manual_agents
         settings = type(settings).model_validate(settings.model_dump())
+        if args.copilot_only and (not settings.tenant_id or not settings.copilot_inventory_files):
+            raise ValueError("--copilot-only에는 tenant_id와 Copilot 인벤토리 파일이 필요합니다.")
         criteria = load_criteria(settings)
         if args.dry_run:
             print(json.dumps({
                 "mode": "fixture" if args.fixture else "live",
                 "tenant_id": settings.tenant_id,
-                "subscriptions": settings.subscriptions or "auto-enumerate",
+                "subscriptions": "not_requested" if args.copilot_only else (
+                    settings.subscriptions or "auto-enumerate"
+                ),
                 "output_dir": str(args.output_dir),
                 "foundry_profile": settings.foundry_profile,
-                "roles": [
+                "roles": [] if args.copilot_only else [
                     "Reader", "Cost Management Reader", "Log Analytics Reader", "Security Reader",
                     "Foundry: agents/read, evaluations/read, assets/read",
                 ]
-                + ["Graph: " + ", ".join(EntraCollector.required_roles)],
-                "entra": True,
+                + ["Graph: " + ", ".join(EntraCollector.required_roles)]
+                + (["Graph: CopilotPackages.Read.All"] if settings.agent365_registry else []),
+                "entra": not args.copilot_only,
                 "azure_calls": False,
+                **({"copilot_only": True} if args.copilot_only else {}),
+                **({"agent365_registry": True} if settings.agent365_registry else {}),
             }, ensure_ascii=False, indent=2))
             return 0
-        if args.fixture:
+        if args.copilot_only:
+            instant = datetime.now(UTC)
+            store = EvidenceStore(settings.evidence_dir, instant)
+            data = Collection(collected_at=instant, facts={"copilot_only": True})
+            for path in settings.copilot_inventory_files:
+                merge(data, read_copilot_inventory(path, settings.tenant_id, instant, store))
+            for path in settings.report_evidence_files:
+                merge(data, read_report_evidence(path, settings.tenant_id, instant, store))
+            data.facts["evidence_directory"] = str(store.path.resolve())
+            data.evidence_sources = store.sources()
+        elif args.fixture:
             data = Collection.model_validate_json(args.fixture.read_text(encoding="utf-8"))
             for agent in data.agents:
                 agent.mark_unknowns()
@@ -214,13 +301,13 @@ def main(argv: list[str] | None = None) -> int:
         data.facts["data_mode"] = "fixture" if args.fixture else "live"
         data.proposals = evaluate_proposals(data, load_conventions(settings))
         findings = evaluate(
-            data, criteria, allowed_models(settings),
+            data, criteria,
             load_conventions(settings), settings.policy_facts, settings.interview_levels,
         )
         workbook = write_reports(data, findings, args.output_dir, "fixture" if args.fixture else "live",
                                  customer=args.customer)
         print(f"수집 완료: 구독={len(data.subscriptions)}, Agent/후보={len(data.agents)}, "
-              f"이슈={len(data.issues)}, 결과={workbook.parent}")
+              f"Copilot={len(data.copilot_agents)}, 이슈={len(data.issues)}, 결과={workbook.parent}")
         return 2 if data.issues else 0
     except (ValueError, KeyError, TypeError, OSError, AccessError, ClientAuthenticationError) as exc:
         detail = str(exc) if isinstance(exc, AccessError) else type(exc).__name__

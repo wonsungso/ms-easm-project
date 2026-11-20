@@ -122,23 +122,41 @@ def deploy_zip(
     token = credential.get_token("https://management.azure.com/.default").token
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/zip"}
     print(f"직접 Kudu ZIP 전송: {site['name']}", flush=True)
-    with archive.open("rb") as stream:
-        response = requests.post(
-            scm + "/api/zipdeploy?isAsync=true", data=stream, headers=headers,
-            timeout=(30, 300), allow_redirects=False,
-        )
+    try:
+        with archive.open("rb") as stream:
+            response = requests.post(
+                scm + "/api/zipdeploy?isAsync=true", data=stream, headers=headers,
+                timeout=(30, 300), allow_redirects=False,
+            )
+    except (requests.Timeout, requests.ConnectionError):
+        raise RuntimeError("Kudu ZIP 접수 여부 미확인 - 재전송 전 실제 배포 상태를 확인하세요.") from None
     location = response.headers.get("Location")
     status = response.status_code
     response.close()
-    if status not in (200, 201, 202) or not location:
-        raise RuntimeError(f"Kudu 직접 ZIP 접수 실패: HTTP {status}, 상태 URL 존재={bool(location)}")
+    if status not in (200, 201, 202):
+        raise RuntimeError(f"Kudu ZIP 접수 미확인: HTTP {status} - 재전송 전 실제 배포 상태를 확인하세요.")
+    if not location:
+        raise RuntimeError("Kudu ZIP 접수 후 상태 URL이 없습니다 - 재전송 전 실제 배포 상태를 확인하세요.")
     status_url = urljoin(scm, location)
     if urlparse(status_url).scheme != "https" or urlparse(status_url).netloc != urlparse(scm).netloc:
         print("Kudu Location 원점이 달라 신뢰한 원래 SCM의 새 배포 상태를 검증합니다.", flush=True)
         status_url = scm + "/api/deployments/latest"
     for attempt in range(60):
-        response = requests.get(status_url, headers={"Authorization": f"Bearer {token}"},
-                                timeout=30, allow_redirects=False)
+        try:
+            response = requests.get(status_url, headers={"Authorization": f"Bearer {token}"},
+                                    timeout=30, allow_redirects=False)
+        except (requests.Timeout, requests.ConnectionError):
+            if attempt % 6 == 0:
+                print(f"Kudu 상태 조회 일시 오류 - 재조회: {site['name']}", flush=True)
+            time.sleep(10)
+            continue
+        if response.status_code in (408, 429, 500, 502, 503, 504):
+            status = response.status_code
+            response.close()
+            if attempt % 6 == 0:
+                print(f"Kudu 상태 조회 일시 오류 HTTP {status} - 재조회: {site['name']}", flush=True)
+            time.sleep(10)
+            continue
         if response.status_code == 202:
             response.close()
             if attempt % 6 == 0:
@@ -160,7 +178,30 @@ def deploy_zip(
         if attempt % 6 == 0:
             print(f"Kudu 상태 대기: {site['name']}, status={state.get('status')}", flush=True)
         time.sleep(10)
-    raise RuntimeError("Kudu 직접 ZIP 배포 완료 확인 시간 초과")
+    raise RuntimeError("Kudu ZIP 배포 상태 미확인 - 재전송 전 실제 배포 상태를 확인하세요.")
+
+
+def deploy_webapp_code(
+    cli: Any, site: dict[str, Any], archive: Path, credential: Any,
+    resource_group: str, subscription_id: str,
+) -> dict[str, Any]:
+    target = ("--name", site["name"], "--resource-group", resource_group, "--subscription", subscription_id)
+    previous = cli.run("webapp", "log", "deployment", "list", *target)
+    if not any(row.get("status") == 4 and row.get("complete") is True for row in previous):
+        config = cli.run("webapp", "config", "show", *target)
+        if "appCommandLine" not in config:
+            raise RuntimeError("웹 앱의 기존 시작 명령을 확인하지 못했습니다.")
+        if config["appCommandLine"]:
+            cli.run("webapp", "config", "set", *target, "--generic-configurations", '{"appCommandLine":""}')
+            cleared = cli.run("webapp", "config", "show", *target)
+            if "appCommandLine" not in cleared or cleared["appCommandLine"]:
+                raise RuntimeError("웹 앱의 기존 시작 명령을 비우지 못했습니다.")
+    deployment = deploy_zip(site, archive, credential, {row["id"] for row in previous})
+    cli.run(
+        "webapp", "config", "set", *target, "--startup-file",
+        "gunicorn --chdir /home/site/wwwroot --bind=0.0.0.0 --timeout 120 --workers 1 app:app",
+    )
+    return deployment
 
 
 ARM = "https://management.azure.com"
@@ -475,8 +516,7 @@ def deploy(
                 site = cli.run(
                     "webapp", "create", "--name", name, "--resource-group", group["name"],
                     "--subscription", sid, "--plan", plan_name, "--runtime", "PYTHON:3.11",
-                    "--assign-identity", "[system]", "--startup-file",
-                    "gunicorn --bind=0.0.0.0 --timeout 120 --workers 1 app:app",
+                    "--assign-identity", "[system]",
                     "--tags", *[f"{key}={value}" for key, value in host_tags.items()],
                 )
             else:
@@ -506,23 +546,13 @@ def deploy(
                 "--subscription", sid, "--docker-container-logging", "filesystem",
                 "--application-logging", "filesystem", "--level", "information",
             )
-            cli.run(
-                "webapp", "config", "set", "--name", name, "--resource-group", group["name"],
-                "--subscription", sid, "--startup-file",
-                "gunicorn --chdir /home/site/wwwroot --bind=0.0.0.0 --timeout 120 --workers 1 app:app",
-            )
             arm.request("PUT", site_id + "/providers/Microsoft.Insights/diagnosticSettings/easmagent-sample",
                         "2021-05-01-preview", {"properties": {
                             "workspaceId": workspace_id,
                             "logs": [{"category": "AppServiceConsoleLogs", "enabled": True}],
                             "logAnalyticsDestinationType": "Dedicated",
                         }})
-            previous = cli.run(
-                "webapp", "log", "deployment", "list", "--name", name,
-                "--resource-group", group["name"], "--subscription", sid,
-            )
-            previous_ids = {row["id"] for row in previous}
-            deployments = [deploy_zip(site, archive, credential, previous_ids)]
+            deployment = deploy_webapp_code(cli, site, archive, credential, group["name"], sid)
             host = site.get("defaultHostName")
             if not host:
                 raise RuntimeError("생성된 웹 앱 응답에 defaultHostName이 없습니다.")
@@ -558,7 +588,7 @@ def deploy(
             )
             hosts.append({
                 "id": site_id, "name": name, "health_url": health, "smoke": smoke_state,
-                "deployment_id": deployments[0]["id"], "deployment_verified": True,
+                "deployment_id": deployment["id"], "deployment_verified": True,
             })
             result["hosts"] = hosts
             partial_path.write_text(json.dumps(redact(result), ensure_ascii=False, indent=2), encoding="utf-8")

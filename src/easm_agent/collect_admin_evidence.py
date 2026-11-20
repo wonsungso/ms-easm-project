@@ -10,9 +10,11 @@ from easm_agent.azure import EvidenceStore
 from easm_agent.models import AdminEvidenceExport, AdminReadResult, Collection
 
 ENVIRONMENTS_URL = "https://api.powerplatform.com/environmentmanagement/environments?api-version=2024-10-01"
+DATAVERSE_ROLES_COMMAND = "Dataverse Web API: systemusers + systemuserroles_association (System Administrator or Environment Maker, interactive users only)"
 COMMANDS = {
     "powerplatform.environments": ENVIRONMENTS_URL,
     "powerplatform.environment_roles": "Get-AdminPowerAppEnvironmentRoleAssignment",
+    "powerplatform.dataverse_roles": DATAVERSE_ROLES_COMMAND,
     "powerplatform.dlp_policies": "Get-AdminDlpPolicy",
 }
 PORTAL_ORIGIN = "https://admin.powerplatform.microsoft.com"
@@ -77,7 +79,7 @@ def read_admin_evidence(
             raise ValueError("환경 목록을 다른 명령 결과로 사용할 수 없습니다.")
         if read.source == "powerplatform.environments" and read.completed and read.object_count != len(read.environments):
             raise ValueError("환경 목록과 확인된 건수가 일치하지 않습니다.")
-        if read.source == "powerplatform.environment_roles" and read.completed and (
+        if read.source in ("powerplatform.environment_roles", "powerplatform.dataverse_roles") and read.completed and (
             read.object_count != sum(read.role_counts.values())
         ):
             raise ValueError("환경별 역할 건수와 확인된 건수가 일치하지 않습니다.")
@@ -91,3 +93,4 @@ def read_admin_evidence(
     for read in export.reads:
         read.evidence_refs = [ref]
     return Collection(collected_at=now, admin_evidence=export.reads)
+

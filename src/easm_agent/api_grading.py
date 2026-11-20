@@ -142,9 +142,7 @@ def measured(
 
 
 def and_known(*values: bool | None) -> bool | None:
-    if False in values:
-        return False
-    return None if None in values else True
+    return None if None in values else all(values)
 
 
 def numeric(value: Any) -> bool:
@@ -643,6 +641,11 @@ def power_platform_measurement(data: Collection, code: str) -> Measurement:
         else ["powerplatform.dlp_policies"] if code == "DS-SE-02" else []
     )
     reads = {source: admin_read(data, source) for source in sources}
+    dataverse = admin_read(data, "powerplatform.dataverse_roles") if code == "DM-SE-01" else None
+    if code == "DM-SE-01" and reads["powerplatform.environment_roles"] is None and dataverse is not None:
+        # The Dataverse read can stand in for the cmdlet, which does not return Dataverse environments.
+        del reads["powerplatform.environment_roles"]
+        reads["powerplatform.dataverse_roles"] = dataverse
     detail = {
         "DM-SE-01": "관리자에게 보이는 Power Platform 환경 중 역할 할당이 1건 이상 확인된 환경 비율",
         "DS-SE-02": "관리자에게 보이는 Power Platform 환경 중 데이터 정책(DLP)의 적용 범위에 포함된 환경 비율",
@@ -650,7 +653,9 @@ def power_platform_measurement(data: Collection, code: str) -> Measurement:
     }[code]
     missing = [source for source, read in reads.items() if read is None]
     failed = [read for read in reads.values() if read is not None and not read.completed]
-    refs = sorted({ref for read in reads.values() if read is not None for ref in read.evidence_refs})
+    refs = sorted({
+        ref for read in [*reads.values(), dataverse] if read is not None for ref in read.evidence_refs
+    })
     if missing or failed:
         return Measurement(
             detail=detail, refs=refs, reason_code=failed[0].reason if failed else None,
@@ -658,13 +663,17 @@ def power_platform_measurement(data: Collection, code: str) -> Measurement:
             "관리자 조회 미완료: " + ", ".join(read.source for read in failed),
         )
     environments = reads["powerplatform.environments"].environments
+    counts: dict[str, int] = {}
+    if code == "DM-SE-01":
+        for role_read in (reads.get("powerplatform.environment_roles"), dataverse):
+            if role_read is not None and role_read.completed:
+                for name, count in role_read.role_counts.items():
+                    counts.setdefault(name.lower(), count)
     values: list[bool | None] = []
     for environment in environments:
         key = environment.environment_id.lower()
         if code == "DM-SE-01":
-            role_read = reads["powerplatform.environment_roles"]
-            counts = {name.lower(): count for name, count in role_read.role_counts.items()}
-            values.append(None if role_read.portal_pages and key not in counts else counts.get(key, 0) > 0)
+            values.append(counts[key] > 0 if key in counts else None)
         elif code == "BI-SE-08":
             level = environment.protection_level
             values.append(None if level is None else level == "Standard")
@@ -685,4 +694,6 @@ def power_platform_measurement(data: Collection, code: str) -> Measurement:
     ])
     if not environments:
         result.unavailable = "관리자에게 보이는 환경 없음"
+    elif code == "DM-SE-01" and None in values:
+        result.unavailable = "일부 환경의 역할 할당 조회 범위 미확인"
     return result

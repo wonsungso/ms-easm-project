@@ -47,7 +47,7 @@ POWER_PLATFORM_CODES = ("DM-SE-01", "DS-SE-02", "BI-SE-08")
 
 
 def grade(data: Collection, criteria: dict | None = None, facts: dict | None = None) -> dict:
-    return {row.se_code: row for row in evaluate(data, criteria or load_criteria(), {}, DEFAULT_TAGS, facts)}
+    return {row.se_code: row for row in evaluate(data, criteria or load_criteria(), DEFAULT_TAGS, facts)}
 
 
 def test_custom_host_uses_same_grading_scope_as_langchain_host(data: Collection) -> None:
@@ -114,7 +114,7 @@ def test_evaluation_snapshots_criteria_and_detects_later_tampering(data: Collect
     from easm_agent.provenance import digest
 
     criteria = deepcopy(load_criteria())
-    evaluate(data, criteria, {}, DEFAULT_TAGS, provenance_origin="saved_snapshot_reassessment")
+    evaluate(data, criteria, DEFAULT_TAGS, provenance_origin="saved_snapshot_reassessment")
     provenance = data.assessment_provenance
     assert provenance.origin == "saved_snapshot_reassessment"
     assert digest(provenance.criteria_snapshot) == provenance.criteria_sha256
@@ -222,7 +222,7 @@ def power_platform_reads(*, managed: bool = True, with_role: bool = True, covere
                         environments=[AdminEnvironment(environment_id="env-1", environment_type="Production",
                                                        protection_level="Standard" if managed else "Basic")], **base),
         AdminReadResult(source="powerplatform.environment_roles", command="Get-AdminPowerAppEnvironmentRoleAssignment",
-                        object_count=1 if with_role else 0, role_counts={"env-1": 1} if with_role else {}, **base),
+                        object_count=1 if with_role else 0, role_counts={"env-1": int(with_role)}, **base),
         AdminReadResult(source="powerplatform.dlp_policies", command="Get-AdminDlpPolicy", object_count=1,
                         policies=[AdminPolicyScope(scope_type="AllEnvironments" if covered else "OnlyEnvironments",
                                                    environment_ids=[] if covered else ["other"])], **base),
@@ -293,7 +293,7 @@ def test_removed_registry_items_are_absent_without_registry_data(data: Collectio
 @pytest.mark.parametrize("changes,level", [
     ({}, "L5"),
     ({"ai_tier": "Free"}, "L1"),
-    ({"cspm_tier": "Free", "discovery": None}, "L1"),
+    ({"cspm_tier": "Free", "discovery": False}, "L1"),
     ({"discovery": False}, "L1"),
 ])
 def test_sensitive_data_protection_requires_ai_plan_cspm_and_discovery(
@@ -310,6 +310,9 @@ def test_sensitive_data_protection_requires_ai_plan_cspm_and_discovery(
     [],
     defender_plans(ai_tier=None),
     defender_plans(discovery=None),
+    defender_plans(ai_tier="Free", discovery=None),
+    defender_plans(cspm_tier="Free", discovery=None),
+    defender_plans(ai_tier=None, cspm_tier="Free"),
     defender_plans()[:1],
 ])
 def test_missing_defender_plan_fields_are_unknown_not_l1(data: Collection, plans: list[DefenderPlan]) -> None:
@@ -317,6 +320,20 @@ def test_missing_defender_plan_fields_are_unknown_not_l1(data: Collection, plans
     row = grade(data)["OT-SE-25"]
     assert row.level == "N/A" and row.metric_value is None and row.reason == "not_found"
     assert row.measurement.numerator is None and row.measurement.denominator is None
+
+
+def test_missing_required_fields_remain_unknown_even_when_another_field_fails(data: Collection) -> None:
+    data.deployments[0].model = ""
+    data.deployments[0].version = None
+    data.entra_agent_identities[0].owner_count = 0
+    data.entra_agent_identities[0].sponsor_count = None
+    network = next(row for row in data.proposal_observations if row.code == "DS-SE-05")
+    network.values["public_network_access"] = "Enabled"
+    network.values["approved_private_endpoints"] = None
+
+    rows = grade(data)
+    for code in ("DS-SE-04", "DS-SE-05", "OE-SE-16"):
+        assert rows[code].level == "N/A" and rows[code].metric_value is None
 
 
 @pytest.mark.parametrize("good,level", [(0, "L1"), (1, "L2"), (8, "L3"), (9, "L4"), (10, "L5")])
@@ -411,7 +428,7 @@ def test_real_api_field_combinations_reach_every_level_for_all23_controls(
         for index, env in enumerate(env_ids)
     ]
     reads[0].object_count = 10
-    reads[1].role_counts = {env: 1 for env in env_ids[:good]}
+    reads[1].role_counts = {env: int(index < good) for index, env in enumerate(env_ids)}
     reads[1].object_count = good
     reads[2].policies = [AdminPolicyScope(scope_type="OnlyEnvironments", environment_ids=env_ids[:good])]
     snapshot.admin_evidence = reads

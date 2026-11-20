@@ -21,17 +21,6 @@ AREAS = [
 ]
 KINDS = [("PR", "Process"), ("PE", "People"), ("DA", "Data"), ("TE", "Technology"), ("SE", "System Evidence")]
 LEVEL_NAMES = ["Initial", "Managed", "Defined", "Governed", "Optimized"]
-LEVEL_DEFINITIONS = [
-    "공식 절차·담당·기록이 없으며 개인 판단과 사후 대응에 의존",
-    "일부 조직 단위에서 관행적으로 관리하나 전사 기준이 없음",
-    "전사 표준(절차·역할·양식·도구)이 문서로 정의되어 일관되게 적용",
-    "표준이 시스템에 내재되어 강제되고 준수·성과가 정량 측정됨",
-    "측정 데이터로 정기 개선하며 위험·비용·성과를 선제적으로 최적화",
-]
-LEVEL_KEYWORDS = [
-    "없음 · 개인 재량 · 사후 대응", "부분적 · 비공식 · 비일관", "전사 표준 · 문서화 · 일관 적용",
-    "시스템 강제 · 자동화 · 정량 측정", "지속 개선 · 예측 · 선제 최적화",
-]
 TARGET_LEVEL = 3.0
 CORRECTION_GAP = 1.5
 CORRECTION_ADD = 1.0
@@ -51,6 +40,7 @@ class Item:
     status: str
     detail: str
     memo: str
+    metric: str = ""
 
     @property
     def is_system(self) -> bool:
@@ -95,8 +85,6 @@ class Assessment:
     overall_status: str
     summary: str
     level_names: list[str]
-    level_definitions: list[str]
-    level_keywords: list[str]
 
     @property
     def interview_items(self) -> list[Item]:
@@ -194,14 +182,15 @@ def read_assessment(path: Path) -> Assessment:
             evidence=_text(criteria.cell(row, 12).value), score=score,
             status=_text(result.cell(row, 7).value), detail=detail,
             memo=_text(result.cell(row, 14).value),
+            metric=_text(result.cell(row, 8).value),
         ))
-    names, definitions, keywords = list(LEVEL_NAMES), list(LEVEL_DEFINITIONS), list(LEVEL_KEYWORDS)
+    names = list(LEVEL_NAMES)
     if "3. 성숙도 정의" in book.sheetnames:
         for row in book["3. 성숙도 정의"].iter_rows(min_row=4, max_row=8):
             values = [_text(cell.value) for cell in row if cell.value is not None]
             match = re.fullmatch(r"Level (\d)", values[0]) if values else None
             if match and len(values) >= 4:
-                index = int(match[1]) - 1
-                names[index], definitions[index], keywords[index] = values[1], values[2], values[3]
+                names[int(match[1]) - 1] = values[1]
     areas, overall, status = compute_scores(items)
-    return Assessment(items, areas, overall, status, _text(result["B2"].value), names, definitions, keywords)
+    book.close()
+    return Assessment(items, areas, overall, status, _text(result["B2"].value), names)

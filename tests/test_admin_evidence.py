@@ -15,6 +15,7 @@ from pydantic import ValidationError
 from easm_agent.azure import EvidenceStore
 from easm_agent.cli import main
 from easm_agent.collect_admin_evidence import (
+    DATAVERSE_ROLES_COMMAND,
     ENVIRONMENTS_URL,
     read_admin_evidence,
 )
@@ -62,7 +63,7 @@ def power_platform_packet() -> dict:
         "source": "powerplatform.environment_roles", "command": "Get-AdminPowerAppEnvironmentRoleAssignment",
         "module_version": "2.0.220", "scope": "role assignments", "completed": True,
         "observed_at": NOW.isoformat(), "object_count": 3,
-        "role_counts": {"env-prod": 2, "ENV-DEV": 1}, "detail": "counts only",
+        "role_counts": {"Default-" + TENANT: 0, "env-prod": 2, "ENV-DEV": 1}, "detail": "counts only",
     })
     value["reads"].append({
         "source": "powerplatform.dlp_policies", "command": "Get-AdminDlpPolicy",
@@ -80,7 +81,7 @@ def graded(data: Collection) -> dict:
     from easm_agent.evaluation import evaluate
     from easm_agent.models import DEFAULT_TAGS, load_criteria
 
-    return {row.se_code: row for row in evaluate(data, load_criteria(), {}, DEFAULT_TAGS)}
+    return {row.se_code: row for row in evaluate(data, load_criteria(), DEFAULT_TAGS)}
 
 
 def test_admin_receipt_records_provenance_and_scores_power_platform_environments(tmp_path: Path) -> None:
@@ -99,7 +100,7 @@ def test_admin_receipt_records_provenance_and_scores_power_platform_environments
     for code in ("DM-SE-01", "DS-SE-02", "BI-SE-08"):
         assert sheet.cell(sheet_rows[code], 7).value == "수집됨"
         assert sheet.cell(sheet_rows[code], 13).value == 2
-    assert len(book["8. 수집 Raw 데이터"].tables) == 16
+    assert len(book["8. 수집 Raw 데이터"].tables) == 18
 
 
 @pytest.mark.parametrize("change", ["tenant", "unverified", "command", "duplicate", "count", "future", "role_sum", "policy_count"])
@@ -235,6 +236,54 @@ def test_portal_unqueried_environment_is_not_scored_as_zero(tmp_path: Path) -> N
     data.admin_evidence.extend(ingest(tmp_path, portal_packet()).admin_evidence)
     row = graded(data)["DM-SE-01"]
     assert row.level == "N/A" and row.metric_value is None
+
+
+def test_powershell_unqueried_environment_is_not_scored_as_zero(tmp_path: Path) -> None:
+    value = power_platform_packet()
+    value["reads"][1]["role_counts"].pop("Default-" + TENANT)
+    rows = graded(ingest(tmp_path, value))
+    row = rows["DM-SE-01"]
+    assert row.level == "N/A" and row.metric_value is None and row.reason == "not_found"
+    assert row.measurement is not None and not row.measurement.complete
+    assert row.measurement.reason == "일부 환경의 역할 할당 조회 범위 미확인"
+    assert [target.status for target in row.measurement.targets] == [
+        "unknown", "compliant", "compliant",
+    ]
+    assert rows["DS-SE-02"].level == "L2" and rows["BI-SE-08"].level == "L2"
+
+
+def test_dataverse_role_counts_cover_environments_the_cmdlet_does_not_return(tmp_path: Path) -> None:
+    value = power_platform_packet()
+    value["reads"][1]["role_counts"].pop("Default-" + TENANT)
+    value["reads"][1]["object_count"] = 3
+    data = ingest(tmp_path, value)
+    assert graded(data)["DM-SE-01"].level == "N/A"
+    extra = packet()
+    extra["reads"] = [{
+        "source": "powerplatform.dataverse_roles",
+        "command": DATAVERSE_ROLES_COMMAND,
+        "module_version": "Dataverse Web API v9.2", "scope": "Dataverse-linked environments",
+        "completed": True, "observed_at": NOW.isoformat(), "object_count": 1,
+        "role_counts": {"Default-" + TENANT: 1}, "detail": "counts only",
+    }]
+    data.admin_evidence.extend(ingest(tmp_path, extra).admin_evidence)
+    row = graded(data)["DM-SE-01"]
+    assert row.level == "L5" and row.metric_value == 1
+
+
+def test_dataverse_source_needs_its_own_command_and_cannot_stand_alone_with_wrong_counts(tmp_path: Path) -> None:
+    value = packet()
+    value["reads"] = [{
+        "source": "powerplatform.dataverse_roles", "command": "Get-AdminPowerAppEnvironmentRoleAssignment",
+        "module_version": "x", "scope": "x", "completed": True, "observed_at": NOW.isoformat(),
+        "object_count": 1, "role_counts": {"env": 1}, "detail": "x",
+    }]
+    with pytest.raises(ValueError):
+        ingest(tmp_path, value)
+    value["reads"][0]["command"] = DATAVERSE_ROLES_COMMAND
+    value["reads"][0]["object_count"] = 5
+    with pytest.raises(ValueError):
+        ingest(tmp_path, value)
 
 
 @pytest.mark.parametrize("recorded_mode,requested_mode", [("fixture", "fixture"), ("live", "fixture")])
@@ -424,3 +473,4 @@ def test_power_platform_device_code_is_recorded_as_unavailable_not_success(tmp_p
     assert not export.tenant_verified
     assert all(not read.completed and read.reason == "feature_unavailable" and read.object_count is None
                for read in export.reads)
+

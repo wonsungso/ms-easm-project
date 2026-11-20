@@ -12,36 +12,79 @@ from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
+import requests
 
 from demo import diagnostics as remote
-from demo.agents import agent_revision, agent_tools
+from demo.agents import agent_revision, agent_tools, auth_settings, configure
 from demo.auth import GraphCertificates, TemporaryCertificate
 from demo.diagnostics import ready_health
 from demo.infrastructure import (
     AdminARM,
     build_linux_package,
     configure_diagnostic_reader,
+    deploy_webapp_code,
     deploy_zip,
     deployment_parameters,
     plan,
 )
 from demo.manage import cleanup_main as cleanup
-from demo.manage import main
+from demo.manage import lab_config_path, main
 from easm_agent.models import load_yaml
+from easm_agent.paths import state_path
 
 ROOT = Path(__file__).parents[1]
+
+
+def test_state_directory_override_requires_an_absolute_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert state_path(tmp_path, "demo", "lab.json") == tmp_path / ".easm-agent" / "demo" / "lab.json"
+    isolated = tmp_path / "isolated"
+    monkeypatch.setenv("EASM_AGENT_STATE_DIR", str(isolated))
+    assert state_path(tmp_path, "demo", "lab.json") == isolated / "demo" / "lab.json"
+    for invalid in ("", "relative-state"):
+        monkeypatch.setenv("EASM_AGENT_STATE_DIR", invalid)
+        with pytest.raises(ValueError, match="절대 경로"):
+            state_path(tmp_path)
+
+
+def test_management_uses_isolated_state_and_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    isolated = tmp_path / "isolated"
+    isolated.mkdir()
+    setup = isolated / "setup.json"
+    setup.write_text(json.dumps(setup_values()), encoding="utf-8")
+    config = isolated / "config.yaml"
+    config.write_text("generation: isolated-run\n", encoding="utf-8")
+    monkeypatch.setenv("EASM_AGENT_STATE_DIR", str(isolated))
+    monkeypatch.setenv("EASM_AGENT_LAB_CONFIG", str(config))
+    with patch("demo.manage.ROOT", tmp_path), patch("demo.manage.plan", return_value={}) as build:
+        assert main(["plan"]) == 0
+    assert build.call_args.args[1] == {"generation": "isolated-run"}
+    assert (isolated / "demo").is_dir()
+    assert not (tmp_path / ".easm-agent").exists()
+    monkeypatch.setenv("EASM_AGENT_LAB_CONFIG", "relative.yaml")
+    with pytest.raises(ValueError, match="절대 경로"):
+        lab_config_path(tmp_path)
 
 
 @pytest.mark.parametrize(
     ("arguments", "fail_command", "expected_code", "expected"),
     [
         ([], "", 1, []),
-        (["--apply"], "", 0, ["validate --prepare-providers", "deploy --apply", "agents"]),
+        (["--apply"], "", 0, [
+            "validate --prepare-providers", "deploy --apply", "agents", "saas --apply",
+        ]),
         (["--apply", "--collect"], "", 0, [
-            "validate --prepare-providers", "deploy --apply", "agents", "collect", "verify",
+            "validate --prepare-providers", "deploy --apply", "agents", "saas --apply",
+            "collect", "verify",
         ]),
         (["--apply", "--collect"], "-m demo.manage deploy --apply", 9, [
             "validate --prepare-providers", "deploy --apply",
+        ]),
+        (["--apply", "--collect"], "-m demo.manage saas --apply", 9, [
+            "validate --prepare-providers", "deploy --apply", "agents", "saas --apply",
         ]),
     ],
 )
@@ -87,6 +130,32 @@ def test_management_cli_routes_cleanup_without_deployment() -> None:
     assert remove.call_args.args[0][-3:] == ["--apply", "--confirm-lab-id", "owned"]
 
 
+@pytest.mark.parametrize("enabled", [False, True])
+def test_demo_collect_passes_optional_agent365_registry_configuration(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, enabled: bool,
+) -> None:
+    from demo.manage import collect_live
+
+    monkeypatch.delenv("EASM_AGENT_STATE_DIR", raising=False)
+    lab = {
+        "project_id": "project", "project_endpoint": "https://example.test",
+        "model": "model", "model_version": "1",
+    }
+    with patch("demo.manage.ROOT", tmp_path), patch(
+        "demo.manage.TemporaryCertificate", side_effect=RuntimeError("stop before authentication"),
+    ), pytest.raises(RuntimeError, match="stop before authentication"):
+        collect_live(setup_values(), lab, Mock(), {"agent365_registry": enabled})
+    settings = load_yaml(tmp_path / ".easm-agent" / "demo" / "lab-collection.yaml")
+    assert settings["agent365_registry"] is enabled
+
+
+def test_demo_collect_rejects_non_boolean_agent365_option(tmp_path: Path) -> None:
+    from demo.manage import collect_live
+
+    with patch("demo.manage.ROOT", tmp_path), pytest.raises(ValueError, match="agent365_registry"):
+        collect_live(setup_values(), {}, Mock(), {"agent365_registry": "true"})
+
+
 def test_evaluation_submits_all_three_synthetic_samples(tmp_path: Path) -> None:
     from demo.agents import TEST_CASES, evaluate_agent
 
@@ -108,6 +177,90 @@ def test_evaluation_submits_all_three_synthetic_samples(tmp_path: Path) -> None:
     assert len(samples) == 3
     assert [row["item"]["query"] for row in samples] == [query for query, _ in TEST_CASES]
     assert result["samples"] == samples and result["status"] == "completed"
+
+
+def authentication_setup(actual: dict) -> tuple[Mock, Mock, Mock, dict, dict, dict, list[tuple]]:
+    setup = {"tenant_id": "test-tenant"}
+    lab = {"lab_id": "test-lab", "region": "koreacentral"}
+    host = {"id": "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Web/sites/site", "name": "site"}
+    identity_id = "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/site-login"
+    events: list[tuple] = []
+    cli, arm, graph = Mock(), Mock(), Mock()
+    arm.ensure.return_value = {"properties": {"principalId": "identity", "clientId": "identity-client"}}
+
+    def cli_run(*args: str) -> object:
+        events.append(("cli", *args))
+        if args[:2] == ("provider", "list"):
+            return [{"namespace": "Microsoft.ManagedIdentity", "registrationState": "Registered"}]
+        return {}
+
+    def arm_request(method: str, path: str, *args: object) -> dict:
+        events.append(("arm", method, path))
+        if path == host["id"]:
+            return {"identity": {"userAssignedIdentities": {identity_id: {}}}}
+        if path.endswith("/config/authsettingsV2") and method == "GET":
+            return actual
+        return {}
+
+    def graph_request(method: str, path: str, *args: object, **kwargs: object) -> dict:
+        if path == "/applications":
+            return {"value": [{
+                "id": "app-object", "appId": "app-client", "notes": "EASMAgent chatbot lab test-lab",
+                "signInAudience": "AzureADMyOrg", "web": {
+                    "redirectUris": ["https://site.azurewebsites.net/.auth/login/aad/callback"],
+                    "implicitGrantSettings": {"enableIdTokenIssuance": True},
+                },
+            }]}
+        if path == "/servicePrincipals":
+            return {"value": [{"id": "principal"}]}
+        if path.endswith("/federatedIdentityCredentials"):
+            return {"value": [{
+                "name": "easmagent-web-login", "issuer": "https://login.microsoftonline.com/test-tenant/v2.0",
+                "subject": "identity", "audiences": ["api://AzureADTokenExchange"],
+            }]}
+        raise AssertionError((method, path))
+
+    cli.run.side_effect, arm.request.side_effect, graph.request.side_effect = cli_run, arm_request, graph_request
+    return cli, arm, graph, setup, lab, host, events
+
+
+def test_host_enables_allowed_users_only_after_platform_authentication_is_verified() -> None:
+    actual = auth_settings("test-tenant", "app-client", ["operator"])
+    cli, arm, graph, setup, lab, host, events = authentication_setup(actual)
+    configure(cli, arm, graph, setup, lab, host, ["operator"])
+    verify = next(index for index, event in enumerate(events) if event[0:2] == ("arm", "GET")
+                  and event[2].endswith("/config/authsettingsV2"))
+    enable = next(index for index, event in enumerate(events) if "EASMAGENT_CHAT_ALLOWED_OIDS=operator" in event)
+    assert enable > verify
+    assert "EASMAGENT_CHAT_ALLOWED_OIDS=" in events[0]
+
+
+@pytest.mark.parametrize("broken", [
+    "platform", "provider", "allowed_users", "require_authentication", "redirect", "excluded_paths", "app",
+])
+def test_host_does_not_enable_users_if_platform_authentication_is_incomplete(broken: str) -> None:
+    actual = auth_settings("test-tenant", "app-client", ["operator"])
+    properties = actual["properties"]
+    if broken == "platform":
+        properties["platform"]["enabled"] = False
+    elif broken == "provider":
+        properties["identityProviders"]["azureActiveDirectory"]["enabled"] = False
+    elif broken == "allowed_users":
+        properties["identityProviders"]["azureActiveDirectory"]["validation"]["defaultAuthorizationPolicy"][
+            "allowedPrincipals"
+        ]["identities"] = ["other-user"]
+    elif broken == "require_authentication":
+        properties["globalValidation"]["requireAuthentication"] = False
+    elif broken == "redirect":
+        properties["globalValidation"]["unauthenticatedClientAction"] = "AllowAnonymous"
+    elif broken == "excluded_paths":
+        properties["globalValidation"]["excludedPaths"] = ["/health", "/api/agents"]
+    else:
+        properties["identityProviders"]["azureActiveDirectory"]["registration"]["clientId"] = "other-app"
+    cli, arm, graph, setup, lab, host, events = authentication_setup(actual)
+    with pytest.raises(RuntimeError, match="인증"):
+        configure(cli, arm, graph, setup, lab, host, ["operator"])
+    assert not any("EASMAGENT_CHAT_ALLOWED_OIDS=operator" in event for event in events)
 
 
 class FakeCLI:
@@ -580,6 +733,89 @@ def test_source_only_repack_reuses_verified_dependencies(tmp_path: Path) -> None
         assert bundle.testzip() is None
 
 
+@pytest.mark.parametrize("existing_success", [False, True])
+def test_webapp_starts_application_only_after_successful_package_deployment(
+    tmp_path: Path, existing_success: bool,
+) -> None:
+    events: list[tuple[str, str]] = []
+    previous = [{"id": "previous", "status": 4 if existing_success else 0, "complete": existing_success}]
+    cli = Mock()
+    configs = iter([{"appCommandLine": "old-startup"}, {"appCommandLine": ""}])
+
+    def run(*args: str) -> object:
+        if args[:4] == ("webapp", "log", "deployment", "list"):
+            return previous
+        if args[:3] == ("webapp", "config", "show"):
+            return next(configs)
+        if args[:3] == ("webapp", "config", "set"):
+            if "--generic-configurations" in args:
+                assert json.loads(args[args.index("--generic-configurations") + 1]) == {"appCommandLine": ""}
+                events.append(("clear", ""))
+            else:
+                events.append(("startup", args[args.index("--startup-file") + 1]))
+            return {}
+        raise AssertionError(args)
+
+    cli.run.side_effect = run
+
+    def package(_site: dict, _archive: Path, _credential: object, previous_ids: set[str]) -> dict:
+        assert previous_ids == {"previous"}
+        events.append(("deploy", "new"))
+        return {"id": "new", "status": 4, "complete": True}
+
+    site = {"name": "fixture", "defaultHostName": "fixture.azurewebsites.net"}
+    with patch("demo.infrastructure.deploy_zip", side_effect=package):
+        result = deploy_webapp_code(cli, site, tmp_path / "sample.zip", Mock(), "group", "subscription")
+    assert result["id"] == "new"
+    assert events == ([("clear", "")] if not existing_success else []) + [
+        ("deploy", "new"),
+        ("startup", "gunicorn --chdir /home/site/wwwroot --bind=0.0.0.0 --timeout 120 --workers 1 app:app"),
+    ]
+
+
+def test_webapp_keeps_safe_startup_when_package_deployment_fails(tmp_path: Path) -> None:
+    cli = Mock()
+    cli.run.side_effect = [[], {"appCommandLine": "old-startup"}, {}, {"appCommandLine": ""}]
+    with patch("demo.infrastructure.deploy_zip", side_effect=RuntimeError("deployment failed")), pytest.raises(
+        RuntimeError, match="deployment failed",
+    ):
+        deploy_webapp_code(
+            cli, {"name": "fixture", "defaultHostName": "fixture.azurewebsites.net"},
+            tmp_path / "sample.zip", Mock(), "group", "subscription",
+        )
+    startup_calls = [call.args for call in cli.run.call_args_list if call.args[:3] == ("webapp", "config", "set")]
+    assert len(startup_calls) == 1
+    assert json.loads(startup_calls[0][-1]) == {"appCommandLine": ""}
+
+
+def test_webapp_stops_if_the_old_startup_command_was_not_cleared(tmp_path: Path) -> None:
+    cli = Mock()
+    old_config = {"appCommandLine": "old-startup"}
+    cli.run.side_effect = [[], old_config, {}, old_config]
+    with patch("demo.infrastructure.deploy_zip") as package, pytest.raises(RuntimeError, match="시작 명령"):
+        deploy_webapp_code(
+            cli, {"name": "fixture", "defaultHostName": "fixture.azurewebsites.net"},
+            tmp_path / "sample.zip", Mock(), "group", "subscription",
+        )
+    package.assert_not_called()
+
+
+def test_webapp_does_not_restart_an_already_safe_empty_startup(tmp_path: Path) -> None:
+    cli = Mock()
+    cli.run.side_effect = [[], {"appCommandLine": ""}, {}]
+    with patch("demo.infrastructure.deploy_zip", return_value={"id": "new"}) as package:
+        deploy_webapp_code(
+            cli, {"name": "fixture", "defaultHostName": "fixture.azurewebsites.net"},
+            tmp_path / "sample.zip", Mock(), "group", "subscription",
+        )
+    startup_calls = [call.args for call in cli.run.call_args_list if call.args[:3] == ("webapp", "config", "set")]
+    assert package.call_count == 1 and len(startup_calls) == 1 and startup_calls[0][-1].endswith("app:app")
+
+
+def test_new_webapp_template_does_not_start_missing_application() -> None:
+    assert "appCommandLine:" not in read_bicep("host.bicep")
+
+
 @pytest.mark.parametrize("pending_status", [200, 202])
 def test_direct_zip_requires_new_successful_kudu_operation(tmp_path: Path, pending_status: int) -> None:
     archive = tmp_path / "sample.zip"
@@ -628,3 +864,43 @@ def test_direct_zip_failure_is_not_success(tmp_path: Path) -> None:
         "demo.infrastructure.requests.get", return_value=failed,
     ), pytest.raises(RuntimeError, match="status=3"):
         deploy_zip({"name": "fixture", "defaultHostName": "fixture.azurewebsites.net"}, archive, Mock(), set())
+
+
+def test_direct_zip_retries_status_timeouts_without_resubmitting(tmp_path: Path) -> None:
+    archive = tmp_path / "sample.zip"
+    archive.write_bytes(b"fixture")
+    accepted = Mock(status_code=202, headers={"Location": "/api/deployments/new"})
+    transient = Mock(status_code=503)
+    complete = Mock(status_code=200)
+    complete.json.return_value = {"id": "new", "status": 4, "complete": True}
+    with patch("demo.infrastructure.requests.post", return_value=accepted) as post, patch(
+        "demo.infrastructure.requests.get",
+        side_effect=[requests.exceptions.ReadTimeout("status timeout"), transient, complete],
+    ) as get, patch("demo.infrastructure.time.sleep"):
+        result = deploy_zip(
+            {"name": "fixture", "defaultHostName": "fixture.azurewebsites.net"}, archive, Mock(), set(),
+        )
+    assert result["id"] == "new"
+    assert post.call_count == 1 and get.call_count == 3
+    transient.close.assert_called_once()
+
+
+def test_direct_zip_surfaces_persistent_unknown_status_without_resubmitting(tmp_path: Path) -> None:
+    archive = tmp_path / "sample.zip"
+    archive.write_bytes(b"fixture")
+    accepted = Mock(status_code=202, headers={"Location": "/api/deployments/new"})
+    with patch("demo.infrastructure.requests.post", return_value=accepted) as post, patch(
+        "demo.infrastructure.requests.get", side_effect=requests.exceptions.ReadTimeout("status timeout"),
+    ), patch("demo.infrastructure.time.sleep"), pytest.raises(RuntimeError, match="재전송 전"):
+        deploy_zip({"name": "fixture", "defaultHostName": "fixture.azurewebsites.net"}, archive, Mock(), set())
+    assert post.call_count == 1
+
+
+def test_direct_zip_post_timeout_requires_status_check_before_resubmission(tmp_path: Path) -> None:
+    archive = tmp_path / "sample.zip"
+    archive.write_bytes(b"fixture")
+    with patch(
+        "demo.infrastructure.requests.post", side_effect=requests.exceptions.ReadTimeout("upload timeout"),
+    ) as post, pytest.raises(RuntimeError, match="재전송 전"):
+        deploy_zip({"name": "fixture", "defaultHostName": "fixture.azurewebsites.net"}, archive, Mock(), set())
+    assert post.call_count == 1

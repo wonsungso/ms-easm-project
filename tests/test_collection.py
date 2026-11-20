@@ -93,6 +93,38 @@ def test_security_without_targets_does_not_query_the_whole_subscription() -> Non
     http.request.assert_not_called()
 
 
+@pytest.mark.parametrize("with_prior_costs", [False, True])
+def test_empty_cost_response_does_not_complete_subscription(with_prior_costs: bool) -> None:
+    first, empty = "first", "empty"
+    ids = {
+        sid: f"/subscriptions/{sid}/providers/Microsoft.CognitiveServices/accounts/example"
+        for sid in (first, empty)
+    }
+    base = Collection(collected_at=NOW, resources=[
+        {"id": rid, "subscriptionId": sid, "type": "Microsoft.CognitiveServices/accounts", "kind": "AIServices"}
+        for sid, rid in ids.items()
+    ])
+    http = Mock(last_ref="fixture://cost")
+    responses = []
+    if with_prior_costs:
+        responses.append({"properties": {
+            "columns": [{"name": name} for name in ("PreTaxCost", "ResourceId", "Currency", "UsageDate")],
+            "rows": [[1.0, ids[first], "USD", "20261103"]],
+        }})
+    responses.append({"properties": {"columns": [], "rows": []}})
+    http.request.side_effect = responses
+    collector = SignalCollector(http, base, NOW, load_criteria(), {})
+    result = Collection(collected_at=NOW)
+    if with_prior_costs:
+        collector.costs(first, result)
+
+    with pytest.raises(AccessError) as exc:
+        collector.costs(empty, result)
+
+    assert exc.value.reason == "not_found"
+    assert result.facts.get("cost_complete_subscriptions", []) == ([first] if with_prior_costs else [])
+
+
 def test_foundry_data_pages_reject_cycles() -> None:
     http = Mock()
     http.request.return_value = {"data": [{"id": "a"}], "has_more": True, "last_id": "a"}

@@ -1,15 +1,10 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
-from typing import Any, Literal, Protocol
+from typing import Any, Literal
 
 from easm_agent.api_grading import PROFILE, Measurement, measurements
 from easm_agent.models import AssessmentMeasurement, Collection, Finding
 from easm_agent.provenance import assessment_provenance
-
-
-class Evaluator(Protocol):
-    def evaluate(self, data: Collection, criteria: Mapping[str, Any]) -> list[Finding]: ...
 
 
 def matches(facts: dict[str, Any], conditions: dict[str, dict[str, Any]]) -> bool:
@@ -48,7 +43,7 @@ def readiness(data: Collection, config: dict[str, Any]) -> str | None:
 
 
 def evaluate(
-    data: Collection, criteria: dict[str, Any], allowed: dict[str, Any],
+    data: Collection, criteria: dict[str, Any],
     conventions: dict[str, Any], policy_facts: dict[str, Any] | None = None,
     interviews: dict[str, float] | None = None,
     *, provenance_origin: Literal["evaluation", "saved_snapshot_reassessment"] = "evaluation",

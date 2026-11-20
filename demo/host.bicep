@@ -39,7 +39,6 @@ resource site 'Microsoft.Web/sites@2024-04-01' = {
     httpsOnly: true
     siteConfig: {
       linuxFxVersion: 'PYTHON|3.11'
-      appCommandLine: 'gunicorn --bind=0.0.0.0 --timeout 120 --workers 1 app:app'
       alwaysOn: true
       ftpsState: 'Disabled'
       minTlsVersion: '1.2'

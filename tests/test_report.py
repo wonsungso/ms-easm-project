@@ -15,11 +15,15 @@ from openpyxl.worksheet.worksheet import Worksheet
 
 from easm_agent.cli import main
 from easm_agent.models import (
+    Agent365Package,
     AgentEvidence,
     AssessmentMeasurement,
     Collection,
+    CopilotAgentEvidence,
     CostRecord,
     EvaluationRun,
+    EvidenceSource,
+    FieldStatus,
     Finding,
     Issue,
     LogSetting,
@@ -35,7 +39,8 @@ from easm_agent.report import (
     report_name,
     write_reports,
 )
-from easm_agent.report_excel import write_workbook
+from easm_agent.report_backdata import metrics_by_key, report_metrics
+from easm_agent.report_excel import presentation_evidence_rows, write_workbook
 from easm_agent.report_template import CRITERIA_SHEET, RESULT_SHEET
 
 ROOT = Path(__file__).parents[1]
@@ -113,6 +118,362 @@ def test_audit_summary_and_target_table_do_not_promote_pending_results(tmp_path:
     values = [str(cell.value) for row in details for cell in row]
     assert data.assessment_provenance.criteria_sha256 in values
     assert any("numerator" in value and "null" in value for value in values)
+
+
+def test_presentation_evidence_keeps_unavailable_and_distinct_metrics_separate(tmp_path: Path) -> None:
+    from easm_agent.models import load_criteria
+    from easm_agent.provenance import assessment_provenance
+
+    rows = [
+        finding(
+            se_code="DS-SE-02", level="L1", reason=None, metric_value=0,
+            measurement=AssessmentMeasurement(numerator=0, denominator=2, complete=True),
+        ),
+        finding(
+            se_code="BI-SE-08", level="N/A", reason="permission_denied",
+            metric_value=None, measurement=AssessmentMeasurement(complete=False, reason="권한 부족"),
+        ),
+        finding(
+            se_code="BI-SE-09", level="L5", reason=None, metric_value=1,
+            measurement=AssessmentMeasurement(numerator=1, denominator=1, complete=True),
+        ),
+    ]
+    path = tmp_path / "report.xlsx"
+    data = sample()
+    data.assessment_provenance = assessment_provenance(load_criteria(), {}, "evaluation")
+    write_workbook(data, rows, path)
+    sheet = load_workbook(path)[TITLES["수집결과 근거"]]
+    table = next(t for t in sheet.tables.values() if t.tableColumns[0].name == "원본 PPT 항목")
+    _, first, last_column, last = range_boundaries(table.ref)
+    headers = [sheet.cell(first, col).value for col in range(1, last_column + 1)]
+    entries = {
+        values[0]: dict(zip(headers, values, strict=True))
+        for values in sheet.iter_rows(
+            min_row=first + 1, max_row=last, max_col=last_column, values_only=True,
+        )
+    }
+    assert len(entries) == 20
+    assert entries["DS-SY-04"]["지표 값"] == "0.00%"
+    assert entries["DS-SY-04"]["확인 상태"] == "수집됨"
+    assert entries["BI-SY-07"]["지표 값"] is None
+    assert entries["BI-SY-07"]["확인 상태"] == "판정 보류"
+    assert entries["BI-SY-07"]["사유 코드"] == "permission_denied"
+    assert "조회 권한 부족" in entries["BI-SY-07"]["보류 사유·범위 차이"]
+    assert entries["BI-SY-08"]["지표 값"] is None
+    assert entries["BI-SY-08"]["확인 상태"] == "판정 보류"
+    assert entries["BI-SY-08"]["사유 코드"] == "feature_unavailable"
+
+
+def test_presentation_evidence_requires_the_original_metric_and_complete_measurement() -> None:
+    from easm_agent.models import load_criteria
+    from easm_agent.provenance import assessment_provenance
+
+    data = sample()
+    result = finding(
+        se_code="DS-SE-02", level="L5", reason=None, metric_value=1,
+        measurement=AssessmentMeasurement(numerator=1, denominator=1, complete=True),
+    )
+    def row() -> dict:
+        return next(
+            item for item in presentation_evidence_rows(data, [result])
+            if item["원본 PPT 항목"] == "DS-SY-04"
+        )
+    assert row()["지표 값"] is None
+    assert row()["사유 코드"] == "not_found"
+    criteria = load_criteria()
+    criteria["items"]["DS-SE-02"]["metric"] = "other"
+    data.assessment_provenance = assessment_provenance(criteria, {}, "evaluation")
+    assert row()["지표 값"] is None
+    criteria["items"]["DS-SE-02"]["metric"] = "data_policy_environment_ratio"
+    data.assessment_provenance = assessment_provenance(criteria, {}, "evaluation")
+    result.measurement = AssessmentMeasurement(numerator=1, denominator=1, complete=False)
+    assert row()["지표 값"] is None
+
+
+@pytest.mark.parametrize("complete,unknown", [(True, False), (False, False), (True, True)])
+def test_copilot_backdata_never_turns_unknown_platforms_into_zero_counts(
+    tmp_path: Path, complete: bool, unknown: bool,
+) -> None:
+    data = sample()
+    data.facts["copilot_inventory_complete"] = complete
+    if not complete:
+        data.issues.append(Issue(
+            collector="copilot_inventory", target="approved-export", reason="license_missing",
+            detail="명시적 라이선스 오류",
+        ))
+    data.copilot_agents = [
+        CopilotAgentEvidence(
+            agent_id="11111111-1111-4111-8111-111111111111", environment_id="test-environment",
+            platform="agent_builder", owner_present=False,
+            evidence_refs=["evidence:copilot-source"],
+        ),
+        CopilotAgentEvidence(
+            agent_id="22222222-2222-4222-8222-222222222222", environment_id="test-environment",
+            platform="unclassified_copilot" if unknown else "copilot_studio", owner_present=True,
+            evidence_refs=["evidence:copilot-source"],
+        ),
+    ]
+    path = tmp_path / "copilot.xlsx"
+    write_workbook(data, [], path)
+    values = metrics_by_key(data, [], "fixture")
+    count = values["inventory.agent_builder"]
+    assert count.value == (1 if complete and not unknown else None)
+    assert count.status == ("observed" if complete and not unknown else "unavailable")
+    assert count.evidence_refs == ["evidence:copilot-source"]
+    if not complete:
+        assert count.reason == "license_missing"
+    assert values["copilot.owner_missing"].value == (1 if complete else None)
+    assert values["creation.history"].value is None
+    assert values["security.exposure"].reason == "feature_unavailable"
+    assert values["run.mode"].value == "fixture"
+
+
+def test_report_scale_uses_snapshot_thresholds_without_rounding_them(tmp_path: Path) -> None:
+    from easm_agent.models import load_criteria
+    from easm_agent.provenance import assessment_provenance
+
+    criteria = load_criteria()
+    for config in criteria["items"].values():
+        for rule in config["rules"]:
+            if rule["level"] == "L3":
+                rule["when"]["coverage"]["gte"] = 0.825
+    data = sample()
+    data.assessment_provenance = assessment_provenance(criteria, {}, "evaluation")
+    path = tmp_path / "custom-scale.xlsx"
+    write_workbook(data, [], path)
+    values = metrics_by_key(data, [], "fixture")
+    assert values["criteria.L3.text"].value == "82.5%<=p<90%"
+
+
+def test_studio_zero_is_an_inventory_response_not_a_tenant_absence_claim() -> None:
+    data = sample()
+    data.facts["copilot_inventory_complete"] = True
+    data.copilot_agents = [CopilotAgentEvidence(
+        agent_id="builder", environment_id="env", platform="agent_builder",
+    )]
+    metrics = {row.key: row for row in report_metrics(data, [], "fixture")}
+    assert metrics["inventory.agent_builder"].value == 1
+    assert metrics["inventory.copilot_studio"].value == 0
+    assert "테넌트 전체 Agent 부재 판정이 아닙니다" in metrics["inventory.copilot_studio"].limitation
+    assert "Dataverse 초안·미게시" in metrics["inventory.copilot_studio"].limitation
+
+
+def test_backdata_preserves_measurement_counts_without_inventing_business_impacts() -> None:
+    from easm_agent.models import load_criteria
+    from easm_agent.provenance import assessment_provenance
+
+    data = sample()
+    data.assessment_provenance = assessment_provenance(load_criteria(), {}, "evaluation")
+    rows = [finding(
+        se_code="DS-SE-02", level="L1", reason=None, metric_value=0,
+        measurement=AssessmentMeasurement(numerator=0, denominator=2, complete=True),
+        evidence_refs=["evidence:measurement"],
+    ), finding(
+        se_code="BI-SE-08", level="N/A", reason="permission_denied",
+        measurement=AssessmentMeasurement(numerator=0, denominator=2, complete=False),
+    )]
+    values = {row.key: row for row in report_metrics(data, rows, "fixture")}
+    assert values["se.DS-SE-02.numerator"].value == 0
+    assert values["se.DS-SE-02.denominator"].value == 2
+    assert values["se.DS-SE-02.denominator"].evidence_refs == ["evidence:measurement"]
+    assert values["se.BI-SE-08.numerator"].value is None
+    assert values["se.BI-SE-08.denominator"].reason == "permission_denied"
+    assert values["business.loss_amount"].value is None
+    assert values["business.roi"].reason == "feature_unavailable"
+
+
+def test_backdata_preserves_all_source_evidence_references() -> None:
+    data = sample()
+    empty = {row.key: row for row in report_metrics(data, [], "fixture")}["run.evidence_sources"]
+    assert empty.value is None
+    assert empty.reason == "not_found"
+
+    refs = [f"evidence:{index:064x}" for index in range(542)]
+    data.evidence_sources = [
+        EvidenceSource(target="first", evidence_refs=refs),
+        EvidenceSource(target="second", evidence_refs=[refs[0]]),
+    ]
+    source = metrics_by_key(data, [], "fixture")["run.evidence_sources"]
+    assert source.value == 542
+    assert source.evidence_refs == refs
+
+
+def test_package_usage_backdata_is_per_package_not_a_tenant_sum_and_preserves_field_errors() -> None:
+    data = sample()
+    data.agent365_packages = [
+        Agent365Package(
+            package_id="one", manifest_id="same-agent", active_users_30d=7, total_sessions_30d=0,
+            exception_count_30d=2.0, last_used_at=data.collected_at,
+            detail_evidence_refs=["evidence:package-one"],
+            field_status={"exception_count_30d": FieldStatus(reason="error", detail="형식 오류")},
+        ),
+        Agent365Package(
+            package_id="two", manifest_id="same-agent", active_users_30d=7,
+            detail_evidence_refs=["evidence:package-two"],
+            field_status={"total_sessions_30d": FieldStatus(reason="permission_denied", detail="조회 거부")},
+        ),
+    ]
+    values = {row.key: row for row in report_metrics(data, [], "fixture")}
+    assert values["catalog.package.1.active_users_30d"].value == 7
+    assert values["catalog.package.2.active_users_30d"].value == 7
+    assert values["catalog.package.1.total_sessions_30d"].value == 0
+    assert values["catalog.package.2.total_sessions_30d"].value is None
+    assert values["catalog.package.2.total_sessions_30d"].reason == "permission_denied"
+    assert values["catalog.package.1.exception_count_30d"].reason == "error"
+    assert "형식 오류" in values["catalog.package.1.exception_count_30d"].limitation
+    assert values["catalog.package.1.last_used_at"].value == data.collected_at.isoformat()
+    assert values["catalog.package.1.active_users_30d"].evidence_refs == ["evidence:package-one"]
+    assert values["catalog.usage.active_users_30d"].value is None
+    assert "중복" in values["catalog.usage.active_users_30d"].limitation
+    assert "90일" in values["catalog.usage.scope"].limitation
+    data.agent365_packages.append(data.agent365_packages[0].model_copy())
+    values = {row.key: row for row in report_metrics(data, [], "fixture")}
+    assert values["catalog.package.1.active_users_30d"].value is None
+    assert values["catalog.package.3.active_users_30d"].reason == "error"
+
+
+def test_metadata_backdata_preserves_field_sources_types_null_reasons_and_exact_evidence() -> None:
+    fields = {
+        "package_type": "custom", "manifest_version": "1.1",
+        "app_id": "11111111-1111-4111-8111-111111111111",
+        "supported_hosts": ["Teams"], "element_types": ["declarativeAgent"],
+        "categories": ["Tools"], "category_count": 1,
+        "sensitivity": "general", "sensitivity_present": True,
+    }
+    refs = {field: ["evidence:" + field] for field in fields}
+    package = Agent365Package(
+        package_id="one", **fields,
+        metadata_field_sources=dict.fromkeys(fields, "catalog"), metadata_evidence_refs=refs,
+        detail_evidence_refs=["evidence:unrelated-usage"],
+        field_status={"manifest_version": FieldStatus(reason="error", detail="형식 검증 실패")},
+    )
+    data = sample()
+    data.agent365_packages = [package, Agent365Package(
+        package_id="two", app_id=fields["app_id"], package_type="custom", category_count=0,
+        sensitivity_present=False,
+        metadata_field_sources={
+            "package_type": "catalog", "app_id": "not_requested",
+            "category_count": "detail", "sensitivity_present": "detail",
+        },
+        metadata_evidence_refs={
+            "category_count": ["evidence:empty-categories"], "sensitivity_present": ["evidence:empty-sensitivity"],
+        },
+        field_status={"sensitivity": FieldStatus(reason="feature_unavailable", detail="자유 문자열 미보존")},
+    )]
+    metrics = {row.key: row for row in report_metrics(data, [], "fixture")}
+    prefix = "catalog.package.1.metadata."
+    for field in fields:
+        assert metrics[prefix + field].evidence_refs == refs[field]
+        assert metrics[prefix + field + ".source"].value == "catalog"
+        assert metrics[prefix + field + ".source"].evidence_refs == refs[field]
+        assert "고유 Agent 수" in metrics[prefix + field].limitation
+    for field in ("supported_hosts", "element_types", "categories"):
+        assert json.loads(metrics[prefix + field].value) == fields[field]
+    assert metrics[prefix + "sensitivity_present"].value == "true"
+    assert "민감도 레이블 적용·정책 실효성" in metrics[prefix + "sensitivity_present"].limitation
+    assert metrics[prefix + "manifest_version"].value is None
+    assert metrics[prefix + "manifest_version"].reason == "error"
+    assert metrics[prefix + "app_id"].value == fields["app_id"]
+    prefix = "catalog.package.2.metadata."
+    assert metrics[prefix + "category_count"].value == 0
+    assert metrics[prefix + "sensitivity_present"].value == "false"
+    assert metrics[prefix + "supported_hosts"].value is None
+    assert metrics[prefix + "supported_hosts"].reason == "not_found"
+    assert metrics[prefix + "sensitivity"].reason == "feature_unavailable"
+    assert metrics[prefix + "package_type"].value is None  # The source alone is not field evidence.
+    assert metrics[prefix + "package_type.source"].value == "catalog"
+    assert metrics[prefix + "app_id"].value is None  # The source records a skipped read.
+    assert metrics[prefix + "app_id.source"].value == "not_requested"
+    data.agent365_packages.append(package.model_copy(deep=True))
+    metrics = {row.key: row for row in report_metrics(data, [], "fixture")}
+    assert metrics["catalog.package.1.metadata.package_type"].value is None
+    assert metrics["catalog.package.3.metadata.package_type"].reason == "error"
+
+
+def test_436_catalog_detail_references_complete_excel_ppt_and_recover_all_links(tmp_path: Path) -> None:
+    from pptx import Presentation
+
+    from easm_agent.report_pptx import presentation_template_path
+
+    data = sample()
+    root = tmp_path / "evidence"
+    root.mkdir()
+    data.facts["evidence_directory"] = str(root)
+    data.facts["agent365_registry_complete"] = True
+    for number in range(436):
+        source = root / f"{number}.json"
+        source.write_text(json.dumps({
+            "package": number, "activeUsers": 0, "token": "do-not-export",
+            "contact": "someone@example.invalid",
+        }), encoding="utf-8")
+        # Per-source records let normalization attach every masked payload independently.
+        data.facts[f"detail_source_{number}"] = {"evidence_refs": [str(source)]}
+        data.agent365_packages.append(Agent365Package(
+            package_id=f"package-{number}", active_users_30d=0,
+            detail_evidence_refs=[str(source)],
+            field_status={"last_used_at": FieldStatus(reason="not_found", detail="필드 없음")},
+        ))
+    first = data.agent365_packages[0]
+    first.package_type = "custom"
+    first.field_status.pop("package_type", None)
+    first.metadata_field_sources["package_type"] = "detail"
+    first.metadata_evidence_refs["package_type"] = first.detail_evidence_refs.copy()
+    with NO_AZURE:
+        path = write_reports(data, [finding()], tmp_path / "reports", "fixture")
+    result = load_result(path.parent)
+    expected = sorted({
+        ref for package in result["collection"]["agent365_packages"]
+        for ref in package["detail_evidence_refs"]
+    })
+    assert len(expected) == 436
+    assert len(json.dumps(expected, ensure_ascii=False)) == 33572
+    for ref in expected:
+        identifier = ref.removeprefix("evidence:")
+        assert digest(result["evidence"][identifier]) == identifier
+        assert any(row["id"] == identifier and row["status"] == "attached"
+                   for row in result["provenance"]["references"])
+    book = load_workbook(path)
+    assert not any("Backdata" in name or "증적 색인" in name for name in book.sheetnames)
+    metrics = metrics_by_key(
+        Collection.model_validate(result["collection"]),
+        [Finding.model_validate(row) for row in result["findings"]], "fixture",
+    )
+    keys = [key for key in metrics if key.startswith("catalog.usage.")]
+    assert len(keys) == 6
+    for key in keys:
+        assert metrics[key].evidence_refs == expected
+    assert metrics["catalog.package.1.metadata.package_type"].value == "custom"
+    metadata_refs = result["collection"]["agent365_packages"][0]["metadata_evidence_refs"]["package_type"]
+    assert len(metadata_refs) == 1 and metadata_refs[0] in expected
+    assert metrics["catalog.package.1.metadata.package_type"].evidence_refs == metadata_refs
+    assert metrics["catalog.package.1.metadata.package_type.source"].value == "detail"
+    assert metrics["catalog.package.1.metadata.package_type.source"].evidence_refs == metadata_refs
+    assert metrics["catalog.package.2.metadata.package_type"].value is None
+    assert metrics["catalog.package.2.metadata.package_type"].reason == "not_found"
+    assert metrics["catalog.package.1.active_users_30d"].value == 0
+    assert metrics["catalog.package.1.last_used_at"].value is None
+    assert metrics["catalog.package.1.last_used_at"].reason == "not_found"
+    assert metrics["catalog.usage.active_users_30d"].value is None
+    assert metrics["catalog.usage.active_users_30d"].reason == "feature_unavailable"
+
+    assert all(
+        len(cell.value) <= 32767 for sheet in book for row in sheet for cell in row
+        if isinstance(cell.value, str)
+    )
+    assert not any(secret in str(cell.value) for secret in SECRETS
+                   for sheet in book for row in sheet for cell in row)
+    book.close()
+    deck = next(path.parent.glob("EASM-report-*.pptx"))
+    presentation = Presentation(deck)
+    assert len(presentation.slides) == 12
+    notes = presentation.slides[9].notes_slide.notes_text_frame.text
+    assert all(ref in notes for ref in expected)
+    assert result["findings"][0]["level"] == "N/A"
+    assert result["findings"][0]["reason"] == "permission_denied"
+    with ZipFile(presentation_template_path()) as template, ZipFile(deck) as rendered:
+        assert set(template.namelist()) == set(rendered.namelist())
+        assert all(template.read(name) == rendered.read(name) for name in template.namelist()
+                   if not name.startswith(("ppt/slides/slide", "ppt/notesSlides/notesSlide")))
 
 
 def prepared(tmp_path: Path, mode: str = "live") -> tuple[Collection, Path, Path, Path]:
@@ -455,7 +816,7 @@ def test_package_rebuilds_explicit_legacy_directory_without_nesting(tmp_path: Pa
 
 def test_workbook_sheets_tables_borders_and_validation(tmp_path: Path) -> None:
     path = tmp_path / "book.xlsx"
-    write_workbook(sample(), [finding()], path, "fixture", [])
+    write_workbook(sample(), [finding()], path)
     book = load_workbook(path)
     assert book.sheetnames == SHEETS
     for sheet in book.worksheets[6:]:
@@ -464,8 +825,8 @@ def test_workbook_sheets_tables_borders_and_validation(tmp_path: Path) -> None:
             "A4" if sheet.title == TITLES["수집결과 근거"] else "A2"
         )
         assert len(sheet.tables) == (
-            16 if sheet.title == TITLES["수집 Raw 데이터"] else
-            4 if sheet.title == TITLES["수집결과 근거"] else 1
+            18 if sheet.title == TITLES["수집 Raw 데이터"] else
+            6 if sheet.title == TITLES["수집결과 근거"] else 1
         )
         # Excel repairs a file that has both a table and a sheet-level autoFilter on one range.
         assert not sheet.auto_filter.ref

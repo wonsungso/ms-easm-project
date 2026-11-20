@@ -26,6 +26,7 @@ GRAPH_APP_ID = "00000003-0000-0000-c000-000000000000"
 ENTRA_GRAPH_ROLES = (
     "AgentIdentity.Read.All", "AgentIdentityBlueprint.Read.All", "Application.Read.All",
 )
+AGENT365_GRAPH_ROLE = "CopilotPackages.Read.All"
 DEFAULT_ROLES = ("Reader", "Cost Management Reader", "Log Analytics Reader", "Security Reader")
 PROJECT_SCOPE = re.compile(
     r"^/subscriptions/([0-9a-fA-F-]{36})/resourceGroups/([^/]+)/providers/"
@@ -117,6 +118,7 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--foundry-project-scopes", nargs="+", default=[])
     result.add_argument("--create-foundry-read-role", action="store_true")
     result.add_argument("--entra-reader", action="store_true", help="진단 SP에 Entra Agent ID용 Graph 읽기 권한 부여")
+    result.add_argument("--agent365-reader", action="store_true", help="별도 승인된 Agent 365 카탈로그 읽기 권한 부여")
     result.add_argument("--foundry-read-role-id", type=guid)
     mode = result.add_mutually_exclusive_group()
     mode.add_argument("--apply", action="store_true")
@@ -409,6 +411,8 @@ def execute(args: argparse.Namespace, cli: AzureCLI) -> None:
         ensure_assignment(cli, principal, principal_type, scope, role_id)
         print(f"| {principal} | {scope} | {name} | 확인됨 |")
     graph_roles = ensure_graph_roles(cli, principal)
+    if args.agent365_reader:
+        graph_roles.extend(ensure_graph_roles(cli, principal, (AGENT365_GRAPH_ROLE,)))
     for role in graph_roles:
         print(f"| {principal} | Microsoft Graph (application) | {role} | 확인됨 |")
     if args.account_type == "service-principal":
@@ -497,7 +501,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.cost_reader, args.monitoring_reader, args.log_analytics_reader, args.security_reader,
             ))
             or args.foundry_project_scopes or args.create_foundry_read_role
-            or args.foundry_read_role_id or args.entra_reader
+            or args.foundry_read_role_id or args.entra_reader or args.agent365_reader
         ):
             raise ValueError("역할/계정 생성 옵션은 plan 또는 apply에서만 사용하세요.")
         if (args.certificate_path or args.projects_file) and not args.verify:
@@ -528,7 +532,9 @@ def main(argv: list[str] | None = None) -> int:
                     f"/subscriptions/{sid}" for sid in args.subscriptions
                 ],
                 "foundry_custom_role": role_spec(args.subscriptions),
-                "graph_application_roles": list(ENTRA_GRAPH_ROLES),
+                "graph_application_roles": [
+                    *ENTRA_GRAPH_ROLES, *([AGENT365_GRAPH_ROLE] if args.agent365_reader else []),
+                ],
             }, ensure_ascii=False, indent=2))
             return 0
         execute(args, AzureCLI())

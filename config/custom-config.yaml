@@ -18,3 +18,9 @@ tags: {}
 
 # 프로젝트는 기본 자동 발견합니다. 명시 대상은 projects 설정으로 지정할 수 있습니다.
 projects: []
+
+# 별도 위임 사용자 읽기 내보내기입니다. 진단 SP에 관리자 역할을 부여하지 않습니다.
+# 24시간 이내 관측된 승인 파일만 사용하며 실제 파일을 fixture와 혼합할 수 없습니다.
+copilot_inventory_files: []
+# Agent 365 라이선스와 CopilotPackages.Read.All 관리자 동의를 별도로 준비한 경우만 활성화합니다.
+agent365_registry: false

@@ -1,12 +1,13 @@
-"""Executive PowerPoint report built on the corporate assessment deck template.
+"""Populate the approved 12-slide report without rebuilding its Office package.
 
-The deck is generated from the filled assessment workbook, so System Evidence scores and
-interview scores entered in the workbook are reflected together.
+The template's slide masters, layouts, theme, media and shape geometry stay byte-identical; only
+text, table cells and bar sizes are replaced with the story computed in report_narrative.
 """
 
 from __future__ import annotations
 
 import copy
+import math
 import re
 import sysconfig
 from dataclasses import dataclass
@@ -17,40 +18,45 @@ from zipfile import ZipFile
 
 from lxml import etree
 from pptx import Presentation
-from pptx.chart.data import CategoryChartData
 from pptx.dml.color import RGBColor
-from pptx.enum.text import PP_ALIGN
+from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
 from pptx.oxml.ns import qn
+from pptx.shapes.autoshape import Shape
+from pptx.shapes.graphfrm import GraphicFrame
+from pptx.slide import Slide
+from pptx.table import _Cell
+from pptx.text.text import TextFrame
 from pptx.util import Inches, Pt
 
-from easm_agent.deck_model import (
-    AREAS,
-    KINDS,
-    TARGET_LEVEL,
-    Assessment,
-    Item,
-    level_of,
-    read_assessment,
+from easm_agent import report_narrative as story
+from easm_agent.deck_model import AREAS, TARGET_LEVEL, read_assessment
+from easm_agent.models import Collection
+from easm_agent.report_backdata import ReportMetric
+from easm_agent.report_story import (
+    DEFAULT_CUSTOMER,
+    PENDING_LABEL,
+    DeckData,
+    em,
+    glossary_lines,
+    glossary_matches,
+    money,
+    pct,
+    superscript,
 )
-from easm_agent.deck_xml import (
-    Page,
-    duplicate_slide,
-    place,
-    set_fill,
-    set_outline,
-    set_text,
-)
-from easm_agent.report_template import COLLECTION_METHODS
+from easm_agent.report_terms import GROUP_LABEL
 
 TEMPLATE_NAME = "assessment-report-template.pptx"
-DEFAULT_CUSTOMER = "<고객사>"
-PRESENTATION_FONT = "맑은 고딕"
-LEVEL_COLORS = ["D13438", "F2A900", "107C10", "008575", "00566B"]
-PASTEL = ["F4C7C3", "FCE8B2", "CDE8C4", "B7E1DD", "A9CCE3"]
-PASTEL_TEXT = ["7A1F1F", "6B4A00", "1E5B1E", "0B5A52", "0B3F58"]
-GRAY = "9AA0A6"
-KIND_NAMES = {"PR": "프로세스", "PE": "사람·조직", "DA": "데이터·기록", "TE": "도구·기술", "SE": "시스템 실측"}
-KIND_SHORT = {"PR": "Process", "PE": "People", "DA": "Data", "TE": "Tech", "SE": "SE"}
+GRAY = "666666"
+RED = "C00000"
+BLUE = "0070C0"
+MID_GRAY = "A6A6A6"
+PENDING_TEXT = PENDING_LABEL
+DASHES = str.maketrans({"\u2013": "-", "\u2014": "-"})
+FOOTERS = {1: 43744, 2: 24030, 3: 24610, 4: 28602, 5: 28896, 6: 31758, 7: 36146, 8: 36712, 9: 40679,
+           10: 43666, 11: 44179}
+RESERVED_NOTES = {2: 1, 4: 2}  # footnote numbers already used by the template's own 1) 2) marks
+FOOTER_ROWS = {6: 5, 9: 5, 11: 3}  # rows that fit above the content of that slide
+FOOTER_BOTTOM = 7.08
 
 
 @dataclass
@@ -59,6 +65,8 @@ class DeckContext:
     collected_at: datetime | None = None
     subscriptions: int | None = None
     agents: int | None = None
+    metrics: dict[str, ReportMetric] | None = None
+    collection: Collection | None = None
 
 
 def presentation_template_path() -> Path:
@@ -70,673 +78,927 @@ def presentation_template_path() -> Path:
     return path
 
 
-def apply_presentation_font(path: Path) -> None:
-    """Apply the report font to slides, tables, charts, layouts and themes."""
-    output = BytesIO()
-    with ZipFile(path) as source, ZipFile(output, "w") as target:
-        for info in source.infolist():
-            content = source.read(info.filename)
-            if info.filename.endswith(".xml"):
-                root = etree.fromstring(content)
-                for node in root.iter():
-                    if "typeface" in node.attrib:
-                        node.set("typeface", PRESENTATION_FONT)
-                content = etree.tostring(root, encoding="UTF-8", xml_declaration=True, standalone=True)
-            target.writestr(info, content)
-    path.write_bytes(output.getvalue())
-
-
-def context_from_workbook(workbook: Path, customer: str = DEFAULT_CUSTOMER) -> DeckContext:
-    context = DeckContext(customer=customer)
+def context_from_workbook(
+    workbook: Path, customer: str = DEFAULT_CUSTOMER, metrics: dict[str, ReportMetric] | None = None,
+    collection: Collection | None = None,
+) -> DeckContext:
+    context = DeckContext(customer=customer, metrics=metrics, collection=collection)
     stamp = re.search(r"(\d{8}T\d{6})\d*Z", workbook.name)
     if stamp:
         context.collected_at = datetime.strptime(stamp[1], "%Y%m%dT%H%M%S")
-    match = re.search(r"구독 (\d+)개, Azure Agent (\d+)개", read_assessment(workbook).summary)
-    if match:
-        context.subscriptions, context.agents = int(match[1]), int(match[2])
     return context
 
 
-# --- content helpers -------------------------------------------------------------------------
+def replace_text(target: Shape | _Cell | TextFrame, text: str, *, size: float | None = None) -> None:
+    """Keep paragraph/run styles; only duplicate a paragraph when new lines require it."""
+    frame = target if isinstance(target, TextFrame) else target.text_frame
+    body = frame._txBody
+    originals = [copy.deepcopy(paragraph._p) for paragraph in frame.paragraphs]
+    visible = [
+        paragraph for paragraph in originals
+        if "".join(paragraph.itertext()).strip()
+    ] or originals
+    spacers = [paragraph for paragraph in originals if not "".join(paragraph.itertext()).strip()]
+    for paragraph in list(body.findall(qn("a:p"))):
+        body.remove(paragraph)
+    content_index = 0
+    for line in text.split("\n"):
+        prototype = (
+            visible[min(content_index, len(visible) - 1)] if line.strip()
+            else spacers[0] if spacers else visible[-1]
+        )
+        paragraph = copy.deepcopy(prototype)
+        if line.strip():
+            content_index += 1
+        for node in list(paragraph):
+            if node.tag in (qn("a:br"), qn("a:fld")):
+                paragraph.remove(node)
+        runs = paragraph.findall(qn("a:r"))
+        if not runs:
+            run = etree.Element(qn("a:r"))
+            properties = paragraph.find(qn("a:endParaRPr"))
+            if properties is not None:
+                properties = copy.deepcopy(properties)
+                properties.tag = qn("a:rPr")
+                run.append(properties)
+            etree.SubElement(run, qn("a:t"))
+            paragraph.append(run)
+            runs = [run]
+        for run_index, run in enumerate(runs):
+            node = run.find(qn("a:t"))
+            if node is None:
+                node = etree.SubElement(run, qn("a:t"))
+            node.text = line if run_index == 0 else ""
+            if size is not None:
+                properties = run.find(qn("a:rPr"))
+                if properties is None:
+                    properties = etree.Element(qn("a:rPr"))
+                    run.insert(0, properties)
+                properties.set("sz", str(round(size * 100)))
+        if size is not None:
+            for properties in paragraph.findall(qn("a:endParaRPr")):
+                properties.set("sz", str(round(size * 100)))
+        body.append(paragraph)
 
-def clip(text: str, limit: int) -> str:
-    text = " ".join(text.split())
-    return text if len(text) <= limit else text[: limit - 1].rstrip(" ,.·(") + "…"
+
+def shape(slide: Slide, identifier: int) -> Shape:
+    for target in slide.shapes:
+        if target.shape_id == identifier:
+            if not isinstance(target, Shape):
+                raise ValueError(f"보고서 텍스트·막대 도형 형식이 다릅니다: {identifier}")
+            return target
+    raise KeyError(f"보고서 원본 도형을 찾을 수 없습니다: {identifier}")
 
 
-def area_label(prefix: str, short: bool = False) -> str:
-    for code, _sheet, korean, english, _description in AREAS:
-        if code == prefix:
-            return korean if short else f"{korean} ({english})"
-    return prefix
+def texts(slide: Slide, values: dict[int, str]) -> None:
+    for identifier, value in values.items():
+        replace_text(shape(slide, identifier), value)
 
 
-def color_of(level: int | None) -> str:
-    return LEVEL_COLORS[level - 1] if level else GRAY
+def text_color(target: Shape, color: str = "000000") -> None:
+    for paragraph in target.text_frame.paragraphs:
+        for run in paragraph.runs:
+            run.font.color.rgb = RGBColor.from_string(color)
 
 
-def tint(color: str, amount: float = 0.3) -> str:
-    parts = (int(color[i:i + 2], 16) for i in (0, 2, 4))
-    return "".join(f"{int(v + (255 - v) * amount):02X}" for v in parts)
+def gray_pending(slide: Slide, identifiers: tuple[int, ...] = ()) -> None:
+    """Pending values are shown neutrally; they are neither a pass nor a failure."""
+    frames = [shape(slide, identifier).text_frame for identifier in identifiers]
+    frames += [
+        cell.text_frame for target in slide.shapes if target.has_table
+        for row in target.table.rows for cell in row.cells
+    ]
+    for frame in frames:
+        text = frame.text.strip()
+        if text in (PENDING_LABEL, "-") or text.endswith("후 판정"):
+            for paragraph in frame.paragraphs:
+                for run in paragraph.runs:
+                    run.font.color.rgb = RGBColor.from_string(GRAY)
 
 
-def on_color(level: int | None) -> str:
-    """Readable text color for a Level fill (amber needs dark text)."""
-    return "2B2100" if level == 2 else "FFFFFF"
+def compact_table(slide: Slide) -> None:
+    for row in table_shape(slide).table.rows:
+        for cell in row.cells:
+            cell.margin_top = cell.margin_bottom = Inches(0.005)
+            cell.margin_left = cell.margin_right = Inches(0.04)
+            for paragraph in cell.text_frame.paragraphs:
+                paragraph.line_spacing = 1.0
+                paragraph.space_before = paragraph.space_after = Pt(0)
 
 
-def level_text(assessment: Assessment, level: int | None) -> str:
-    return f"Level {level} {assessment.level_names[level - 1]}" if level else "판정 보류"
+def no_wrap_breaks(slide: Slide) -> None:
+    for row in table_shape(slide).table.rows:
+        for cell in row.cells:
+            for paragraph in cell.text_frame.paragraphs:
+                paragraph._p.get_or_add_pPr().set("eaLnBrk", "0")
 
 
-def counts(assessment: Assessment) -> dict[str, int]:
-    system, interview = assessment.system_items, assessment.interview_items
+def hide(slide: Slide, identifiers: tuple[int, ...] | list[int]) -> None:
+    """Do not leave a sample bar visible when its actual value is unknown."""
+    for identifier in identifiers:
+        target = shape(slide, identifier)
+        target.fill.background()
+        target.line.fill.background()
+        if target.has_text_frame:
+            replace_text(target, "")
+
+
+def add_bar(slide: Slide, prototype: etree._Element) -> Shape:
+    node = copy.deepcopy(prototype)
+    identifier = max(s.shape_id for s in slide.shapes) + 1
+    properties = node.find(".//" + qn("p:cNvPr"))
+    if properties is None:
+        raise ValueError("원본 막대 도형에 식별 속성이 없습니다.")
+    properties.set("id", str(identifier))
+    slide.shapes._spTree.insert_element_before(node, "p:extLst")
+    return shape(slide, identifier)
+
+
+def restore_shapes(slide: Slide, prototypes: dict[int, etree._Element], identifiers: tuple[int, ...]) -> None:
+    for identifier in identifiers:
+        node = shape(slide, identifier)._element
+        node.getparent().replace(node, copy.deepcopy(prototypes[identifier]))
+
+
+def table_shape(slide: Slide) -> GraphicFrame:
+    tables = [s for s in slide.shapes if isinstance(s, GraphicFrame) and s.has_table]
+    if len(tables) != 1:
+        raise ValueError("보고서 원본 슬라이드에는 데이터 표가 하나 있어야 합니다.")
+    return tables[0]
+
+
+def table_rows(slide: Slide, values: list[list[str]], *, size: float | None = None) -> None:
+    target = table_shape(slide)
+    table = target.table
+    height = target.height
+    while len(table.rows) < len(values):
+        table._tbl.append(copy.deepcopy(table._tbl.tr_lst[-1]))
+    while len(table.rows) > len(values):
+        table._tbl.remove(table._tbl.tr_lst[-1])
+    for row, row_values in zip(table.rows, values, strict=True):
+        if len(row_values) != len(row.cells):
+            raise ValueError("원본 PPT 표의 열 계약이 일치하지 않습니다.")
+        row.height = height // len(values)
+        for cell, value in zip(row.cells, row_values, strict=True):
+            replace_text(cell, value, size=size)
+    target.height = height
+
+
+def set_widths(slide: Slide, widths: tuple[float, ...]) -> None:
+    columns = list(table_shape(slide).table.columns)
+    for column, width in zip(columns, widths, strict=True):
+        column.width = Inches(width)
+
+
+def number(value: float | int | None) -> str:
+    return PENDING_LABEL if value is None else f"{value:.1f}"
+
+
+def fit_size(target: Shape, size: float) -> None:
+    replace_text(target, target.text, size=size)
+
+
+def text_frames(slide: Slide, footer_id: int) -> list[TextFrame]:
+    """Readable text frames of a slide in reading order, footnote excluded."""
+    rows: list[tuple[tuple[int, int, int, int], TextFrame]] = []
+    for target in slide.shapes:
+        band = round(target.top / Inches(0.3))
+        if getattr(target, "has_table", False) and target.has_table:
+            for r, row in enumerate(target.table.rows):
+                rows += [((band, target.left, r, c), cell.text_frame) for c, cell in enumerate(row.cells)]
+        elif target.has_text_frame and target.shape_id != footer_id:
+            rows.append(((band, target.left, 0, 0), target.text_frame))
+    return [frame for _key, frame in sorted(rows, key=lambda row: row[0])]
+
+
+def term_order(slide: Slide, footer_id: int, reserved: int) -> list[int]:
+    """Glossary indexes in order of first use on the slide (at most nine footnote numbers)."""
+    order: list[int] = []
+    for frame in text_frames(slide, footer_id):
+        for _start, _end, index in glossary_matches(frame.text):
+            if index not in order and reserved + len(order) < 9:
+                order.append(index)
+    return order
+
+
+def mark_terms(slide: Slide, footer_id: int, reserved: int, keep: list[int]) -> None:
+    """Number the first use of every kept glossary term on the slide."""
+    numbers = {index: reserved + position + 1 for position, index in enumerate(keep)}
+    done: set[int] = set()
+    for frame in text_frames(slide, footer_id):
+        text = frame.text
+        marks = []
+        for _start, end, index in glossary_matches(text):
+            if index in numbers and index not in done:
+                done.add(index)
+                marks.append((end, numbers[index]))
+        if marks:
+            for end, number_ in sorted(marks, reverse=True):
+                text = text[:end] + superscript(number_) + text[end:]
+            replace_text(frame, text)
+
+
+def footer_pass(slide: Slide, page: int, lines: list[str]) -> None:
+    """Write the slide footnote: its own notes first, then a one-line explanation per unfamiliar term."""
+    footer_id = FOOTERS[page]
+    reserved = RESERVED_NOTES.get(page, 0)
+    base = [line for line in lines if line]
+    base = [part for line in base for part in line.split("\n") if part]
+    keep = term_order(slide, footer_id, reserved)
+    # Terms that would push the footnote into the content above it are left without a footnote.
+    while keep and len(base) + len(glossary_lines(keep, reserved + 1, 88)) > FOOTER_ROWS.get(page, 6):
+        keep.pop()
+    mark_terms(slide, footer_id, reserved, keep)
+    notes = glossary_lines(keep, reserved + 1, 88)
+    rows = base + notes
+    target = shape(slide, footer_id)
+    if not notes and len(rows) <= 1 and all(em(line) <= 78 for line in rows):
+        replace_text(target, "\n".join(rows))
+        return
+    replace_text(target, "\n".join(rows), size=8)
+    height = Inches(0.135 * len(rows) + 0.07)
+    target.height = height
+    target.top = Inches(FOOTER_BOTTOM) - height
+    target.text_frame.vertical_anchor = MSO_ANCHOR.BOTTOM
+    target.text_frame.word_wrap = True
+
+
+# ---- slide builders ---------------------------------------------------------------------------
+def build_cover(slide: Slide, data: DeckData) -> None:
+    texts(slide, {
+        10: data.collected_label() or "수집 일시 기록 없음",
+        23789: f"{data.customer} AI Agent Governance Readiness 진단\n- System Evidence 분석 결과 보고서 -",
+    })
+    replace_text(shape(slide, 10), shape(slide, 10).text, size=14)
+    if data.disclosure:
+        notice = slide.shapes.add_textbox(Inches(0.4), Inches(6.95), Inches(10), Inches(0.25))
+        notice.name = "Report data disclosure"
+        run = notice.text_frame.paragraphs[0].add_run()
+        run.text = data.disclosure
+        run.font.size = Pt(9)
+
+
+def build_summary(slide: Slide, data: DeckData) -> None:
+    values = story.summary(data)
+    footer = values.pop(43744)
+    texts(slide, values)
+    footer_pass(slide, 1, [footer])
+
+
+def build_overview(slide: Slide, data: DeckData) -> None:
+    values = story.overview(data)
+    footer = values.pop(24030)
+    texts(slide, values)
+    if data.overall is not None and data.overall >= TARGET_LEVEL:
+        shape(slide, 23810).text_frame.paragraphs[0].runs[0].font.color.rgb = RGBColor.from_string(BLUE)
+    table_rows(slide, story.key_rows(data))
+    compact_table(slide)
+    set_widths(slide, (1.95, 2.85, 2.42))
+    no_wrap_breaks(slide)
+    gray_pending(slide)
+    footer_pass(slide, 2, [footer])
+
+
+def build_method(slide: Slide, data: DeckData) -> None:
+    values = story.method_texts(data)
+    footer = values.pop(24610)
+    texts(slide, values)
+    for identifier in (24344, 24379, 24415, 24452, 24490):
+        fit_size(shape(slide, identifier), 10)
+    table_rows(slide, story.method_rows(data))
+    footer_pass(slide, 3, [footer])
+
+
+def build_scores(slide: Slide, data: DeckData) -> None:
+    texts(slide, {
+        24652: story.headline_scores(data),
+        28503: story.score_box(data),
+    })
+    system = {prefix: data.assessment.areas[prefix].system for prefix, *_ in AREAS}
+    ranked = sorted(value for value in system.values() if value is not None)
+    for prefix, bar_id, label_id in zip(
+        (row[0] for row in AREAS),
+        (25460, 25640, 25829, 26027, 26234, 26450),
+        (25519, 25702, 25894, 26095, 26305, 26524), strict=True,
+    ):
+        value = system[prefix]
+        bar, label = shape(slide, bar_id), shape(slide, label_id)
+        if value is None:
+            hide(slide, [bar_id])
+            label.top = Inches(3.48)
+            replace_text(label, PENDING_LABEL, size=9)
+            text_color(label, GRAY)
+            continue
+        bar.height = Inches(value / 5 * 1.86)
+        bar.top = Inches(3.83) - bar.height
+        label.top = bar.top - Inches(0.25)
+        bar.fill.solid()
+        bar.fill.fore_color.rgb = RGBColor.from_string(
+            RED if value < TARGET_LEVEL and value == ranked[0] else MID_GRAY
+        )
+        bar.line.fill.background()
+        replace_text(label, number(value) + ("*" if story.partial_area(data, prefix) else ""))
+        text_color(label)
+    last, previous = system["OT"], shape(slide, 26234)
+    if last is not None and last > TARGET_LEVEL:
+        # The last bar would cover the target label, so it moves into the gap before that bar.
+        target = shape(slide, 26752)
+        target.left = previous.left + previous.width
+        target.width = shape(slide, 26450).left - target.left
+        target.text_frame.margin_left = target.text_frame.margin_right = 0
+        target.text_frame.word_wrap = False
+        for paragraph in target.text_frame.paragraphs:
+            paragraph.alignment = PP_ALIGN.CENTER
+    for (key, _label, codes), label_id, score_id in zip(
+        data.groups(), (27070, 27319, 27577, 27844, 28120), (27152, 27404, 27665, 27935, 28214), strict=True,
+    ):
+        score = data.average(codes)
+        measured = sum(data.score(code) is not None for code in codes)
+        texts(slide, {
+            label_id: f"{key} {GROUP_LABEL[key]}",
+            score_id: PENDING_LABEL if score is None else f"L{score:.1f}" + ("*" if measured < len(codes) else ""),
+        })
+        fit_size(shape(slide, score_id), 11)
+        text_color(shape(slide, score_id), GRAY if score is None else "000000")
+    shape(slide, 27490).line.color.rgb = RGBColor.from_string(MID_GRAY)
+    table_rows(slide, story.score_rows(data))
+    gray_pending(slide)
+    footer_pass(slide, 4, [
+        "1) 단계 점수 = 단계 내 항목 판정 평균 (확인 중 제외, *는 일부 항목만 반영)",
+        f"2) 인터뷰가 System Evidence보다 {story.CORRECTION_GAP:g}점 이상 높으면 최종 = System Evidence + 1.0으로 하향 보정",
+        story.coverage_note(data),
+    ])
+
+
+def build_matrix(slide: Slide, data: DeckData) -> None:
+    distribution_prototype = copy.deepcopy(shape(slide, 28732)._element)
+    table_rows(slide, story.matrix_rows(data), size=9)
+    compact_table(slide)
+    set_widths(slide, (1.7, 1.35, 0.56) * 2)
+    buckets = story.distribution(data)
+    for label_id, value in zip((28662, 28701, 28749, 28786, 28849), buckets, strict=True):
+        replace_text(shape(slide, label_id), f"{value}개")
+    replace_text(shape(slide, 28806), PENDING_LABEL)
+    fit_size(shape(slide, 28806), 8.5)
+    for bar_id, label_id, value in zip(
+        (28651, 28687, 28732, 28827), (28662, 28701, 28749, 28849),
+        (buckets[0], buckets[1], buckets[2], buckets[4]), strict=True,
+    ):
+        bar, label = shape(slide, bar_id), shape(slide, label_id)
+        if value:
+            bar.width = Inches(value / max(buckets) * 1.2)
+        else:
+            hide(slide, [bar_id])
+            bar.width = 1
+        label.left = bar.left + bar.width + Inches(0.03)
+    if buckets[3]:
+        bar = add_bar(slide, distribution_prototype)
+        bar.left, bar.top = Inches(8.44), Inches(3.07)
+        bar.width = Inches(buckets[3] / max(buckets) * 1.2)
+        shape(slide, 28786).left = bar.left + bar.width + Inches(0.03)
+    texts(slide, {
+        28603: story.headline_matrix(data),
+        28605: f"4. System Evidence {len(data.items)}개 항목별 판정 결과",
+        28872: story.matrix_box(data),
+    })
+    fit_size(shape(slide, 28872), 10)
+    gray_pending(slide)
+    footer_pass(slide, 5, [story.matrix_footer(data)])
+
+
+@dataclass
+class Column:
+    label: str
+    total: float | None
+    part: float | None
+    total_text: str
+    part_text: str
+
+
+def draw_columns(
+    slide: Slide, columns: list[Column], layout: dict[str, tuple[int, ...] | tuple[tuple[int, int], ...]],
+    prototypes: dict[int, etree._Element], chart_height: float, maximum: float, *, inside: bool,
+) -> None:
+    height = Inches(chart_height)
+    for index, column in enumerate(columns):
+        first_id, second_id = layout["bars"][index]
+        total_id, month_id, component_id = (
+            layout["totals"][index], layout["months"][index], layout["components"][index],
+        )
+        restore_shapes(slide, prototypes, (first_id, second_id, total_id, month_id, component_id))
+        first, second = shape(slide, first_id), shape(slide, second_id)
+        baseline = first.top + first.height
+        replace_text(shape(slide, month_id), column.label, size=9)
+        total_shape, component = shape(slide, total_id), shape(slide, component_id)
+        if column.total is not None and column.part is None and maximum:
+            hide(slide, [first_id])
+            second.height = max(1, round(height * column.total / maximum))
+            second.top = baseline - second.height
+            if column.total == 0:
+                hide(slide, [second_id])
+            total_shape.top = baseline - round(height * column.total / maximum) - Inches(0.27)
+            replace_text(total_shape, column.total_text, size=10)
+            replace_text(component, column.part_text, size=9)
+            continue
+        if column.total is None or column.part is None or not maximum:
+            hide(slide, [first_id, second_id])
+            total_shape.top = baseline - Inches(0.27)
+            replace_text(total_shape, column.total_text, size=9 if len(column.total_text) > 4 else 10)
+            replace_text(component, column.part_text, size=9)
+            continue
+        first.height = max(1, round(height * column.part / maximum))
+        second.height = max(1, round(height * (column.total - column.part) / maximum))
+        first.top = baseline - first.height
+        second.top = first.top - second.height
+        if column.part == 0:
+            hide(slide, [first_id])
+        if column.part == column.total:
+            hide(slide, [second_id])
+        total_shape.top = baseline - round(height * column.total / maximum) - Inches(0.27)
+        replace_text(total_shape, column.total_text, size=10)
+        replace_text(component, column.part_text, size=9)
+        if inside and column.part:
+            component.top = first.top + (first.height - component.height) // 2
+
+
+def column_layout(slide: Slide, groups: dict[str, tuple[int, ...]], pairs: tuple[tuple[int, int], ...]):
+    layout = {"bars": pairs, **groups}
+    identifiers = [i for pair in pairs for i in pair]
+    for key in ("totals", "months", "components"):
+        identifiers += list(groups[key])
+    prototypes = {i: copy.deepcopy(shape(slide, i)._element) for i in identifiers}
+    return layout, prototypes
+
+
+def history_columns(data: DeckData, prefix: str, *, cost: bool) -> list[Column] | None:
+    history = data.value(prefix + ".history")
+    if not isinstance(history, str):
+        return None
+    component = "attributed" if cost else "approved"
+    currency = str(data.value("cost.currency") or "")
+    months = history.split(",")[-6:]
+    columns = []
+    for month in months:
+        total = data.value(f"{prefix}.month.{month}.total")
+        part = data.value(f"{prefix}.month.{month}.{component}")
+        total = total if isinstance(total, (int, float)) else None
+        if cost and part is None and month == months[-1]:
+            part = direct_attribution(data, total, currency)
+        part = part if isinstance(part, (int, float)) and total is not None and 0 <= part <= total else None
+        label = f"{month[:4]}.{month[4:]}"
+        if cost and total is None:
+            columns.append(Column(label, None, None, "청구 내역 없음", ""))
+        elif cost:
+            text = f"식별 {pct(part / total)}" if part is not None and total else "식별 확인 중"
+            columns.append(Column(label, total, part, money(total, currency), text))
+        else:
+            columns.append(Column(label, total, part, f"{total:g}" if total is not None else PENDING_TEXT,
+                                  f"{part:g}" if part is not None else ""))
+    return columns
+
+
+def direct_attribution(data: DeckData, total: float | int | None, currency: str) -> float | None:
+    """Directly attributed amount of the latest month, taken from the cost-attribution result.
+
+    Only used when that result covers exactly the billed amount of the month in the same currency.
+    """
+    pair = data.counts("OT-SE-24")
+    if pair is None or total is None or not currency or data.currency("OT-SE-24") != currency:
+        return None
+    return pair[0] if math.isclose(pair[1], total, rel_tol=1e-6) else None
+
+
+def build_creation(slide: Slide, data: DeckData) -> None:
+    pairs = ((29226, 29299), (29416, 29499), (29631, 29724), (29871, 29974), (30136, 30249), (30426, 30549))
+    layout, prototypes = column_layout(slide, {
+        "totals": (29337, 29542, 29772, 30027, 30307, 30612),
+        "months": (29376, 29586, 29821, 30081, 30366, 30676),
+        "components": (29262, 29457, 29677, 29922, 30192, 30487),
+    }, pairs)
+    history = history_columns(data, "creation", cost=False)
+    catalog = data.catalog
+    columns: list[Column] | None = history
+    legend = ("승인 매칭", "미매칭")
+    if columns is None and catalog is not None:
+        legend = (("직접 제작·구성", "플랫폼 미확인 앱·기타") if catalog.source.startswith("Agent 365")
+                  else ("Azure 에이전트", ""))
+        columns = [
+            Column(f"{month}월" + ("*" if catalog.partial_last and index == len(catalog.months) - 1 else ""),
+                   total, built, str(total), str(built) if built else "")
+            for index, (_year, month, total, built) in enumerate(catalog.months)
+        ]
+    chart_title = "I. 월별 신규 생성 Agent 추이" + (
+        " (승인 매칭)" if history else "" if catalog and catalog.source.startswith("Agent") else " (Azure)")
+    if history is None and catalog is not None and catalog.source.startswith("Agent 365"):
+        chart_title = "I. 월별 신규 목록 패키지 (Agent 365 목록)"
+    if columns is None:
+        hide(slide, [i for pair in pairs for i in pair] + [29061, 29124])
+        for identifier in (*layout["totals"], *layout["months"], *layout["components"], 29092, 29157):
+            replace_text(shape(slide, identifier), "")
+        missing = shape(slide, 29337)
+        missing.left, missing.top, missing.width, missing.height = Inches(0.6), Inches(2.7), Inches(5), Inches(0.6)
+        replace_text(missing, "신규 에이전트 등록 이력은 등록 목록 수집 후 표시됩니다", size=12)
+        chart_title = "I. 월별 신규 생성 Agent 추이"
+    else:
+        maximum = max((c.total for c in columns if c.total is not None), default=0) or 1
+        draw_columns(slide, columns, layout, prototypes, 1.7, maximum, inside=True)
+        texts(slide, {29092: legend[0], 29157: legend[1]})
+        if len(legend[1]) > 6:
+            shape(slide, 29157).width += Inches(0.9)
+        if not legend[1]:
+            hide(slide, [29124, 29157])
+    registry = registry_panel(data)
+    gray = shape(slide, 31011)
+    blue, miss = shape(slide, 31224), shape(slide, 31297)
+    texts(slide, {
+        28921: story.headline_creation(data),
+        29002: chart_title,
+        30741: story.creation_caption(data),
+        30807: "II. 에이전트 청사진 연결 현황" if not registry["registry"] else "II. Registry - 등록부 대조",
+        30942: registry["top"], 31152: registry["bottom"], 31081: registry["top_value"],
+        31371: registry["bottom_value"], 31446: registry["bullets"],
+        31678: story.creation_insight(data),
+    })
+    if registry["matched"] is None or not registry["total"]:
+        hide(slide, [31011, 31224, 31297])
+    else:
+        ratio = registry["matched"] / registry["total"]
+        blue.width = max(1, round(gray.width * ratio))
+        miss.left, miss.width = blue.left + blue.width, gray.width - blue.width
+        if registry["total"] == registry["matched"]:
+            hide(slide, [31297])
+        else:
+            replace_text(miss, f"{registry['missing_label']} {registry['total'] - registry['matched']:g}", size=9)
+    table_rows(slide, story.creation_rows(data))
+    set_widths(slide, (2.45, 2.4, 1.5, 0.87))
+    gray_pending(slide, (31081, 31371))
+    is_package = bool(catalog and catalog.source.startswith("Agent"))
+    footer_pass(slide, 6, [
+        story.footer(data, 7, "* 수집일까지 집계" if catalog and catalog.partial_last else ""),
+        *story.creation_notes(data),
+    ] if is_package else [story.footer(
+        data, 7, "* 수집일까지 집계" if catalog and catalog.partial_last else "")])
+
+
+def registry_panel(data: DeckData) -> dict[str, object]:
+    observed, registered = data.value("registry.observed"), data.value("registry.registered")
+    match = data.rate("registry.match")
+    if match is not None and isinstance(observed, (int, float)) and isinstance(registered, (int, float)):
+        missing = data.value("registry.missing")
+        metadata = data.value("registry.metadata_missing")
+        return {
+            "registry": True, "top": "Agent Registry (실측)", "bottom": "공식 등록부 (고객 관리)",
+            "top_value": f"{observed:g}개", "bottom_value": f"{registered:g}개",
+            "total": observed, "matched": registered, "missing_label": "미등록",
+            "bullets": f"· 등록부 일치 {match:.0%} (목표 {data.rate('report.target.registry.match') or 0.9:.0%} 이상)"
+                       f"\n· 등록 누락 {missing if missing is not None else '-'} / 필수 정보 누락 "
+                       f"{metadata if metadata is not None else '-'}",
+        }
+    pair = data.counts("DP-SE-15")
+    if pair is None:
+        return {"registry": False, "top": "Azure에서 확인된 에이전트", "bottom": "청사진에 연결된 에이전트",
+                "top_value": PENDING_TEXT, "bottom_value": PENDING_TEXT, "total": None, "matched": None,
+                "missing_label": "미연결", "bullets": data.pending_note("DP-SE-15")}
+    owners = data.fraction("BI-SE-13")
+    lines = [f"· 에이전트 {pair[1]:g}개 중 {pair[0]:g}개가 청사진에 연결 (기준 {data.l3_min('DP-SE-15'):.0%} 이상)"]
+    if owners and data.score("BI-SE-13") is not None:
+        lines.append(f"· 담당자 · 환경 · 비용 정보 기록 {owners}")
     return {
-        "se_total": len(system), "se_scored": sum(i.score is not None for i in system),
-        "int_total": len(interview), "int_scored": sum(i.score is not None for i in interview),
+        "registry": False, "top": "Azure에서 확인된 에이전트", "bottom": "청사진에 연결된 에이전트",
+        "top_value": f"{pair[1]:g}개", "bottom_value": f"{pair[0]:g}개", "total": pair[1], "matched": pair[0],
+        "missing_label": "미연결", "bullets": "\n".join(lines),
     }
 
 
-def is_provisional(assessment: Assessment) -> bool:
-    return assessment.overall_status != "6개 영역 집계"
+def build_identity(slide: Slide, data: DeckData) -> None:
+    prototype = copy.deepcopy(shape(slide, 32613)._element)
+    rows = zip(
+        story.IDENTITY_BARS, (32434, 32983, 33568, 34189, 34846), (32613, 33174, 33771, 34404, None),
+        (32704, 33271, 33874, 34513, 35073), (32796, 33369, 33978, 34623, 35188),
+        (32889, 33468, 34083, 34734, 35304), strict=True,
+    )
+    for code, name_id, bar_id, marker_id, value_id, target_id in rows:
+        ratio = data.ratio(code) if data.score(code) is not None else None
+        minimum = data.l3_min(code)
+        texts(slide, {
+            name_id: story.IDENTITY_NAMES[code],
+            value_id: pct(ratio) if ratio is not None else PENDING_TEXT,
+            target_id: f"{minimum:.0%} 이상",
+        })
+        text_color(shape(slide, value_id), "000000" if ratio is not None else GRAY)
+        frame = shape(slide, value_id).text_frame
+        frame.margin_left = frame.margin_right = 0
+        frame.word_wrap = False
+        target = shape(slide, target_id)
+        target.text_frame.margin_left = target.text_frame.margin_right = 0
+        target.text_frame.word_wrap = False
+        replace_text(target, target.text, size=9)
+        if ratio is None or ratio == 0:
+            if bar_id is not None:
+                hide(slide, [bar_id])
+        elif bar_id is None:
+            bar = add_bar(slide, prototype)
+            bar.top = Inches(4.23)
+            bar.width = Inches(2.57 * ratio)
+        else:
+            shape(slide, bar_id).width = Inches(2.57 * ratio)
+        marker = shape(slide, marker_id)
+        marker.left = Inches(2.56 + 2.57 * minimum)
+        slide.shapes._spTree.insert_element_before(marker._element, "p:extLst")
+    texts(slide, {
+        31839: story.headline_identity(data),
+        35658: story.identity_insight(data),
+        36022: story.identity_recommendations(data),
+    })
+    fit_size(shape(slide, 36022), 10)
+    table_rows(slide, story.identity_rows(data))
+    gray_pending(slide)
+    footer_pass(slide, 7, [story.footer(
+        data, 8, "접속 조건 제한은 명시 대상 구성만 확인" if data.conditional_access else "")])
 
 
-def next_condition(item: Item) -> str:
-    if item.score is None:
-        return item.levels[int(TARGET_LEVEL) - 1]
-    return "현재 수준 유지" if item.score >= 5 else item.levels[item.score]
+def build_security(slide: Slide, data: DeckData) -> None:
+    cards = story.security_cards(data)
+    ids = (
+        (36167, 36182, 36191, 36201, 36212, 36224), (36237, 36266, 36282, 36299, 36317, 36336),
+        (36356, 36399, 36422, 36446, 36471, 36497),
+    )
+    for code, (title_id, value_id, detail_id, first_id, second_id, target_id) in zip(cards, ids, strict=True):
+        card = story.card_texts(data, code)
+        texts(slide, {title_id: card["title"], value_id: card["value"], detail_id: card["detail"],
+                      target_id: card["target"]})
+        text_color(shape(slide, value_id), GRAY if card["value"] == PENDING_LABEL else "000000")
+        ratio = story.card_ratio(data, code)
+        first, second = shape(slide, first_id), shape(slide, second_id)
+        start, width = first.left, first.width + second.width
+        if ratio is None:
+            hide(slide, [first_id, second_id])
+            continue
+        first.width = max(1, round(width * ratio))
+        second.left = start + first.width
+        second.width = max(1, width - first.width)
+        replace_text(first, card["good"] if ratio >= 0.25 else "", size=9)
+        replace_text(second, card["bad"] if ratio <= 0.75 else "", size=9)
+        if ratio == 1:
+            hide(slide, [second_id])
+        if ratio == 0:
+            hide(slide, [first_id])
+    box_first, box_second = story.security_box(data)
+    rows = story.exposure_rows(data) or story.defender_rows(data) or story.fallback_security_rows(data)
+    texts(slide, {
+        36147: story.headline_security(data),
+        36524: "II. 고위험 민감 데이터 노출 유형" if story.exposure_rows(data) else (
+            "II. 보안 점검 서비스(Defender) 적용 현황" if story.defender_rows(data) else "II. 품질 · 보안 점검 항목"),
+        36582: "III. 외부 도구 연결 보호",
+        36645: box_first, 36678: box_second,
+    })
+    table_rows(slide, rows)
+    gray_pending(slide, tuple(c[1] for c in ids))
+    security_note = story.security_notes(data)
+    footer_pass(slide, 8, [story.footer(data, 9), f"※ {security_note}" if security_note else ""])
 
 
-def pick_distinct(items: list[Item], count: int = 3) -> list[Item]:
-    chosen: list[Item] = []
-    seen: set[str] = set()
-    for item in items:
-        if item.area not in seen:
-            chosen.append(item)
-            seen.add(item.area)
-        if len(chosen) == count:
-            return chosen
-    for item in items:
-        if item not in chosen:
-            chosen.append(item)
-        if len(chosen) == count:
-            break
-    return chosen
+def build_operations(slide: Slide, data: DeckData) -> None:
+    pairs = ((37198, 37245), (37443, 37495), (37713, 37770), (38008, 38070), (38328, 38395), (38673, 38745))
+    layout, prototypes = column_layout(slide, {
+        "totals": (37293, 37548, 37828, 38133, 38463, 38818),
+        "months": (37342, 37602, 37887, 38197, 38532, 38892),
+        "components": (37392, 37657, 37947, 38262, 38602, 38967),
+    }, pairs)
+    legends = (36937, 37020, 36978, 37063)
+    for identifier in legends:
+        prototypes[identifier] = copy.deepcopy(shape(slide, identifier)._element)
+    history = history_columns(data, "cost", cost=True)
+    if history is not None:
+        maximum = max((c.total for c in history if c.total is not None), default=0) or 1
+        draw_columns(slide, history, layout, prototypes, 1.45, maximum, inside=False)
+        currency = data.value("cost.currency")
+        unknown = [c for c in history if c.total and c.part is None]
+        known = [c for c in history if c.total and c.part is not None]
+        remainder = ("귀속 불가" if not unknown else "총액·식별 미확인" if not known else "귀속 불가·식별 미확인")
+        texts(slide, {36858: "I. 월별 Agent 소비 비용 (OT-SE-24)", 36978: "Agent별 식별", 37063: remainder,
+                      37107: f"{currency} · 빨강=최근월" if currency else "조회 범위 실제 청구"})
+        notes = ["식별 미확인 월의 회색은 총액"] if unknown else []
+    else:
+        notes = []
+        columns = []
+        for code in story.OPS_BARS:
+            name, value, fraction, ratio = story.ops_bar(data, code)
+            columns.append(Column(name, 1 if ratio is not None else None, ratio, value, fraction))
+        draw_columns(slide, columns, layout, prototypes, 1.45, 1, inside=False)
+        texts(slide, {36858: "I. 기록 · 알림 · 비용 설정 충족 비율", 36978: "충족", 37063: "미충족",
+                      37107: "(항목별 충족 비율)"})
+        for identifier in (37107,):
+            fit_size(shape(slide, identifier), 9)
+    for identifier in (36978, 37063):
+        fit_size(shape(slide, identifier), 9)
+    observed_usage = usage_buckets(slide, data, prototypes)
+    texts(slide, {
+        36747: story.headline_ops(data),
+        39120: "II. Agent 사용 현황" + ("" if observed_usage else " (최근 30일)"),
+        40583: story.ops_box(data),
+    })
+    table_rows(slide, story.ops_rows(data))
+    set_widths(slide, (2.2, 2.7, 1.45, 0.87))
+    gray_pending(slide, (40583,))
+    package_note = "Agent 365 목록 기준 · 플랫폼 미확인 앱(스토어 앱 포함)" if data.usage else ""
+    lines = [story.footer(data, 10, package_note), *story.cost_notes(data)]
+    extra = [text for text in (*notes, story.usage_note(data), story.cost_note(data)) if text]
+    if extra:
+        lines.append("※ " + ", ".join(extra))
+    footer_pass(slide, 9, lines)
 
 
-def priority_items(assessment: Assessment, prefix: str, limit: int) -> list[Item]:
-    rows = [item for item in assessment.items if item.area == prefix]
-    scored = sorted((i for i in rows if i.score is not None), key=lambda i: (i.score, i.is_system, i.code))
-    below = [i for i in scored if i.score < 4]
-    unscored = [i for i in rows if i.score is None]
-    return (below + unscored + [i for i in scored if i not in below])[:limit]
+def usage_buckets(slide: Slide, data: DeckData, prototypes: dict[int, etree._Element]) -> bool:
+    total = data.value("usage.total")
+    counts = [data.value("usage." + key + ".count") for key in ("active30", "active31_90", "inactive90")]
+    bars = ((39277, 39357, 39772, 39858, "30일 내 활성"), (39438, 39520, 39945, 40033, "31~90일"),
+            (39603, 39687, 40122, 40212, "90일+ 미사용"))
+    for bar_id, label_id, marker_id, _text_id, _label in bars:
+        for identifier in (bar_id, marker_id):
+            prototypes.setdefault(identifier, copy.deepcopy(shape(slide, identifier)._element))
+        prototypes.setdefault(label_id, copy.deepcopy(shape(slide, label_id)._element))
+    complete = (
+        isinstance(total, (int, float)) and total > 0
+        and all(isinstance(count, (int, float)) for count in counts)
+    )
+    left = Inches(6.17)
+    if complete:
+        if any(count < 0 for count in counts) or sum(counts) != total:
+            raise ValueError("Agent 사용 이력의 구간별 합계가 전체 관측 수와 일치하지 않습니다.")
+        for (bar_id, label_id, marker_id, text_id, label), count in zip(bars, counts, strict=True):
+            restore_shapes(slide, prototypes, (bar_id, marker_id))
+            bar = shape(slide, bar_id)
+            bar.left, bar.width = left, max(1, round(Inches(4.21) * count / total))
+            target = shape(slide, label_id)
+            target.left, target.width = bar.left, bar.width
+            replace_text(target, f"{count:g}" if count / total >= 0.1 else "", size=10)
+            if count == 0:
+                hide(slide, [bar_id])
+            left += bar.width
+            replace_text(shape(slide, text_id), f"{label} : {count:g}개 ({count / total:.0%})")
+        replace_text(shape(slide, 40303), "30/90일 전체 확인 에이전트만 · 비율 반올림")
+        return True
+    lines = story.usage_lines(data)
+    usage = data.usage
+    if lines is None or usage is None:
+        hide(slide, [bar_id for bar_id, *_rest in bars] + [bars[i][2] for i in range(3)])
+        for _bar, label_id, _marker, text_id, _label in bars:
+            replace_text(shape(slide, label_id), "")
+            replace_text(shape(slide, text_id), "")
+        replace_text(shape(slide, bars[0][3]), "사용 현황은 Agent 365 사용 지표 수집 후 표시됩니다")
+        replace_text(shape(slide, 40303), "")
+        return False
+    sizes = (usage.active, usage.idle, usage.unobserved)
+    whole = sum(sizes)
+    for index, ((bar_id, label_id, marker_id, text_id, _label), count) in enumerate(zip(bars, sizes, strict=True)):
+        bar = shape(slide, bar_id)
+        bar.left, bar.width = left, max(1, round(Inches(4.21) * count / whole)) if whole else 1
+        fill = (BLUE, MID_GRAY, "D9D9D9")[index]
+        bar.fill.solid()
+        bar.fill.fore_color.rgb = RGBColor.from_string(fill)
+        marker = shape(slide, marker_id)
+        marker.fill.solid()
+        marker.fill.fore_color.rgb = RGBColor.from_string(fill)
+        marker.line.fill.background()
+        target = shape(slide, label_id)
+        target.left, target.width = bar.left, bar.width
+        replace_text(target, f"{count:g}" if whole and count / whole >= 0.1 else "", size=10)
+        if index == 2:
+            text_color(target, "000000")
+        if count == 0:
+            hide(slide, [bar_id])
+        left += bar.width
+        replace_text(shape(slide, text_id), lines[index], size=10)
+        text_color(shape(slide, text_id), "000000")
+        replace_text(shape(slide, 40303), "직접 만든 에이전트 기준 · 90일 미사용은 기간이 쌓인 뒤 판단")
+    return False
 
 
-def node_ids(nodes) -> list[int]:
-    return [int(node.find(".//" + qn("p:cNvPr")).get("id")) for node in nodes]
+def build_plan(slide: Slide, data: DeckData) -> None:
+    path = data.target_path()
+    boxes = story.phase_boxes(data)
+    texts(slide, {
+        40776: story.headline_plan(data),
+        41276: boxes[0], 41379: boxes[1], 41483: boxes[2],
+        42244: number(data.overall) if data.overall is not None else PENDING_LABEL,
+    })
+    for identifier in (42244, 42586, 42937, 43297):
+        fit_size(shape(slide, identifier), 9)
+        shape(slide, identifier).text_frame.word_wrap = False
+    current = shape(slide, 42132)
+    scale = 3.13 / 5
+    if data.overall is None:
+        hide(slide, [42132])
+    else:
+        current.height = Inches(data.overall * scale)
+        current.top = Inches(6.23) - current.height
+        current.fill.solid()
+        current.fill.fore_color.rgb = RGBColor.from_string(RED if data.overall < TARGET_LEVEL else MID_GRAY)
+        shape(slide, 42244).top = current.top - Inches(0.25)
+        replace_text(shape(slide, 42244), f"L{data.overall:.1f}")
+    for value, bar_id, label_id in zip(path or (), (42471, 42819, 43176), (42586, 42937, 43297), strict=False):
+        bar = shape(slide, bar_id)
+        bar.height = Inches(value * scale)
+        bar.top = Inches(6.23) - bar.height
+        label = shape(slide, label_id)
+        label.top = bar.top - Inches(0.25)
+        replace_text(label, f"L{value:.1f}")
+    if path is None:
+        hide(slide, [42471, 42819, 43176])
+        for identifier in (42586, 42937, 43297):
+            replace_text(shape(slide, identifier), "")
+    table_rows(slide, story.plan_rows(data), size=9)
+    compact_table(slide)
+    set_widths(slide, (0.7, 2.6, 1.55, 0.8, 1.57))
+    no_wrap_breaks(slide)
+    footer_pass(slide, 10, ["※ 목표 수준은 계획(안) - 현재 수준에서 L3보다 0.3 높은 수준까지 Phase 1~3 균등 상향을 "
+                            "가정하며 달라질 수 있음"])
 
 
-def paragraphs_of(shape):
-    node = getattr(shape, "_element", shape)
-    body = node.find(qn("p:txBody"))
-    return (body if body is not None else node.find(qn("a:txBody"))).findall(qn("a:p"))
+def build_next(slide: Slide, data: DeckData) -> None:
+    values = story.next_texts(data)
+    footer = values.pop(44179)
+    texts(slide, values)
+    table_rows(slide, story.target_rows(data), size=9)
+    compact_table(slide)
+    set_widths(slide, (2.05, 3.0, 0.97, 1.2))
+    no_wrap_breaks(slide)
+    gray_pending(slide)
+    footer_pass(slide, 11, [footer])
 
 
-def align(shape, value: str) -> None:
-    for paragraph in paragraphs_of(shape):
-        properties = paragraph.find(qn("a:pPr"))
-        if properties is None:
-            properties = paragraph.makeelement(qn("a:pPr"), {})
-            paragraph.insert(0, properties)
-        properties.set("algn", value)
+# ---- notes -------------------------------------------------------------------------------------
+def notes_text(data: DeckData, page: int, headline: str) -> str:
+    codes = story.NOTE_CODES.get(page, ())
+    lines = ["[발표 메모]", headline, ""]
+    if codes:
+        lines.append("근거 항목")
+        for code in codes:
+            if code not in data.items:
+                continue
+            if data.score(code) is None:
+                lines.append(f"- {code} {data.label(code)} : 확인 중 ({data.pending_note(code)})")
+                continue
+            fraction = data.fraction(code)
+            lines.append(f"- {code} {data.label(code)} : {data.level(code)}"
+                         + (f" ({fraction} 충족, {data.percent(code)})" if fraction else ""))
+        lines.append("")
+    lines += story.note_limits(data, page)
+    refs = story.note_refs(data, page)
+    if refs:
+        lines += ["", f"증적 참조 ({len(refs)}건)", ", ".join(refs)]
+    return "\n".join(lines).strip()
 
 
-def restyle(paragraph, size=None, bold=None) -> None:
-    for run in paragraph.findall(qn("a:r")):
-        properties = run.find(qn("a:rPr"))
-        if size:
-            properties.set("sz", str(int(size * 100)))
-        if bold is not None:
-            properties.set("b", "1" if bold else "0")
+def sanitize(slide_element: etree._Element) -> None:
+    for node in slide_element.iter(qn("a:t")):
+        if node.text:
+            node.text = node.text.translate(DASHES)
 
-
-def centered_label(shape, text: str, size: float, color: str) -> None:
-    body = shape.find(qn("p:txBody")).find(qn("a:bodyPr"))
-    for key, value in (("anchor", "ctr"), ("lIns", "0"), ("rIns", "0"), ("tIns", "0"), ("bIns", "0")):
-        body.set(key, value)
-    set_text(shape, text, size=size, color=color, bold=True)
-    align(shape, "ctr")
-
-
-# --- deck ------------------------------------------------------------------------------------
 
 def write_presentation(workbook: Path, output: Path, context: DeckContext | None = None) -> None:
     context = context or context_from_workbook(workbook)
-    assessment = read_assessment(workbook)
-    prs = Presentation(presentation_template_path())
-    originals = list(prs.slides)
-    cover, agenda, status, key, method, matrix, heat, area_base, plan = originals[:9]
-    appendix = duplicate_slide(prs, matrix)
-    area_slides = [duplicate_slide(prs, area_base) for _ in AREAS]
-
-    build_cover(cover, context)
-    build_agenda(agenda)
-    build_status(status, assessment, context)
-    build_key(key, assessment)
-    build_method(method, assessment)
-    build_matrix(matrix, assessment)
-    build_heatmap(heat, assessment)
-    for slide, (prefix, *_rest) in zip(area_slides, AREAS, strict=True):
-        build_area(slide, assessment, prefix)
-    build_plan(plan, assessment)
-    build_appendix(appendix, assessment)
-
-    order = [cover, agenda, status, key, method, matrix, heat, *area_slides, plan, appendix]
-    id_list = prs.slides._sldIdLst
-    elements = {slide.slide_id: node for slide, node in zip(prs.slides, list(id_list), strict=True)}
-    keep = [slide.slide_id for slide in order]
-    for node in list(id_list):
-        id_list.remove(node)
-    for slide_id in keep:
-        id_list.append(elements[slide_id])
-    for slide_id, node in elements.items():
-        if slide_id not in keep:
-            prs.part.drop_rel(node.get(qn("r:id")))
-    # Sections would still point at the removed template slides and make PowerPoint repair the file.
-    for ext in list(prs.part._element.iter(qn("p:ext"))):
-        if ext.find("{http://schemas.microsoft.com/office/powerpoint/2010/main}sectionLst") is not None:
-            ext.getparent().remove(ext)
-    format_appendix_tables(prs)
-    fictional = sum("[가상 인터뷰" in item.memo for item in assessment.interview_items)
-    if fictional:
-        for shape_id in (39, 40):
-            place(Page(status)(shape_id), h=0.4)
-        pending = sum(item.score is None for item in assessment.system_items)
-        notice = (
-            f"보고서 예시 - 가상 인터뷰 {fictional}개 + 실측 SE "
-            f"{len(assessment.system_items)}개(N/A {pending}개)"
-        )
-        for slide in prs.slides:
-            box = slide.shapes.add_textbox(
-                Inches(5.1), prs.slide_height - Inches(0.22),
-                prs.slide_width - Inches(5.35), Inches(0.17),
+    data = DeckData(
+        read_assessment(workbook), context.metrics, context.collection, context.customer, context.collected_at,
+    )
+    source = presentation_template_path().read_bytes()
+    presentation = Presentation(BytesIO(source))
+    if len(presentation.slides) != 12:
+        raise ValueError("보고서 생성기는 승인된 12장 원본 템플릿을 사용합니다.")
+    slides = list(presentation.slides)
+    build_cover(slides[0], data)
+    build_summary(slides[1], data)
+    build_overview(slides[2], data)
+    build_method(slides[3], data)
+    build_scores(slides[4], data)
+    build_matrix(slides[5], data)
+    build_creation(slides[6], data)
+    build_identity(slides[7], data)
+    build_security(slides[8], data)
+    build_operations(slides[9], data)
+    build_plan(slides[10], data)
+    build_next(slides[11], data)
+    changed = {}
+    for page, slide in enumerate(slides):
+        headline = next((
+            target.text for target in slide.shapes
+            if target.has_text_frame and target.shape_id in story.HEADLINE_IDS.get(page, ())
+        ), "")
+        if slide.has_notes_slide:
+            frame = slide.notes_slide.notes_text_frame
+            if frame is not None:
+                replace_text(frame, notes_text(data, page, headline))
+            sanitize(slide.notes_slide._element)
+            changed[str(slide.notes_slide.part.partname).lstrip("/")] = etree.tostring(
+                slide.notes_slide._element, encoding="UTF-8", xml_declaration=True, standalone=True,
             )
-            box.name = "Fictional interview disclosure"
-            box.fill.solid()
-            box.fill.fore_color.rgb = RGBColor.from_string("FFFFFF")
-            frame = box.text_frame
-            frame.margin_left = frame.margin_right = frame.margin_top = frame.margin_bottom = 0
-            frame.word_wrap = False
-            paragraph = frame.paragraphs[0]
-            paragraph.alignment = PP_ALIGN.RIGHT
-            run = paragraph.add_run()
-            run.text = notice
-            run.font.name = PRESENTATION_FONT
-            run.font.size = Pt(8.5)
-            run.font.color.rgb = RGBColor.from_string("4B5563")
-            if slide == cover:
-                box.fill.background()
-                run.font.color.rgb = RGBColor.from_string("FFFFFF")
-                run.font.bold = True
-                run.font.size = Pt(9)
-                outline = etree.Element(qn("a:ln"), w="1270")
-                fill = etree.SubElement(outline, qn("a:solidFill"))
-                etree.SubElement(fill, qn("a:srgbClr"), val="000000")
-                run._r.get_or_add_rPr().insert(0, outline)
-    prs.save(output)
-    apply_presentation_font(output)
-
-
-def build_cover(slide, context: DeckContext) -> None:
-    page = Page(slide)
-    set_text(page(9), ["EASM (Enterprise Agent", "Service Management)", "점검 결과 보고서"], size=34)
-    place(page(9), y=2.6, h=2.3)
-    place(page(10), y=5.1)
-    set_text(page(10), ["Prepared for", context.customer])
-
-
-def build_agenda(slide) -> None:
-    page = Page(slide)
-    set_text(page(3), "EASM ASSESSMENT")
-    rows = [
-        (99, 101, "점검 대상 현황", "점검 범위, 평가 구성 및 진행 현황"),
-        (107, 109, "핵심 진단 결과", "종합 성숙도 및 핵심 시사점"),
-        (115, 117, "진단 방법", "평가 영역, 관점 및 5단계 척도"),
-        (123, 125, "영역별 성숙도 평가", "6개 영역 × 5개 관점 평가 결과"),
-        (131, 133, "개선 권고사항", "영역별 우선 개선 항목"),
-        (139, 141, "후속 실행 계획", "영역별 후속 실행 과제"),
-        (147, 149, "부록", "평가 보류 및 인터뷰 미입력 현황"),
-    ]
-    for title_id, sub_id, title, sub in rows:
-        set_text(page(title_id), title)
-        set_text(page(sub_id), sub)
-    page.delete(151, 153, 155, 157)
-
-
-def build_status(slide, assessment: Assessment, context: DeckContext) -> None:
-    page = Page(slide)
-    c = counts(assessment)
-    set_text(page(6), "EASM 점검 결과")
-    set_text(page(7), "점검 대상 현황")
-    set_text(page(9), clip(context.customer, 12))
-    for shape_id in (8, 9):
-        place(page(shape_id), x=10.56, y=0.46)
-    date = context.collected_at.strftime("%Y-%m-%d") if context.collected_at else "-"
-    scope = (f"Azure 구독 {context.subscriptions}개 · Agent/후보 {context.agents}개"
-             if context.subscriptions is not None else "-")
-    level = level_of(assessment.overall)
-    overall = "판정 보류" if not level else (
-        f"{level_text(assessment, level)} ({assessment.overall:.1f}점)" + (" 잠정" if is_provisional(assessment) else ""))
-    for label_id, value_id, label, value in (
-        (11, 12, "점검 일자", date), (14, 15, "점검 범위", scope), (17, 18, "종합 성숙도", overall),
-    ):
-        set_text(page(label_id), label)
-        set_text(page(value_id), value)
-    pending = c["se_total"] - c["se_scored"]
-    l5 = sum(i.score == 5 for i in assessment.system_items)
-    low = sum(i.score is not None and i.score <= 2 for i in assessment.system_items)
-    unfilled = c["int_total"] - c["int_scored"]
-    by_area = ", ".join(f"{area_label(a.prefix, True)} {a.interview_scored}/{a.interview_total}"
-                        for a in assessment.areas.values())
-    boxes = [
-        (22, 23, "System Evidence 수집 현황", [
-            f"{c['se_total']}개 중 {c['se_scored']}개 진단, {pending}개 평가 보류",
-            f"충족률 100%(Level 5) {l5}개, Level 1-2 {low}개",
-            "조회 실패·미확인은 0점이 아닌 '평가 보류'로 구분",
-        ]),
-        (27, 28, "인터뷰 진행 현황", [
-            f"인터뷰 {c['int_total']}개 중 답변 완료 {c['int_scored']}개",
-            "영역별 답변 완료: " + by_area,
-            "Excel 6번 시트 M열에 1~5점 입력 후 보고서 재생성" if unfilled else "인터뷰 전체 답변 완료",
-        ]),
-        (32, 33, "점검 범위와 방식", [
-            "읽기 전용 공식 API로 구성·기록 확인(쓰기·삭제·배포 없음)",
-            "6개 영역 × 5개 관점(Process·People·Data·Technology·System Evidence)",
-            "영역 점수는 인터뷰 4개 관점 평균, 실측과 1.5점 이상 괴리 시 보정",
-        ]),
-        (37, 38, "제약 및 고려사항", [
-            "Level 5는 구성·기록의 충족이며 정책의 실효성을 증명하지 않음",
-            "인터뷰 미입력 영역의 점수는 실측 기준 잠정값" if unfilled else "인터뷰·실측 점수를 함께 반영",
-            "Level 3 이상은 문서 증적, Level 4 이상은 시스템 증적 필요",
-        ]),
-    ]
-    for title_id, body_id, title, lines in boxes:
-        set_text(page(title_id), title)
-        set_text(page(body_id), lines, size=10)
-    set_text(page(40), "성숙도 5단계:  " + "  ·  ".join(
-        f"L{n} {name}" + ("(목표 최소)" if n == 3 else "") for n, name in enumerate(assessment.level_names, 1)))
-
-
-def build_key(slide, assessment: Assessment) -> None:
-    page = Page(slide)
-    c = counts(assessment)
-    level = level_of(assessment.overall)
-    color = color_of(level)
-    chip_selected = [copy.deepcopy(page(16)), copy.deepcopy(page(17))]
-    chip_other = [copy.deepcopy(page(18)), copy.deepcopy(page(19))]
-    page.delete(*range(16, 24))
-    set_fill(page(8), color)
-    ink = on_color(level)
-    set_text(page(9), "종합 성숙도" + (" (잠정)" if is_provisional(assessment) else ""), color=ink)
-    set_text(page(10), f"Level {level}" if level else "판정 보류", size=40 if level else 30, color=ink)
-    set_text(page(11), (assessment.level_names[level - 1] + f" · {assessment.overall:.1f}점") if level else "-",
-             color=ink)
-    set_text(page(12), assessment.level_definitions[level - 1] if level else "점수가 산출된 영역이 없습니다.",
-             color=ink)
-    gap = None if assessment.overall is None else round(TARGET_LEVEL - assessment.overall, 1)
-    set_text(page(13), "목표 대비", color=ink)
-    set_text(page(14), "목표 Level 3 달성" if gap is None or gap > 0 else "목표 Level 3 충족", size=15, color=ink)
-    set_text(page(15), "→ 갭이 큰 영역부터 개선" if gap is None or gap > 0 else "→ 현재 수준 유지·고도화",
-             color=ink)
-    for n in range(1, 6):
-        shape, text = (copy.deepcopy(node) for node in (chip_selected if level == n else chip_other))
-        page.add(shape)
-        page.add(text)
-        x = 0.93 + (n - 1) * 0.66
-        place(shape, x, 6.27, 0.56, 0.34)
-        place(text, x, 6.27, 0.56, 0.34)
-        set_fill(shape, "FFFFFF" if level == n else tint(color, 0.3))
-        set_text(text, str(n), color=color if level == n else "FFFFFF")
-    scored = [i for i in assessment.items if i.score is not None]
-    strong = pick_distinct(sorted(scored, key=lambda i: (-i.score, i.is_system, i.code)))
-    weak = pick_distinct(sorted(scored, key=lambda i: (i.score, i.is_system, i.code)))
-    set_text(page(25), clip(
-        f"System Evidence {c['se_scored']}/{c['se_total']} 진단, 인터뷰 답변 완료 {c['int_scored']}/{c['int_total']}개"
-        + (" - 인터뷰 입력 후 종합 성숙도가 확정됩니다." if c["int_scored"] < c["int_total"] else ""), 80))
-    for text_id, item in zip((31, 33, 35), strong + [None] * 3, strict=False):
-        set_text(page(text_id), f"{clip(item.title, 32)} (Level {item.score})" if item else "해당 항목 없음")
-    for text_id, item in zip((37, 39, 41), weak + [None] * 3, strict=False):
-        set_text(page(text_id), f"{clip(item.title, 32)} (Level {item.score})" if item else "해당 항목 없음")
-    ranked = sorted((a for a in assessment.areas.values() if a.final is not None and (a.gap or 0) > 0),
-                    key=lambda a: -(a.gap or 0))
-    steps = []
-    for area in ranked[:3]:
-        top = priority_items(assessment, area.prefix, 1)
-        steps.append((area_label(area.prefix, True) + " 영역 보완",
-                      f"현재 {area.final:.1f} → 목표 {TARGET_LEVEL:.1f}. " + (clip(top[0].title, 30) if top else "")))
-    if c["int_scored"] < c["int_total"] and len(steps) < 3:
-        steps.append(("인터뷰 점수 입력", f"미입력 {c['int_total'] - c['int_scored']}개를 입력해 영역 점수 확정"))
-    if c["se_scored"] < c["se_total"] and len(steps) < 3:
-        steps.append(("평가 보류 재점검", f"{c['se_total'] - c['se_scored']}개 항목 조회 권한·라이선스 확인"))
-    while len(steps) < 3:
-        steps.append(("정기 재점검", "분기별 재점검으로 개선 추이 확인"))
-    set_text(page(43), "목표 Level 3 대비 갭이 큰 순서")
-    for (title_id, desc_id), (title, desc) in zip(((45, 46), (49, 50), (53, 54)), steps, strict=True):
-        set_text(page(title_id), clip(title, 14))
-        set_text(page(desc_id), clip(desc, 52))
-
-
-def build_method(slide, assessment: Assessment) -> None:
-    page = Page(slide)
-    set_text(page(6), "EASM 평가 방식")
-    set_text(page(8), "6대 평가 영역 × 5개 관점")
-    rows = [(10, 11, 12, 13), (14, 15, 16, 17), (18, 19, 20, 21), (22, 23, 24, 25), (26, 27, 28, 29)]
-    rows.append(tuple(node_ids(page.clone([26, 27, 28, 29]))))
-    for index, ((circle, icon, title, desc), area) in enumerate(zip(rows, AREAS, strict=True)):
-        y = 2.0 + index * 0.88
-        place(page(circle), y=y + 0.08)
-        place(page(icon), y=y + 0.185)
-        place(page(title), y=y)
-        place(page(desc), y=y + 0.34)
-        set_text(page(title), f"{index + 1}. {area[2]} ({area[3]})")
-        set_text(page(desc), area[4])
-    place(page(9), y=2.3, h=4.35)
-    set_text(page(30), "5단계 성숙도 척도로 평가")
-    stairs = [(31, 32, 33), (34, 35, 36), (37, 38, 39), (40, 41, 42)]
-    stairs.append(tuple(node_ids(page.clone([40, 41, 42]))))
-    for index, (shape, title, desc) in enumerate(stairs):
-        y, width = 2.2 + index * 1.0, 2.2 + index * 0.75
-        place(page(shape), y=y, w=width, h=0.86)
-        place(page(title), y=y + 0.1, w=width - 0.5)
-        place(page(desc), y=y + 0.47, w=width - 0.5)
-        set_fill(page(shape), LEVEL_COLORS[index])
-        ink = on_color(index + 1)
-        set_text(page(title), f"Level {index + 1} {assessment.level_names[index]}"
-                 + (" (목표 최소)" if index == 2 else ""), color=ink)
-        set_text(page(desc), assessment.level_keywords[index], color=ink)
-
-
-def build_matrix(slide, assessment: Assessment) -> None:
-    page = Page(slide)
-    level = level_of(assessment.overall)
-    set_text(page(6), "평가 영역별 종합 현황")
-    set_text(page(7), "영역별 성숙도 평가")
-    set_text(page(9), "성숙도 척도")
-    legend = [(10, 11), (12, 13), (14, 15), (16, 17), tuple(node_ids(page.clone([16, 17])))]
-    for index, (square, label) in enumerate(legend):
-        x = 1.85 + index * 1.4
-        place(page(square), x)
-        place(page(label), x + 0.27, w=1.1)
-        set_fill(page(square), LEVEL_COLORS[index])
-        set_text(page(label), f"Level {index + 1}")
-    scored_areas = [a for a in assessment.areas.values() if a.final is not None]
-    set_text(page(18), (
-        f"종합 {level_text(assessment, level)}" + (" (잠정)" if is_provisional(assessment) else "")
-        + ". 영역 점수는 인터뷰 4개 관점 평균이며 실측과 1.5점 이상 차이 나면 실측+1.0으로 보정합니다. "
-        "인터뷰 미입력 영역은 실측 기준 잠정값입니다.") if scored_areas else "산출된 영역 점수가 없습니다.")
-    set_fill(page(19), color_of(level))
-    ink = on_color(level)
-    set_text(page(20), "종합 수준" + (" (잠정)" if is_provisional(assessment) else ""), color=ink)
-    set_text(page(21), level_text(assessment, level), size=18, color=ink)
-    set_text(page(22), (f"종합 {assessment.overall:.1f}점 · " if assessment.overall is not None else "")
-             + (assessment.level_keywords[level - 1] if level else "인터뷰·실측 점수 입력 필요"), color=ink)
-    set_text(page(23), "진단 항목 레벨 분포")
-    chart = [s for s in slide.shapes if s.shape_id == 24][0].chart
-    data = CategoryChartData()
-    data.categories = [f"Level {n}" for n in range(1, 6)]
-    data.add_series("항목 수", [sum(i.score == n for i in assessment.items) for n in range(1, 6)])
-    chart.replace_data(data)
-    labels = chart.plots[0].series[0].data_labels
-    labels.show_value, labels.show_category_name, labels.show_percentage = True, False, False
-    labels.show_legend_key = False
-    labels.font.size = Pt(9)
-    labels.font.bold = True
-    labels.font.color.rgb = RGBColor.from_string("FFFFFF")
-    for index in range(5):
-        point = chart.plots[0].series[0].points[index]
-        point.format.fill.solid()
-        point.format.fill.fore_color.rgb = RGBColor.from_string(LEVEL_COLORS[index])
-    rows = []
-    for prefix, *_rest in AREAS:
-        area = assessment.areas[prefix]
-        text = f"{area.final:.1f}점 · {area.status}" if area.final is not None else "판정 보류"
-        rows.append([
-            area_label(prefix), level_text(assessment, area.level),
-            f"{text} | 실측 {area.system_scored}/{area.system_total} · 답변 완료 {area.interview_scored}/{area.interview_total}",
-            area.level,
-        ])
-    fill_table(slide, 26, ["평가 영역", "성숙도", "점수 · 근거"], rows, [2.5, 1.5, 4.2], 0.6, chip_column=1)
-
-
-def fill_table(slide, shape_id: int, header, rows, widths, row_height, chip_column=None) -> None:
-    frame = [s for s in slide.shapes if s.shape_id == shape_id][0]
-    table = frame._element.find(".//" + qn("a:tbl"))
-    trs = table.findall(qn("a:tr"))
-    proto = copy.deepcopy(trs[1])
-    for tr in trs[1:]:
-        table.remove(tr)
-    for tc, text in zip(trs[0].findall(qn("a:tc")), header, strict=True):
-        set_text(tc, text)
-    for grid, width in zip(table.find(qn("a:tblGrid")).findall(qn("a:gridCol")), widths, strict=True):
-        grid.set("w", str(int(width * 914400)))
-    trs[0].set("h", str(int(0.4 * 914400)))
-    for values in rows:
-        row = copy.deepcopy(proto)
-        row.set("h", str(int(row_height * 914400)))
-        for column, (tc, text) in enumerate(zip(row.findall(qn("a:tc")), values[:3], strict=True)):
-            if chip_column == column:
-                set_fill(tc, color_of(values[3]))
-                set_text(tc, text, color=on_color(values[3]), bold=True)
-            else:
-                set_fill(tc, "FFFFFF")
-                set_text(tc, text)
-        table.append(row)
-    place(frame, w=sum(widths), h=0.4 + row_height * len(rows))
-
-
-def format_appendix_tables(prs) -> None:
-    """Keep appendix questions left-aligned and separate every item identifier from its score."""
-    for slide in prs.slides:
-        for shape in slide.shapes:
-            if not shape.has_table:
-                continue
-            table = shape.table
-            headers = [cell.text.strip() for cell in table.rows[0].cells]
-            score_headers = {
-                "항목 · 실측 점수": ("수집 항목", "실측 점수"),
-                "문항 · 평가 점수": ("인터뷰 질문", "평가 점수"),
-            }
-            split = score_headers.get(headers[0])
-            if len(headers) == 3 and split and headers[1] == split[0]:
-                old_width = table.columns[0].width
-                code_width, score_width = Inches(1.15), Inches(1)
-                item_width = table.columns[1].width - (code_width + score_width - old_width)
-                if item_width <= 0:
-                    raise ValueError("수집 항목 열의 너비가 부족합니다.")
-                grid = table._tbl.find(qn("a:tblGrid"))
-                columns = list(grid)
-                columns[0].set("w", str(code_width))
-                columns[1].set("w", str(item_width))
-                grid.insert(1, etree.Element(qn("a:gridCol"), w=str(score_width)))
-                for index, row in enumerate(table._tbl.findall(qn("a:tr"))):
-                    first = row.find(qn("a:tc"))
-                    score = copy.deepcopy(first)
-                    if index == 0:
-                        set_text(first, "항목")
-                        set_text(score, split[1])
-                    else:
-                        code, separator, level = table.cell(index, 0).text.partition("\n")
-                        if not separator:
-                            raise ValueError("점수와 항목 번호를 구분할 수 없습니다.")
-                        set_text(first, code)
-                        set_text(score, level)
-                    align(score, "ctr")
-                    first.addnext(score)
-                headers = [cell.text.strip() for cell in table.rows[0].cells]
-            for column, header in enumerate(headers):
-                if header not in ("인터뷰 질문", "수집 항목"):
-                    continue
-                for row in table.rows:
-                    align(row.cells[column]._tc, "l")
-
-
-def build_heatmap(slide, assessment: Assessment) -> None:
-    page = Page(slide)
-    panel, strip, header = (copy.deepcopy(page(i)) for i in (13, 14, 15))
-    cell, cell_text = copy.deepcopy(page(16)), copy.deepcopy(page(17))
-    square, square_text = copy.deepcopy(page(5)), copy.deepcopy(page(6))
-    page.delete(*range(5, 90))
-    set_text(page(2), "EASM 점검 - 영역별 세부 항목 평가")
-    set_text(page(4), "항목 점수 (Level 1-5)")
-    for index in range(6):
-        x = 7.95 + index * 0.85
-        marker, label = copy.deepcopy(square), copy.deepcopy(square_text)
-        page.add(marker)
-        page.add(label)
-        place(marker, x, 0.58)
-        place(label, x + 0.27, 0.56, 0.55)
-        fill, line, text = (PASTEL[index], LEVEL_COLORS[index], f"L{index + 1}") if index < 5 else (
-            "F2F2F2", "B0B0B0", "미평가")
-        set_fill(marker, fill)
-        set_outline(marker, line)
-        set_text(label, text)
-    for index, (prefix, *_rest) in enumerate(AREAS):
-        x, y = 0.40 + (index % 3) * 4.24, 1.14 + (index // 3) * 2.98
-        area = assessment.areas[prefix]
-        for node, height in ((panel, 2.84), (strip, 0.42)):
-            copy_node = copy.deepcopy(node)
-            page.add(copy_node)
-            place(copy_node, x, y, 4.04, height)
-        head = copy.deepcopy(header)
-        page.add(head)
-        place(head, x + 0.1, y, 3.84, 0.42)
-        set_text(head, area_label(prefix) + (f" · {area.final:.1f}점" if area.final is not None else ""))
-        for row_index, (kind, _label) in enumerate(KINDS):
-            row_y = y + 0.52 + row_index * 0.46
-            label = copy.deepcopy(cell_text)
-            page.add(label)
-            place(label, x + 0.08, row_y, 0.7, 0.4)
-            set_text(label, KIND_SHORT[kind], size=8, color="595959", bold=True)
-            align(label, "l")
-            for col, item in enumerate(i for i in assessment.items if i.area == prefix and i.kind == kind):
-                shape, text = copy.deepcopy(cell), copy.deepcopy(cell_text)
-                page.add(shape)
-                page.add(text)
-                cx = x + 0.82 + col * 0.45
-                place(shape, cx, row_y, 0.42, 0.4)
-                place(text, cx, row_y, 0.42, 0.4)
-                if item.score is None:
-                    set_fill(shape, "F2F2F2")
-                    set_outline(shape, "B0B0B0")
-                    set_text(text, [item.number, "-"], size=8, color="808080")
-                else:
-                    set_fill(shape, PASTEL[item.score - 1])
-                    set_outline(shape, LEVEL_COLORS[item.score - 1])
-                    set_text(text, [item.number, str(item.score)], size=8, color=PASTEL_TEXT[item.score - 1])
-                    restyle(paragraphs_of(text)[1], size=11, bold=True)
-    set_text(page(90), "셀: 항목 번호 / 점수(Level). 회색은 인터뷰 미입력 또는 평가 보류 항목입니다.")
-
-
-def build_area(slide, assessment: Assessment, prefix: str) -> None:
-    page = Page(slide)
-    area = assessment.areas[prefix]
-    set_text(page(6), "개선 권고사항")
-    set_text(page(7), area_label(prefix))
-    extra_segment, extra_label = node_ids(page.clone([14, 15]))
-    segments, labels = [8, 10, 12, 14, extra_segment], [9, 11, 13, 15, extra_label]
-    bounds = [1.0, 1.5, 2.5, 3.5, 4.5, 5.0]
-
-    def position(score: float) -> float:
-        return 0.60 + (score - 1.0) / 4.0 * 12.13
-
-    for index, (segment, label) in enumerate(zip(segments, labels, strict=True)):
-        left, right = position(bounds[index]), position(bounds[index + 1])
-        place(page(segment), left, w=right - left)
-        place(page(label), left + 0.04, w=max(right - left - 0.08, 0.7))
-        set_fill(page(segment), LEVEL_COLORS[index])
-        set_text(page(label), f"L{index + 1} {assessment.level_names[index]}", color=LEVEL_COLORS[index])
-        align(page(label), "l")
-    if area.final is not None:
-        px = position(area.final)
-        place(page(16), px - 0.02)
-        place(page(17), min(max(px - 2.2, 0.6), 12.73 - 4.4), w=4.4)
-        label = f"{level_text(assessment, area.level)} · {area.final:.1f}점" + (
-            "" if area.status in ("미보정", "인터뷰-실측 괴리") else " (잠정)")
-        set_text(page(17), label, color=color_of(area.level))
-        align(page(17), "ctr" if 2.8 < px < 10.5 else "l" if px <= 2.8 else "r")
-    else:
-        page.delete(16)
-        place(page(17), 0.6, w=12.13)
-        set_text(page(17), "점수 미산정 - 인터뷰 점수와 System Evidence가 모두 없습니다.", color="595959")
-    items = priority_items(assessment, prefix, 5)
-    for index in range(5):
-        ids = list(range(54 + 16 * index, 70 + 16 * index, 2))
-        if index >= len(items):
-            page.delete(*ids)
-            continue
-        _card, accent, circle, icon, title, sub, desc, ref = ids
-        item = items[index]
-        page.delete(icon)
-        set_fill(page(accent), color_of(item.score))
-        set_fill(page(circle), color_of(item.score))
-        centered_label(page(circle), f"L{item.score}" if item.score else "-", 11, on_color(item.score))
-        set_text(page(title), clip(item.title, 17) if item.is_system else item.code, size=12)
-        state = f" · Level {item.score}" if item.score else (" · 평가 보류" if item.is_system else " · 미입력")
-        set_text(page(sub), ("실측" if item.is_system else KIND_NAMES[item.kind]) + state)
-        if item.is_system:
-            first = f"현재: {item.levels[item.score - 1]}" if item.score else "조회 결과가 확보되지 않아 평가 보류"
-        else:
-            first = item.title
-        second = ("다음 단계: " + next_condition(item)) if item.score else ("목표 Level 3: " + item.levels[2])
-        set_text(page(desc), [clip(first, 70), clip(second, 70)], size=9.5)
-        evidence = COLLECTION_METHODS.get(item.code) if item.is_system else item.evidence
-        set_text(page(ref), ["확인 증적", clip(evidence or "-", 70)], size=9)
-        restyle(paragraphs_of(page(ref))[0], size=9, bold=True)
-
-
-def build_plan(slide, assessment: Assessment) -> None:
-    page = Page(slide)
-    set_text(page(88), "영역별 후속 실행 과제: 목표 Level 3 대비 갭이 큰 항목부터 개선합니다.")
-    groups = [[118 + 10 * k + 2 * j for j in range(5)] for k in range(5)]
-    groups.append(node_ids(page.clone(groups[4])))
-    for index, (ids, area) in enumerate(zip(groups, AREAS, strict=True)):
-        header, circle, number, title, body = ids
-        x = 0.35 + index * 2.13
-        place(page(header), x, w=2.03)
-        place(page(circle), x + 0.12)
-        place(page(number), x + 0.12)
-        place(page(title), x + 0.5, w=1.45)
-        place(page(body), x + 0.02, w=1.98)
-        set_text(page(number), str(index + 1))
-        set_text(page(title), area[2])
-        lines = [f"{clip(item.title, 16) if item.is_system else item.code}: " + clip(next_condition(item), 40)
-                 for item in priority_items(assessment, area[0], 4) if item.score is not None and item.score < 5]
-        unfilled = sum(i.score is None and not i.is_system for i in assessment.items if i.area == area[0])
-        pending = sum(i.score is None and i.is_system for i in assessment.items if i.area == area[0])
-        if unfilled:
-            lines.append(f"인터뷰 {unfilled}개 점수 입력")
-        if pending:
-            lines.append(f"평가 보류 {pending}개 조회 권한·라이선스 확인 후 재점검")
-        set_text(page(body), lines or ["현재 수준 유지·고도화"], size=10.5)
-
-
-def build_appendix(slide, assessment: Assessment) -> None:
-    page = Page(slide)
-    page.delete(*range(9, 24))
-    set_text(page(6), "부록")
-    set_text(page(7), "평가 보류 및 인터뷰 미입력 현황")
-    rows: list[list] = []
-    pending = [i for i in assessment.system_items if i.score is None]
-    for item in pending[:6]:
-        reason = re.search(r"조회 제한: ([^\n]+)", item.detail)
-        rows.append([item.code, clip(item.title, 40), clip(reason[1] if reason else item.status or "조회 결과 없음", 60), None])
-    if len(pending) > 6:
-        rows.append(["외", f"{len(pending) - 6}개 항목", "Excel 6번 시트에서 확인", None])
-    if not pending:
-        rows.append(["System Evidence", "평가 보류 없음", "전체 항목 진단 완료", None])
-    for area in assessment.areas.values():
-        missing = area.interview_total - area.interview_scored
-        if missing:
-            rows.append([f"인터뷰 · {area_label(area.prefix, True)}", f"답변 완료 {area.interview_scored}/{area.interview_total}개",
-                         f"미입력 {missing}개 - Excel 6번 시트 M열에 1~5점 입력", None])
-    fill_table(slide, 26, ["구분", "항목", "상태 · 조치"], rows, [2.4, 3.6, 6.1], 0.34)
+        sanitize(slide._element)
+        changed[str(slide.part.partname).lstrip("/")] = etree.tostring(
+            slide._element, encoding="UTF-8", xml_declaration=True, standalone=True,
+        )
+    payload = BytesIO()
+    with ZipFile(BytesIO(source)) as archive, ZipFile(payload, "w") as target:
+        for info in archive.infolist():
+            target.writestr(info, changed.get(info.filename, archive.read(info.filename)))
+    output.write_bytes(payload.getvalue())

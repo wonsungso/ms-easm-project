@@ -16,6 +16,8 @@ from easm_agent.azure import (
     verify_identity,
 )
 from easm_agent.collect_admin_evidence import read_admin_evidence
+from easm_agent.collect_agent365 import REGISTRY_URL, Agent365Collector, crosscheck_agent365
+from easm_agent.collect_copilot import read_copilot_inventory
 from easm_agent.collect_entra import EntraCollector
 from easm_agent.collect_foundry import FoundryCollector
 from easm_agent.collect_inventory import (
@@ -24,6 +26,7 @@ from easm_agent.collect_inventory import (
     ManualCollector,
 )
 from easm_agent.collect_proposals import ProposalCollector
+from easm_agent.collect_report_evidence import collect_cost_history
 from easm_agent.collect_signals import SignalCollector
 from easm_agent.models import (
     HOSTED_AGENT_PLATFORMS,
@@ -33,14 +36,24 @@ from easm_agent.models import (
     load_conventions,
     load_criteria,
 )
+from easm_agent.report_evidence import read_report_evidence
 
 
 def merge(destination: Collection, source: Collection) -> None:
+    identifiers = [
+        (row.environment_id.lower(), row.agent_id.lower())
+        for row in [*destination.copilot_agents, *source.copilot_agents]
+    ]
+    if len(set(identifiers)) != len(identifiers):
+        raise ValueError("같은 환경의 Copilot 에이전트를 중복 반영할 수 없습니다.")
+    codes = [row.code for row in [*destination.report_evidence, *source.report_evidence]]
+    if len(set(codes)) != len(codes):
+        raise ValueError("같은 추가 보고서 SE 원천을 중복 반영할 수 없습니다.")
     for field in (
-        "agents", "deployments", "evaluations", "costs", "security", "secure_scores", "defender_plans",
+        "agents", "copilot_agents", "deployments", "evaluations", "costs", "security", "secure_scores", "defender_plans",
         "policy_assignments", "budgets", "entra_blueprints", "entra_agent_identities",
         "agent365_packages", "agent365_crosschecks",
-        "admin_evidence",
+        "admin_evidence", "report_evidence",
         "logs", "proposal_observations", "issues", "resources",
         "completed_subscriptions",
     ):
@@ -161,6 +174,37 @@ def collect(settings: Settings, credential: Credential, now: datetime | None = N
         if {read.source for read in result.admin_evidence} & {read.source for read in incoming.admin_evidence}:
             raise ValueError("같은 관리자 조회 원천을 중복 반영할 수 없습니다.")
         merge(result, incoming)
+    result.facts["copilot_inventory_requested"] = bool(settings.copilot_inventory_files)
+    for path in settings.copilot_inventory_files:
+        merge(result, read_copilot_inventory(path, settings.tenant_id, instant, store))
+    for path in settings.report_evidence_files:
+        merge(result, read_report_evidence(path, settings.tenant_id, instant, store))
+    if settings.report_cost_history:
+        merge(result, collect_cost_history(credential, result, settings, store, instant, criteria))
+    registry_store = None
+    if settings.agent365_registry:
+        registry_store = EvidenceStore(store.path / "agent365", instant)
+        registry_http = ReaderHTTP(credential, store=None)
+        try:
+            merge(result, Agent365Collector(registry_http, instant, registry_store).discover())
+        except (ClientAuthenticationError, ValueError, KeyError, TypeError) as exc:
+            result.facts.update(agent365_requested=True, agent365_registry_complete=False)
+            error = AccessError(
+                "permission_denied" if isinstance(exc, ClientAuthenticationError) else "error",
+                "Agent 365 인증/응답 처리 실패: " + type(exc).__name__ + "; 원문/토큰 미저장",
+            )
+            registry_http.last_ref = registry_store.save(
+                REGISTRY_URL, {"reason": error.reason, "detail": str(error)},
+            )
+            result.issues.append(issue(
+                registry_http, "agent365_registry", REGISTRY_URL,
+                error, Agent365Collector.required_roles,
+            ))
+        finally:
+            registry_http.close()
+        result.agent365_crosschecks = crosscheck_agent365(result, criteria)
     result.facts["evidence_directory"] = str(store.path.resolve())
     result.evidence_sources = store.sources()
+    if registry_store is not None:
+        result.evidence_sources.extend(registry_store.sources())
     return result

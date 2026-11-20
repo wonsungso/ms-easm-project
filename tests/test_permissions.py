@@ -258,6 +258,27 @@ def test_entra_probes_run_while_the_credential_is_still_open(tmp_path) -> None:
     assert code == 0 and entra.called
 
 
+def test_preflight_writes_only_to_the_isolated_state_directory(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    isolated = tmp_path / "isolated"
+    monkeypatch.setenv("EASM_AGENT_STATE_DIR", str(isolated))
+    old = tmp_path / ".easm-agent" / "permissions.json"
+    old.parent.mkdir()
+    old.write_text("old result", encoding="utf-8")
+    with patch("azure.identity.DefaultAzureCredential") as source, patch.object(
+        verify, "verify_identity",
+    ), patch.object(verify, "check_subscription", return_value=[]), patch.object(
+        verify, "check_entra", return_value=[],
+    ):
+        source.return_value.__enter__.return_value = credential()
+        assert verify.main([
+            "--tenant-id", TENANT, "--expected-principal-id", PRINCIPAL, "--subscriptions", SID,
+        ]) == 0
+    assert (isolated / "permissions.json").is_file()
+    assert (isolated / "permissions.md").is_file()
+    assert old.read_text(encoding="utf-8") == "old result"
+
+
 def test_rbac_report_contains_permission_denial_and_additional_role() -> None:
     report = verify.render_rbac([
         verify.Result(SID, "BI-SE-09", "sample", "DENIED", "permission_denied", "fixture"),
