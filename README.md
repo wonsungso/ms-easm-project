@@ -5,7 +5,7 @@ EASM(Enterprise Agent Service Management)은 **읽기 전용 API로 Agent 구성
 | 구분 | 내용 |
 | --- | --- |
 | 대상 | Microsoft Foundry(API 조회), Azure 자체 호스팅 Agent(`agent-type: langchain` 태그, `custom-config.yaml` 태그 추가 가능), Entra Agent ID, Microsoft 365 Copilot Agent Builder·Copilot Studio 인벤토리, Agent 365 패키지, Power Platform 관리자 증적 |
-| 점검 | API 등급 26개, 보고서 전용 SE 13개(27~39), Copilot·Agent 365 인벤토리. 보고서 전용 SE와 인벤토리는 API 등급 분모에 합산하지 않음 |
+| 점검 | API 등급 26개, [보고서 전용 SE 13개(27~39)](#보고서-전용-점검-항목), Copilot·Agent 365 인벤토리. 보고서 전용 SE와 인벤토리는 API 등급 분모에 합산하지 않음 |
 | 결과 | 실행별 `output/<실행시각-UTC>/`에 Excel·PPT·원본 JSON 저장 |
 | 안전 원칙 | 진단 앱은 리소스 변경·배포·삭제·비밀 조회를 하지 않음. 권한 설정·정리는 승인된 관리자가 별도 수행 |
 
@@ -341,6 +341,26 @@ bash setup.sh cleanup-apply  # 진단 앱·SP·해당 역할 할당 삭제, 미�
 | [OT-SE-24](docs/checklist.md#ot-se-24-ai-비용의-단일-agent-귀속) | 6. Optimize | AI 비용의 단일 Agent 귀속 | Azure → Cost Management → Cost analysis | ✅ |
 | [OT-SE-25](docs/checklist.md#ot-se-25-ai-민감-데이터-노출-점검-구성) | 6. Optimize | AI 민감 데이터 노출 점검 | Azure → Microsoft Defender for Cloud → Environment settings → Defender plans | ✅ |
 | [OT-SE-26](docs/checklist.md#ot-se-26-구독-예산실제예측-경보-구성) | 6. Optimize | 구독 예산·실제·예측 경보 구성 | Azure → Cost Management → Budgets | ✅ |
+
+## 보고서 전용 점검 항목
+
+원본 보고서의 추가 지표 13개(코드 27~39)입니다. **위 26개 API 등급·점수에 합산하지 않고** 보고서 보조 근거로만 쓰며, 명칭·지표·한계는 [criteria.yaml](config/criteria.yaml)의 `report_items`가 기준입니다. 값이 없으면 0·L1이 아니라 `null`과 사유로 남고 PPT에는 '확인 중' 또는 수집된 유사 지표로 표시합니다. 원천 계약은 [원본 PPT의 추가 증적](docs/api-notes.md#원본-ppt의-추가-증적과-한계)을 따릅니다.
+
+| 코드 | 영역 | 점검 내용 | 원천 | 수집 방식 |
+| --- | --- | --- | --- | --- |
+| DM-SE-27 | 1. Demand | 생성·승인 요청의 시간·ID 대사 | 승인 워크플로 | 승인된 추가 증적 파일 |
+| DP-SE-28 | 4. Deploy | 독립 등록부와 관측 Agent ID 대사 | 조직 등록부 | 승인된 추가 증적 파일 |
+| BI-SE-29 | 3. Build | 동일 버전의 배포 전 완료 평가 기록 | Foundry 평가·배포 기록 | 승인된 추가 증적 파일 |
+| OE-SE-30 | 5. Operate | 조건부 접근의 명시적 Agent ID 대상 구성 | Entra 조건부 접근 | 관리자 읽기 내보내기(`export_report_evidence.py`) |
+| OE-SE-31 | 5. Operate | 사용자 지정 감사 보존 정책 구성 | Purview 감사 | 승인된 추가 증적 파일 |
+| OT-SE-32 | 6. Optimize | Agent별 90일 전체 관측과 미사용 현황 | Agent 단위 사용 이력 | 승인된 추가 증적 파일 |
+| OT-SE-33 | 6. Optimize | 고위험 민감 데이터 노출의 조치 상태 | Purview·Defender 발견·조치 | 승인된 추가 증적 파일 |
+| OT-SE-34 | 6. Optimize | 월별 실제 비용·귀속 금액 기록 | Azure Cost Management | 자동 수집(`report_cost_history`) |
+| DP-SE-35 | 4. Deploy | Copilot 인벤토리 게시 시각 보유 | Power Platform 인벤토리 | Copilot 인벤토리 내보내기 |
+| DS-SE-36 | 2. Design | Copilot 인벤토리 인증 방식 구성 | Power Platform 인벤토리 | Copilot 인벤토리 내보내기 |
+| OE-SE-37 | 5. Operate | Copilot 인벤토리 소유자 존재 | Power Platform 인벤토리 | Copilot 인벤토리 내보내기 |
+| DP-SE-38 | 4. Deploy | 카탈로그 패키지의 게시 요청 승인 상태 | Agent 365 카탈로그 | Agent 365 수집(`--agent365-registry`) |
+| OE-SE-39 | 5. Operate | 별도 인사 원천과 Agent 소유자 퇴사 대사 | 인사 대사 결과 | 승인된 추가 증적 파일 |
 
 ## 개발 참고
 
