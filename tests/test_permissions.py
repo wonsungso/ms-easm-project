@@ -111,7 +111,7 @@ def test_http_null_reason_is_not_fabricated(code: int, status: str, reason: str)
     session = Mock()
     session.request.return_value = response(code)
     result = verify.probe(
-        verify.ReaderHTTP(credential(), session), SID, "BI-SE-09",
+        verify.ReaderHTTP(credential(), session), SID, "BI-SY-09",
         "sample", "GET", verify.ARM + "/test",
     )
     assert result.status == status
@@ -124,7 +124,7 @@ def test_graph_unlicensed_403_is_license_missing_not_permission_denied() -> None
     payload = {"error": {"code": "Forbidden", "message": "Your tenant is not licensed for this feature."}}
     session.request.return_value = response(403, payload)
     result = verify.probe(
-        verify.ReaderHTTP(credential(), session), SID, "OE-SE-18", "tenant", "GET",
+        verify.ReaderHTTP(credential(), session), SID, "OE-SY-18", "tenant", "GET",
         "https://graph.microsoft.com/beta/identityProtection/riskyAgents", audience=verify.MSGRAPH_SCOPE,
     )
     assert (result.status, result.reason) == ("FEATURE_UNAVAILABLE", "license_missing")
@@ -146,7 +146,7 @@ def test_network_failure_is_not_feature_unavailable() -> None:
     session.request.side_effect = requests.ConnectionError("do not log this body")
     http = verify.ReaderHTTP(credential(), session)
     with patch.object(verify.time, "sleep"):
-        result = verify.probe(http, SID, "OT-SE-24", "sample", "GET", verify.ARM + "/test")
+        result = verify.probe(http, SID, "OT-SY-24", "sample", "GET", verify.ARM + "/test")
     assert result.status == "ERROR"
     assert result.reason == "error"
     assert "do not log" not in result.detail
@@ -226,7 +226,7 @@ def test_no_project_does_not_claim_foundry_access() -> None:
         side_effect=[[{"actions": ["*/read"]}], []],
     ), patch.object(verify.ReaderHTTP, "request", return_value={"value": []}):
         results = verify.check_subscription(credential(), SID, [])
-    evaluation = next(r for r in results if r.se_code == "BI-SE-09")
+    evaluation = next(r for r in results if r.se_code == "BI-SY-09")
     assert evaluation.status == "NOT_CHECKED"
     assert evaluation.reason == "not_found"
 
@@ -281,7 +281,7 @@ def test_preflight_writes_only_to_the_isolated_state_directory(tmp_path, monkeyp
 
 def test_rbac_report_contains_permission_denial_and_additional_role() -> None:
     report = verify.render_rbac([
-        verify.Result(SID, "BI-SE-09", "sample", "DENIED", "permission_denied", "fixture"),
+        verify.Result(SID, "BI-SY-09", "sample", "DENIED", "permission_denied", "fixture"),
     ])
     assert "Cost Management Reader" in report
     assert "DENIED" in report
@@ -300,8 +300,8 @@ def test_preflight_distinguishes_unchecked_targets_from_actual_failures(
     tmp_path, status: str, reason: str, expected: int,
 ) -> None:
     rows = [
-        verify.Result(SID, "DS-SE-04", "fixture", "OK", None, "API access verified"),
-        verify.Result(SID, "BI-SE-09", "fixture", status, reason, "fixture detail"),
+        verify.Result(SID, "DS-SY-04", "fixture", "OK", None, "API access verified"),
+        verify.Result(SID, "BI-SY-09", "fixture", status, reason, "fixture detail"),
     ]
     with patch("azure.identity.DefaultAzureCredential") as source, patch.object(
         verify, "verify_identity",

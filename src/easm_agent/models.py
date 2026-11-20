@@ -600,13 +600,13 @@ class ReportDatasetBase(EvidenceModel):
 
 class CreationEvidence(ReportDatasetBase):
     kind: Literal["creation_approvals"]
-    code: Literal["DM-SE-27"] = "DM-SE-27"
+    code: Literal["DM-SY-27"] = "DM-SY-27"
     records: list[CreationApprovalRecord]
 
 
 class RegistryEvidence(ReportDatasetBase):
     kind: Literal["registry"]
-    code: Literal["DP-SE-28"] = "DP-SE-28"
+    code: Literal["DP-SY-28"] = "DP-SY-28"
     observed_subjects: list[StrictStr]
     records: list[RegistryRecord]
 
@@ -621,45 +621,45 @@ class RegistryEvidence(ReportDatasetBase):
 
 class PredeploymentEvidence(ReportDatasetBase):
     kind: Literal["predeployment_evaluations"]
-    code: Literal["BI-SE-29"] = "BI-SE-29"
+    code: Literal["BI-SY-29"] = "BI-SY-29"
     records: list[PredeploymentRecord]
 
 
 class BooleanControlEvidence(ReportDatasetBase):
     kind: Literal["target_controls"]
-    code: Literal["OE-SE-30", "OE-SE-39"]
+    code: Literal["OE-SY-30", "OE-SY-39"]
     records: list[BooleanControlRecord]
 
     @model_validator(mode="after")
     def control_source(self) -> BooleanControlEvidence:
-        if self.code == "OE-SE-39" and self.source_kind != "hr_export":
+        if self.code == "OE-SY-39" and self.source_kind != "hr_export":
             raise ValueError("재직 여부는 계정 활성 상태가 아닌 별도 인사 대사 증적이 필요합니다.")
-        if self.code == "OE-SE-30" and self.source_kind != "official_admin_read":
+        if self.code == "OE-SY-30" and self.source_kind != "official_admin_read":
             raise ValueError("조건부 접근은 해당 정책의 실제 관리자 읽기 증적이 필요합니다.")
         return self
 
 
 class AuditRetentionEvidence(ReportDatasetBase):
     kind: Literal["audit_retention"]
-    code: Literal["OE-SE-31"] = "OE-SE-31"
+    code: Literal["OE-SY-31"] = "OE-SY-31"
     records: list[AuditRetentionRecord]
 
 
 class UsageEvidence(ReportDatasetBase):
     kind: Literal["usage"]
-    code: Literal["OT-SE-32"] = "OT-SE-32"
+    code: Literal["OT-SY-32"] = "OT-SY-32"
     records: list[AgentUsageRecord]
 
 
 class ExposureEvidence(ReportDatasetBase):
     kind: Literal["exposures"]
-    code: Literal["OT-SE-33"] = "OT-SE-33"
+    code: Literal["OT-SY-33"] = "OT-SY-33"
     records: list[ExposureRecord]
 
 
 class CostHistoryEvidence(ReportDatasetBase):
     kind: Literal["cost_history"]
-    code: Literal["OT-SE-34"] = "OT-SE-34"
+    code: Literal["OT-SY-34"] = "OT-SY-34"
     records: list[HistoricalCostRecord]
 
 

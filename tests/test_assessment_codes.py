@@ -14,7 +14,7 @@ from easm_agent.report_template import CRITERIA_SHEET, assessment_template_path
 
 def test_system_evidence_codes_use_one_continuous_se_sequence() -> None:
     expected = [
-        f"{prefix}-SE-{number:02}"
+        f"{prefix}-SY-{number:02}"
         for prefix, start, end in (
             ("DM", 1, 1), ("DS", 2, 7), ("BI", 8, 14),
             ("DP", 15, 15), ("OE", 16, 22), ("OT", 23, 26),
@@ -23,7 +23,7 @@ def test_system_evidence_codes_use_one_continuous_se_sequence() -> None:
     ]
     assert list(load_criteria()["items"]) == expected
     sheet = load_workbook(assessment_template_path())[CRITERIA_SHEET]
-    assert [row[1].value for row in sheet if "-SE-" in str(row[1].value)] == expected
+    assert [row[1].value for row in sheet if "-SY-" in str(row[1].value)] == expected
 
 
 def test_saved_result_preserves_scores_evidence_and_snapshots(tmp_path: Path) -> None:

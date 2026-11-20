@@ -32,7 +32,7 @@ ARM = "https://management.azure.com"
 ARM_SCOPE = ARM + "/.default"
 AI_SCOPE = "https://ai.azure.com/.default"
 GRAPH_URL = ARM + "/providers/Microsoft.ResourceGraph/resources?api-version=2022-10-01"
-SE_CODES = ("DS-SE-04", "BI-SE-09", "BI-SE-10", "OE-SE-18", "OT-SE-23", "OT-SE-24")
+SE_CODES = ("DS-SY-04", "BI-SY-09", "BI-SY-10", "OE-SY-18", "OT-SY-23", "OT-SY-24")
 PROJECT_PATH = re.compile(r"^/api/projects/[^/?#]+$")
 RBAC_REFERENCE = """# 읽기 권한 및 접근 확인
 
@@ -101,17 +101,17 @@ def check_subscription(
             rid = account["id"]
             if not rid.lower().startswith(scope.lower() + "/"):
                 raise AccessError("error", "구독 밖의 리소스 ID 응답")
-            results.append(probe(http, sid, "DS-SE-04", rid, "GET",
+            results.append(probe(http, sid, "DS-SY-04", rid, "GET",
                                  ARM + rid + "/deployments?api-version=2024-10-01"))
-            results.append(probe(http, sid, "OE-SE-18", rid, "GET",
+            results.append(probe(http, sid, "OE-SY-18", rid, "GET",
                                  ARM + rid + "/providers/Microsoft.Insights/diagnosticSettings"
                                  "?api-version=2021-05-01-preview"))
-            results.append(probe(http, sid, "OT-SE-23", rid, "GET",
+            results.append(probe(http, sid, "OT-SY-23", rid, "GET",
                                  ARM + rid + "/providers/Microsoft.Insights/metrics"
                                  "?api-version=2018-01-01"))
         for resource in resources:
             if resource.get("type", "").lower() == "microsoft.operationalinsights/workspaces":
-                results.append(probe(http, sid, "OE-SE-18", resource["id"], "GET",
+                results.append(probe(http, sid, "OE-SY-18", resource["id"], "GET",
                                      ARM + resource["id"] + "?api-version=2022-10-01"))
         for project in projects:
             if project["subscription_id"] != sid:
@@ -123,31 +123,31 @@ def check_subscription(
             results.append(probe(http, sid, "FOUNDRY-AGENTS", endpoint, "GET",
                                  endpoint + ("/agents" if profile == "agents_v1" else "/assistants")
                                  + "?api-version=v1&limit=1", audience=AI_SCOPE))
-            results.append(probe(http, sid, "BI-SE-09", endpoint, "GET",
+            results.append(probe(http, sid, "BI-SY-09", endpoint, "GET",
                                  endpoint + ("/openai/v1/evals?limit=1" if profile == "agents_v1"
                                              else "/evaluations/runs?api-version=2025-05-15-preview"),
                                  audience=AI_SCOPE))
         results.append(probe(
-            http, sid, "BI-SE-10", scope, "POST", GRAPH_URL,
+            http, sid, "BI-SY-10", scope, "POST", GRAPH_URL,
             {"subscriptions": [sid], "query": "securityresources | where type =~ "
              "'microsoft.security/assessments' | project id | limit 1"},
         ))
         results.append(probe(
-            http, sid, "BI-SE-10", scope, "GET",
+            http, sid, "BI-SY-10", scope, "GET",
             ARM + scope + "/providers/Microsoft.Security/secureScores?api-version=2020-01-01",
         ))
         results.append(probe(
-            http, sid, "DS-SE-04", scope, "GET",
+            http, sid, "DS-SY-04", scope, "GET",
             ARM + scope + "/providers/Microsoft.Authorization/policyAssignments"
             "?api-version=2023-04-01&$filter=atScope()",
         ))
         results.append(probe(
-            http, sid, "OT-SE-24", scope, "GET",
+            http, sid, "OT-SY-24", scope, "GET",
             ARM + scope + "/providers/Microsoft.Consumption/budgets?api-version=2023-05-01",
         ))
         now = datetime.now(UTC)
         results.append(probe(
-            http, sid, "OT-SE-24", scope, "POST",
+            http, sid, "OT-SY-24", scope, "POST",
             ARM + scope + "/providers/Microsoft.CostManagement/query?api-version=2023-03-01",
             {"type": "Usage", "timeframe": "Custom",
              "timePeriod": {"from": (now - timedelta(days=30)).isoformat(), "to": now.isoformat()},
@@ -156,7 +156,7 @@ def check_subscription(
         ))
         for code in SE_CODES:
             if not any(result.se_code == code for result in results):
-                detail = "대상 AI 리소스 없음" if code != "BI-SE-09" else "프로젝트 endpoint 입력 없음; 자동 추측하지 않음"
+                detail = "대상 AI 리소스 없음" if code != "BI-SY-09" else "프로젝트 endpoint 입력 없음; 자동 추측하지 않음"
                 results.append(Result(sid, code, scope, "NOT_CHECKED", "not_found", detail))
         return results
     except AccessError as exc:
@@ -174,11 +174,11 @@ def check_entra(credential: Credential, tenant_id: str) -> list[Result]:
     try:
         v1 = MSGRAPH + "/v1.0"
         return [
-            probe(http, tenant_id, "DS-SE-03", "agentIdentityBlueprint", "GET",
+            probe(http, tenant_id, "DS-SY-03", "agentIdentityBlueprint", "GET",
                   v1 + "/applications/microsoft.graph.agentIdentityBlueprint?$top=1", audience=MSGRAPH_SCOPE),
-            probe(http, tenant_id, "OE-SE-16", "agentIdentity", "GET",
+            probe(http, tenant_id, "OE-SY-16", "agentIdentity", "GET",
                   v1 + "/servicePrincipals/microsoft.graph.agentIdentity?$top=1", audience=MSGRAPH_SCOPE),
-            probe(http, tenant_id, "OE-SE-17", "servicePrincipals", "GET",
+            probe(http, tenant_id, "OE-SY-17", "servicePrincipals", "GET",
                   v1 + "/servicePrincipals?$top=1&$select=id", audience=MSGRAPH_SCOPE),
         ]
     finally:
@@ -207,7 +207,7 @@ def uuid_arg(value: str) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     logging.getLogger("azure.identity").setLevel(logging.ERROR)
-    parser = argparse.ArgumentParser(description="수집 계정 전용: 쓰기 없는 SE 접근 사전 점검")
+    parser = argparse.ArgumentParser(description="수집 계정 전용: 쓰기 없는 SY 접근 사전 점검")
     parser.add_argument("--tenant-id", required=True, type=uuid_arg)
     parser.add_argument("--expected-principal-id", required=True, type=uuid_arg)
     parser.add_argument("--subscriptions", nargs="+", type=uuid_arg)

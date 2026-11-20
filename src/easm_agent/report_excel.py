@@ -86,16 +86,16 @@ SE_AREAS = {
     "DP": "4. Deploy", "OE": "5. Operate", "OT": "6. Optimize",
 }
 SE_NAMES = {
-    "DS-SE-04": "모델 배포 버전·업데이트 구성",
-    "BI-SE-09": "Foundry 프로젝트 평가 실행 이력",
-    "BI-SE-10": "AI 리소스 보안 권고 상태",
-    "OE-SE-18": "Agent 리소스 실행 로그 연결",
-    "OT-SE-23": "AI 리소스 사용량 관측 범위",
-    "OT-SE-24": "AI 비용의 단일 Agent 귀속",
-    "DS-SE-03": "Agent ID의 Blueprint 연결",
-    "DP-SE-15": "Agent ID 부여율(Azure Agent 기준)",
-    "OE-SE-16": "소유자·스폰서 미지정 Agent",
-    "OE-SE-17": "Agent 부여 권한·과다 권한",
+    "DS-SY-04": "모델 배포 버전·업데이트 구성",
+    "BI-SY-09": "Foundry 프로젝트 평가 실행 이력",
+    "BI-SY-10": "AI 리소스 보안 권고 상태",
+    "OE-SY-18": "Agent 리소스 실행 로그 연결",
+    "OT-SY-23": "AI 리소스 사용량 관측 범위",
+    "OT-SY-24": "AI 비용의 단일 Agent 귀속",
+    "DS-SY-03": "Agent ID의 Blueprint 연결",
+    "DP-SY-15": "Agent ID 부여율(Azure Agent 기준)",
+    "OE-SY-16": "소유자·스폰서 미지정 Agent",
+    "OE-SY-17": "Agent 부여 권한·과다 권한",
     **TITLES,
 }
 FIELD_NAMES = {
@@ -120,14 +120,14 @@ _SIDE = Side(style="thin", color="000000")
 _OUTER = Side(style="medium", color="000000")
 BORDER = Border(left=_SIDE, right=_SIDE, top=_SIDE, bottom=_SIDE)
 COLUMN_WIDTHS = {
-    "SE코드": 10, "코드": 10, "진단 영역": 9, "항목": 19, "제안": 19,
+    "SY코드": 10, "코드": 10, "진단 영역": 9, "항목": 19, "제안": 19,
     "확인상태": 10, "수집 상태": 10, "지표": 12, "판정": 7, "원인": 11,
     "근거": 27, "다음조치": 19, "수동검토상태": 10, "검토메모": 15,
     "수집 요약": 42, "한계": 38, "설명": 60, "detail": 40,
     "evidence_refs": 32, ORIGINAL: 48,
     "리소스 유형": 22, "리소스 이름": 42, "구독 ID": 40, "리소스 그룹": 34, "식별자": 75,
 }
-CENTERED = {"SE코드", "코드", "진단 영역", "확인상태", "수집 상태", "지표", "판정", "수동검토상태"}
+CENTERED = {"SY코드", "코드", "진단 영역", "확인상태", "수집 상태", "지표", "판정", "수동검토상태"}
 DETAILS_TITLE = "수집결과 근거"
 RAW_TITLE = "수집 Raw 데이터"
 
@@ -147,26 +147,26 @@ REVIEW_LAYOUTS: dict[str, ReviewLayout] = {
 }
 
 PRESENTATION_EVIDENCE = (
-    ("DM-SY-01", "제작 허용 범위", "DM-SE-01", False, "환경 역할 할당은 제작 허용 대상과 다릅니다."),
-    ("DM-SY-02", "제작 권한자 수", "DM-SE-01", False, "환경 역할 할당 건수는 고유 사용자 수가 아닙니다."),
+    ("DM-SY-01", "제작 허용 범위", "DM-SY-01", False, "환경 역할 할당은 제작 허용 대상과 다릅니다."),
+    ("DM-SY-02", "제작 권한자 수", "DM-SY-01", False, "환경 역할 할당 건수는 고유 사용자 수가 아닙니다."),
     ("DM-SY-03", "생성-요청 매칭", "", False, "승인 요청과 생성 이력을 연결하는 증적이 없습니다."),
-    ("DS-SY-04", "데이터 정책 적용 환경", "DS-SE-02", True, "관리자에게 보이는 환경의 정책 적용 범위입니다."),
-    ("DS-SY-05", "ID 템플릿 정의", "DS-SE-03", False, "Blueprint 연결은 조직 표준 템플릿 정의가 아닙니다."),
-    ("DS-SY-06", "허용 모델 일치", "DS-SE-04", False, "모델 배포 구성은 승인된 모델 목록과의 대조가 아닙니다."),
-    ("BI-SY-07", "관리형 환경", "BI-SE-08", True, "관리자에게 보이는 환경의 보호 수준 구성입니다."),
-    ("BI-SY-08", "배포 전 평가", "BI-SE-09", False, "프로젝트 평가 이력은 Agent별 배포 전 평가가 아닙니다."),
-    ("BI-SY-09", "고위험 보안 권고 조치", "BI-SE-10", False, "AI 리소스 판정과 고위험 권고 건수는 다릅니다."),
+    ("DS-SY-04", "데이터 정책 적용 환경", "DS-SY-02", True, "관리자에게 보이는 환경의 정책 적용 범위입니다."),
+    ("DS-SY-05", "ID 템플릿 정의", "DS-SY-03", False, "Blueprint 연결은 조직 표준 템플릿 정의가 아닙니다."),
+    ("DS-SY-06", "허용 모델 일치", "DS-SY-04", False, "모델 배포 구성은 승인된 모델 목록과의 대조가 아닙니다."),
+    ("BI-SY-07", "관리형 환경", "BI-SY-08", True, "관리자에게 보이는 환경의 보호 수준 구성입니다."),
+    ("BI-SY-08", "배포 전 평가", "BI-SY-09", False, "프로젝트 평가 이력은 Agent별 배포 전 평가가 아닙니다."),
+    ("BI-SY-09", "고위험 보안 권고 조치", "BI-SY-10", False, "AI 리소스 판정과 고위험 권고 건수는 다릅니다."),
     ("DP-SY-10", "공식 등록부 대사", "", False, "공식 등록부와 Agent 인벤토리의 대사 증적이 없습니다."),
     ("DP-SY-11", "공유·설치 통제", "", False, "공유·설치 승인 설정을 확인하는 증적이 없습니다."),
-    ("DP-SY-12", "Agent ID 부여", "DP-SE-15", False, "현재 지표는 Azure Agent 범위이며 원본의 전체 Agent 범위와 다릅니다."),
-    ("OE-SY-13", "고아 Agent", "OE-SE-16", False, "Agent ID 소유자·스폰서 연결은 전체 Agent의 고아 여부가 아닙니다."),
-    ("OE-SY-14", "과다 권한 Agent", "OE-SE-17", False, "권한 이름 패턴 확인은 업무별 권한 적정성 판정이 아닙니다."),
+    ("DP-SY-12", "Agent ID 부여", "DP-SY-15", False, "현재 지표는 Azure Agent 범위이며 원본의 전체 Agent 범위와 다릅니다."),
+    ("OE-SY-13", "고아 Agent", "OE-SY-16", False, "Agent ID 소유자·스폰서 연결은 전체 Agent의 고아 여부가 아닙니다."),
+    ("OE-SY-14", "과다 권한 Agent", "OE-SY-17", False, "권한 이름 패턴 확인은 업무별 권한 적정성 판정이 아닙니다."),
     ("OE-SY-15", "조건부 접근", "", False, "조건부 접근 적용 여부를 확인하는 증적이 없습니다."),
-    ("OE-SY-16", "감사 로그 보관", "OE-SE-18", False, "Agent 실행 진단 로그 연결은 감사 로그 보관기간이 아닙니다."),
+    ("OE-SY-16", "감사 로그 보관", "OE-SY-18", False, "Agent 실행 진단 로그 연결은 감사 로그 보관기간이 아닙니다."),
     ("OT-SY-17", "Shadow AI 탐지", "", False, "전체 조직의 Shadow AI 탐지 증적이 없습니다."),
-    ("OT-SY-18", "90일 미사용 Agent", "OT-SE-23", False, "최근 사용 관측 범위는 90일 미사용 비율이 아닙니다."),
-    ("OT-SY-19", "Agent별 비용 식별", "OT-SE-24", False, "현재 비용 귀속은 수집 범위와 통화별 금액으로 한정됩니다."),
-    ("OT-SY-20", "고위험 민감 데이터 노출 조치", "OT-SE-25", False, "Defender 플랜 구성은 민감 데이터 노출 조치 결과가 아닙니다."),
+    ("OT-SY-18", "90일 미사용 Agent", "OT-SY-23", False, "최근 사용 관측 범위는 90일 미사용 비율이 아닙니다."),
+    ("OT-SY-19", "Agent별 비용 식별", "OT-SY-24", False, "현재 비용 귀속은 수집 범위와 통화별 금액으로 한정됩니다."),
+    ("OT-SY-20", "고위험 민감 데이터 노출 조치", "OT-SY-25", False, "Defender 플랜 구성은 민감 데이터 노출 조치 결과가 아닙니다."),
 )
 
 
@@ -192,7 +192,7 @@ def metric(finding: Finding) -> str:
     value = finding.metric_value
     if finding.se_code in RATIOS:
         return f"{value * 100:.2f}%"
-    return f"{value:g}" + ("일" if finding.se_code == "OE-SE-18" else "건")
+    return f"{value:g}" + ("일" if finding.se_code == "OE-SY-18" else "건")
 
 
 def _value(value: Any) -> Any:
@@ -355,37 +355,37 @@ def collection_summary(data: Collection, finding: Finding) -> tuple[str, str | N
         return proposal.status, proposal.observation
     code = finding.se_code
     summary = None
-    if code == "DS-SE-04" and (data.deployments or data.facts.get("deployment_inventory_complete")):
+    if code == "DS-SY-04" and (data.deployments or data.facts.get("deployment_inventory_complete")):
         summary = f"모델 배포 {len(data.deployments)}개"
-    elif code == "BI-SE-09" and (data.evaluations or data.facts.get("evaluation_complete_projects")):
+    elif code == "BI-SY-09" and (data.evaluations or data.facts.get("evaluation_complete_projects")):
         summary = f"평가 실행 {len(data.evaluations)}건, Azure Agent {len(agents)}개"
-    elif code == "BI-SE-10" and (data.security or data.secure_scores):
+    elif code == "BI-SY-10" and (data.security or data.secure_scores):
         summary = f"보안 권고 {len(data.security)}건, 구독 보안 점수 {len(data.secure_scores)}건"
-    elif code == "OE-SE-18" and data.logs:
+    elif code == "OE-SY-18" and data.logs:
         retention = [item.retention_days for item in data.logs if item.retention_days is not None]
         scope = "Agent 실행 로그" if data.facts.get("audit_log_scope") == "agent_resource_execution" else "진단 로그"
         summary = (
             f"{scope} 대상 {len(data.logs)}개, 활성 {sum(item.enabled for item in data.logs)}개"
             + (f", 확인한 최소 보존 {min(retention)}일" if retention else ", 보존기간 미확보")
         )
-    elif code == "OT-SE-23" and agents:
+    elif code == "OT-SY-23" and agents:
         summary = f"Azure Agent {len(agents)}개 중 최근 사용일 확인 {sum(item.last_used_at is not None for item in agents)}개"
-    elif code == "OT-SE-24" and (data.costs or data.budgets):
+    elif code == "OT-SY-24" and (data.costs or data.budgets):
         summary = f"비용 행 {len(data.costs)}건, 예산 {len(data.budgets)}개"
-    elif code in ("DM-SE-01", "DS-SE-02", "BI-SE-08"):
+    elif code in ("DM-SY-01", "DS-SY-02", "BI-SY-08"):
         reads = [row for row in data.admin_evidence if row.source == "powerplatform.environments" and row.completed]
         if reads:
             summary = f"Power Platform 환경 {len(reads[0].environments)}개"
-    elif code == "OT-SE-25" and data.defender_plans:
+    elif code == "OT-SY-25" and data.defender_plans:
         summary = (
             f"Defender 플랜 {len(data.defender_plans)}건, AI 위협 방지 Standard "
             f"{sum(row.plan == 'AI' and row.tier == 'Standard' for row in data.defender_plans)}개 구독, "
             f"민감 데이터 검색 활성 "
             f"{sum(row.plan == 'CloudPosture' and row.extensions.get('SensitiveDataDiscovery') is True for row in data.defender_plans)}개 구독"
         )
-    elif code == "DS-SE-03" and data.facts.get("entra_blueprints_complete"):
+    elif code == "DS-SY-03" and data.facts.get("entra_blueprints_complete"):
         summary = f"Blueprint {len(data.entra_blueprints)}개"
-    elif code == "OE-SE-17" and (
+    elif code == "OE-SY-17" and (
         data.entra_agent_identities or data.facts.get("entra_agents_complete")
     ):
         identities = data.entra_agent_identities
@@ -393,7 +393,7 @@ def collection_summary(data: Collection, finding: Finding) -> tuple[str, str | N
             f"Entra Agent ID {len(identities)}개, 수집 앱 역할 이름 {sum(len(row.app_roles) for row in identities)}건, "
             f"쓰기·전체제어 패턴 해당 {sum(len(row.overprivileged_roles) for row in identities)}건"
         )
-    elif code == "OE-SE-16" and (
+    elif code == "OE-SY-16" and (
         data.entra_agent_identities or data.facts.get("entra_agents_complete")
     ):
         identities = data.entra_agent_identities
@@ -406,7 +406,7 @@ def collection_summary(data: Collection, finding: Finding) -> tuple[str, str | N
                 f" (소유자 수 미확인 {sum(row.owner_count is None for row in identities)}개, "
                 f"스폰서 수 미확인 {sum(row.sponsor_count is None for row in identities)}개)"
             )
-    elif code == "DP-SE-15" and (
+    elif code == "DP-SY-15" and (
         data.entra_agent_identities or data.facts.get("entra_agents_complete")
     ):
         summary = f"Graph Agent ID {len(data.entra_agent_identities)}개, Azure Agent {len(agents)}개"
@@ -419,7 +419,7 @@ def presentation_evidence_rows(data: Collection, findings: list[Finding]) -> Ite
     by_code = {finding.se_code: finding for finding in findings}
     snapshot = data.assessment_provenance.criteria_snapshot if data.assessment_provenance else {}
     items = snapshot.get("items", {})
-    expected_metrics = {"DS-SE-02": "data_policy_environment_ratio", "BI-SE-08": "managed_environment_ratio"}
+    expected_metrics = {"DS-SY-02": "data_policy_environment_ratio", "BI-SY-08": "managed_environment_ratio"}
     for source_code, name, current_code, comparable, limitation in PRESENTATION_EVIDENCE:
         finding = by_code.get(current_code)
         measurement = finding.measurement if finding else None
@@ -447,7 +447,7 @@ def presentation_evidence_rows(data: Collection, findings: list[Finding]) -> Ite
         yield {
             "원본 PPT 항목": source_code,
             "요구 지표": name,
-            "관련 현재 SE 코드": current_code or None,
+            "관련 현재 SY 코드": current_code or None,
             "지표 값": f"{finding.metric_value * 100:.2f}%" if measured and finding else None,
             "확인 상태": "수집됨" if measured else "판정 보류",
             "사유 코드": None if measured else (
@@ -538,7 +538,7 @@ def _scope_summary(
 ) -> None:
     system_codes = {
         sheet.cell(row, 2).value for row in range(5, sheet.max_row + 1)
-        if "-SE-" in str(sheet.cell(row, 2).value)
+        if "-SY-" in str(sheet.cell(row, 2).value)
     }
     graded = {item.se_code for item in findings if item.level != "N/A" and item.se_code not in evidence_only_codes}
     pending = {item.se_code for item in findings if item.se_code not in graded}
@@ -618,7 +618,7 @@ def _result_sheet(
         sheet.column_dimensions[get_column_letter(column)].width = width
     by_code = {finding.se_code: finding for finding in findings}
     if len(by_code) != len(findings):
-        raise ValueError("수집 결과의 SE 코드가 중복되었습니다.")
+        raise ValueError("수집 결과의 SY 코드가 중복되었습니다.")
     rows = {}
     for number in range(5, source.max_row + 1):
         code = source.cell(number, 2).value
@@ -634,10 +634,10 @@ def _result_sheet(
         finding = by_code.get(str(code))
         if finding is None:
             values = (
-                "수집하지 않음" if "-SE-" in str(code) else "인터뷰 필요",
+                "수집하지 않음" if "-SY-" in str(code) else "인터뷰 필요",
                 None, None,
                 "자동 수집 결과 없음 또는 자동 수집 범위 밖 - 수동 확인 필요"
-                if "-SE-" in str(code) else "인터뷰를 통해 확인하는 수동 심사 항목",
+                if "-SY-" in str(code) else "인터뷰를 통해 확인하는 수동 심사 항목",
                 None, None, None, None,
             )
         else:
@@ -701,7 +701,7 @@ def _result_sheet(
     sheet.cell(4, 11).alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
     sheet.cell(4, 13).alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
     if rows.keys() != by_code.keys():
-        raise ValueError("평가 결과 템플릿에 없는 SE 코드가 수집 결과에 포함되었습니다.")
+        raise ValueError("평가 결과 템플릿에 없는 SY 코드가 수집 결과에 포함되었습니다.")
     validation = DataValidation(
         type="whole", operator="between", formula1="1", formula2="5", allow_blank=True,
     )
@@ -727,22 +727,22 @@ def write_workbook(data: Collection, findings: list[Finding], path: Path) -> Non
     result_rows = _result_sheet(book, data, findings, resources)
     details = [
         {
-            "SE 코드": item.code, "진단 영역": item.area or DOMAINS.get(item.code, ("",))[0],
+            "SY 코드": item.code, "진단 영역": item.area or DOMAINS.get(item.code, ("",))[0],
             "점검 항목": item.title, "조회 상태": item.status,
             "조회 제한 사유": readable(item.reason) if item.reason else "해당 없음",
             "수집 구성 요약": readable(item.observation), "구성 값·건수": item.metrics, "검증 한계": item.limit,
             "증적 ID": item.evidence_refs,
         } for item in data.proposals
     ]
-    codes = {item["SE 코드"] for item in details}
+    codes = {item["SY 코드"] for item in details}
     if len(codes) != len(details):
-        raise ValueError("수집결과 근거의 SE 코드가 중복되었습니다.")
+        raise ValueError("수집결과 근거의 SY 코드가 중복되었습니다.")
     for finding in findings:
         if finding.se_code in codes:
             continue
         status, summary = collection_summary(data, finding)
         details.append({
-            "SE 코드": finding.se_code, "진단 영역": SE_AREAS.get(finding.se_code[:2], ""),
+            "SY 코드": finding.se_code, "진단 영역": SE_AREAS.get(finding.se_code[:2], ""),
             "점검 항목": SE_NAMES.get(finding.se_code, finding.se_code), "조회 상태": status,
             "조회 제한 사유": readable(finding.reason) if finding.reason else "해당 없음",
             "수집 구성 요약": readable(summary),
@@ -753,10 +753,10 @@ def write_workbook(data: Collection, findings: list[Finding], path: Path) -> Non
             "검증 한계": readable(finding.scope) + ". 등급별 승인·기간·집행 검증은 6번 판정 근거 확인",
             "증적 ID": finding.evidence_refs,
         })
-    details.sort(key=lambda item: result_rows.get(item["SE 코드"], float("inf")))
+    details.sort(key=lambda item: result_rows.get(item["SY 코드"], float("inf")))
     by_code = {item.se_code: item for item in findings}
     for detail in details:
-        finding = by_code.get(detail["SE 코드"])
+        finding = by_code.get(detail["SY 코드"])
         if finding is None or finding.measurement is None:
             continue
         measured = finding.measurement
@@ -777,9 +777,9 @@ def write_workbook(data: Collection, findings: list[Finding], path: Path) -> Non
     crosschecks = {item.se_code: item for item in data.agent365_crosschecks}
     for detail in details:
         detail["수집 구성 요약"] = (
-            str(detail["수집 구성 요약"] or "") + "\n관련 리소스: " + resource_summary(resources[detail["SE 코드"]])
+            str(detail["수집 구성 요약"] or "") + "\n관련 리소스: " + resource_summary(resources[detail["SY 코드"]])
         )
-        check = crosschecks.get(detail["SE 코드"])
+        check = crosschecks.get(detail["SY 코드"])
         detail["Agent 365 교차검증"] = STATUS_LABELS[check.status] if check else "미수행"
         detail["교차검증 범위·결과"] = (
             f"{check.scope}\n{check.detail}"
@@ -794,12 +794,12 @@ def write_workbook(data: Collection, findings: list[Finding], path: Path) -> Non
             )
         detail["교차검증 증적"] = check.evidence_refs if check else []
     proposals_sheet = _table(book, DETAILS_TITLE, [
-        "SE 코드", "진단 영역", "점검 항목", "조회 상태", "조회 제한 사유",
+        "SY 코드", "진단 영역", "점검 항목", "조회 상태", "조회 제한 사유",
         "수집 구성 요약", "구성 값·건수", "검증 한계", "증적 ID",
         "Agent 365 교차검증", "교차검증 범위·결과", "교차검증 증적",
     ], details, start_row=3)
     for row, item in enumerate(details, 4):
-        code = item["SE 코드"]
+        code = item["SY 코드"]
         if code not in result_rows:
             continue
         cell = book[RESULT_SHEET].cell(result_rows[code], 11)
@@ -849,7 +849,7 @@ def write_workbook(data: Collection, findings: list[Finding], path: Path) -> Non
         ("Agent365 대조 Raw 데이터", Agent365Crosscheck, data.agent365_crosschecks),
         ("관리자 읽기 Raw 데이터", AdminReadResult, data.admin_evidence),
         ("Copilot Agent Raw 데이터", CopilotAgentEvidence, data.copilot_agents),
-        ("추가 보고서 SE Raw 데이터", ReportEvidenceRawRecord, [
+        ("추가 보고서 SY Raw 데이터", ReportEvidenceRawRecord, [
             ReportEvidenceRawRecord(
                 **dataset.model_dump(exclude={"kind", "records", "observed_subjects"}),
                 values=values,
@@ -874,19 +874,19 @@ def write_workbook(data: Collection, findings: list[Finding], path: Path) -> Non
         names = resources[code]
         for resource in names:
             resource_rows.append({
-                "SE 코드": code, "리소스 유형": resource.category, "리소스 이름": resource.name,
+                "SY 코드": code, "리소스 유형": resource.category, "리소스 이름": resource.name,
                 "구독 ID": resource.subscription_id, "리소스 그룹": resource.resource_group,
                 "식별자": resource.identifier,
             })
         if not names:
-            resource_rows.append({"SE 코드": code})
+            resource_rows.append({"SY 코드": code})
     resource_header = proposals_sheet.max_row + 4
     _cell(proposals_sheet, resource_header - 1, 1, "항목별 관련 리소스 전체 목록")
     proposals_sheet.merge_cells(
         start_row=resource_header - 1, end_row=resource_header - 1, start_column=1, end_column=12,
     )
     _table(book, DETAILS_TITLE, [
-        "SE 코드", "리소스 유형", "리소스 이름", "구독 ID", "리소스 그룹", "식별자",
+        "SY 코드", "리소스 유형", "리소스 이름", "구독 ID", "리소스 그룹", "식별자",
     ], resource_rows, sheet=proposals_sheet, start_row=resource_header)
     target_rows = []
     status_labels = {"compliant": "충족", "non_compliant": "미충족", "unknown": "미확인", "excluded": "계산 제외"}
@@ -895,7 +895,7 @@ def write_workbook(data: Collection, findings: list[Finding], path: Path) -> Non
             continue
         for target in finding.measurement.targets:
             target_rows.append({
-                "SE 코드": finding.se_code, "확인 상태": status_labels[target.status],
+                "SY 코드": finding.se_code, "확인 상태": status_labels[target.status],
                 "대상 식별자": target.subject, "확인한 설정·값": target.observed,
                 "단위": "금액" if finding.measurement.unit == "amount" else "개수",
                 "계산 기여값": target.contribution, "통화": finding.measurement.currency,
@@ -905,7 +905,7 @@ def write_workbook(data: Collection, findings: list[Finding], path: Path) -> Non
     _cell(proposals_sheet, header - 1, 1, "대상별 판정 - 미확인·제외 대상과 금액 귀속 내역 포함. 종합 판정 보류 시 개별 관측값은 점수가 아닙니다.")
     proposals_sheet.merge_cells(start_row=header - 1, end_row=header - 1, start_column=1, end_column=12)
     _table(book, DETAILS_TITLE, [
-        "SE 코드", "확인 상태", "단위", "계산 기여값", "통화", "확인한 설정·값", "대상 식별자", "사유", "증적 ID",
+        "SY 코드", "확인 상태", "단위", "계산 기여값", "통화", "확인한 설정·값", "대상 식별자", "사유", "증적 ID",
     ], target_rows, sheet=proposals_sheet, start_row=header)
     _fit_audit_rows(proposals_sheet, header + 1, proposals_sheet.max_row, 9)
     provenance = data.assessment_provenance
@@ -938,11 +938,11 @@ def write_workbook(data: Collection, findings: list[Finding], path: Path) -> Non
     header = proposals_sheet.max_row + 4
     _cell(
         proposals_sheet, header - 1, 1,
-        "PPT 원본 요구 지표와 현재 SE의 대응 - 원본 코드는 참고용이며 현재 26개 평가 코드가 아닙니다.",
+        "PPT 원본 요구 지표와 현재 SY의 대응 - 원본 코드는 참고용이며 현재 26개 평가 코드가 아닙니다.",
     )
     proposals_sheet.merge_cells(start_row=header - 1, end_row=header - 1, start_column=1, end_column=12)
     _table(book, DETAILS_TITLE, [
-        "원본 PPT 항목", "요구 지표", "관련 현재 SE 코드", "지표 값",
+        "원본 PPT 항목", "요구 지표", "관련 현재 SY 코드", "지표 값",
         "확인 상태", "사유 코드", "보류 사유·범위 차이", "해석 한계",
     ], presentation_evidence_rows(data, findings), sheet=proposals_sheet, start_row=header)
     _fit_audit_rows(proposals_sheet, header + 1, proposals_sheet.max_row, 8)
@@ -950,10 +950,10 @@ def write_workbook(data: Collection, findings: list[Finding], path: Path) -> Non
     _cell(proposals_sheet, header - 1, 1, "추가 보고서 System Evidence - 기존 26개 API 등급과 별도. 원천·범위·기간은 Raw 확인")
     proposals_sheet.merge_cells(start_row=header - 1, end_row=header - 1, start_column=1, end_column=12)
     _table(book, DETAILS_TITLE, [
-        "SE 코드", "지표 키", "확인 항목", "값", "단위", "상태", "사유", "원천·범위·한계", "증적 ID",
+        "SY 코드", "지표 키", "확인 항목", "값", "단위", "상태", "사유", "원천·범위·한계", "증적 ID",
     ], (
         {
-            "SE 코드": metric.code, "지표 키": metric.key, "확인 항목": metric.label,
+            "SY 코드": metric.code, "지표 키": metric.key, "확인 항목": metric.label,
             "값": metric.value, "단위": metric.unit,
             "상태": "관측" if metric.value is not None else "판정 보류",
             "사유": metric.reason, "원천·범위·한계": metric.limitation, "증적 ID": metric.evidence_refs,

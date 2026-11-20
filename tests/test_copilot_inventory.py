@@ -440,7 +440,7 @@ def test_agent365_registry_is_opt_in_minimized_and_preserves_failures(
         failure = next(row for row in result.issues if row.collector == "agent365_registry")
         assert failure.reason == reason
         assert next(row for row in result.agent365_crosschecks
-                    if row.se_code == "DS-SE-03").reason == reason
+                    if row.se_code == "DS-SY-03").reason == reason
         refs = failure.evidence_refs
     assert refs
     text = Path(refs[0]).read_text(encoding="utf-8")

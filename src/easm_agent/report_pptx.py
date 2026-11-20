@@ -562,8 +562,8 @@ def direct_attribution(data: DeckData, total: float | int | None, currency: str)
 
     Only used when that result covers exactly the billed amount of the month in the same currency.
     """
-    pair = data.counts("OT-SE-24")
-    if pair is None or total is None or not currency or data.currency("OT-SE-24") != currency:
+    pair = data.counts("OT-SY-24")
+    if pair is None or total is None or not currency or data.currency("OT-SY-24") != currency:
         return None
     return pair[0] if math.isclose(pair[1], total, rel_tol=1e-6) else None
 
@@ -654,14 +654,14 @@ def registry_panel(data: DeckData) -> dict[str, object]:
                        f"\n· 등록 누락 {missing if missing is not None else '-'} / 필수 정보 누락 "
                        f"{metadata if metadata is not None else '-'}",
         }
-    pair = data.counts("DP-SE-15")
+    pair = data.counts("DP-SY-15")
     if pair is None:
         return {"registry": False, "top": "Azure에서 확인된 에이전트", "bottom": "청사진에 연결된 에이전트",
                 "top_value": PENDING_TEXT, "bottom_value": PENDING_TEXT, "total": None, "matched": None,
-                "missing_label": "미연결", "bullets": data.pending_note("DP-SE-15")}
-    owners = data.fraction("BI-SE-13")
-    lines = [f"· 에이전트 {pair[1]:g}개 중 {pair[0]:g}개가 청사진에 연결 (기준 {data.l3_min('DP-SE-15'):.0%} 이상)"]
-    if owners and data.score("BI-SE-13") is not None:
+                "missing_label": "미연결", "bullets": data.pending_note("DP-SY-15")}
+    owners = data.fraction("BI-SY-13")
+    lines = [f"· 에이전트 {pair[1]:g}개 중 {pair[0]:g}개가 청사진에 연결 (기준 {data.l3_min('DP-SY-15'):.0%} 이상)"]
+    if owners and data.score("BI-SY-13") is not None:
         lines.append(f"· 담당자 · 환경 · 비용 정보 기록 {owners}")
     return {
         "registry": False, "top": "Azure에서 확인된 에이전트", "bottom": "청사진에 연결된 에이전트",
@@ -776,7 +776,7 @@ def build_operations(slide: Slide, data: DeckData) -> None:
         unknown = [c for c in history if c.total and c.part is None]
         known = [c for c in history if c.total and c.part is not None]
         remainder = ("귀속 불가" if not unknown else "총액·식별 미확인" if not known else "귀속 불가·식별 미확인")
-        texts(slide, {36858: "I. 월별 Agent 소비 비용 (OT-SE-24)", 36978: "Agent별 식별", 37063: remainder,
+        texts(slide, {36858: "I. 월별 Agent 소비 비용 (OT-SY-24)", 36978: "Agent별 식별", 37063: remainder,
                       37107: f"{currency} · 빨강=최근월" if currency else "조회 범위 실제 청구"})
         notes = ["식별 미확인 월의 회색은 총액"] if unknown else []
     else:

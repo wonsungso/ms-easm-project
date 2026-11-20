@@ -76,12 +76,12 @@ def collect_cost_history(
             refs.update(sources)
     if not records and not failures:
         failures.append(Issue(
-            collector="report_cost_history", target="OT-SE-34", reason="not_found",
+            collector="report_cost_history", target="OT-SY-34", reason="not_found",
             detail="조회 대상 Azure AI 리소스·실제 비용 행 없음. 과거 삭제 리소스는 현재 인벤토리로 복원하지 않음",
         ))
     reason = failures[0].reason if failures else None
     result = Collection(collected_at=now, issues=failures, report_evidence=[CostHistoryEvidence(
-        kind="cost_history", code="OT-SE-34", source_kind="official_admin_read",
+        kind="cost_history", code="OT-SY-34", source_kind="official_admin_read",
         source_ref="azure-costmanagement-2023-03-01",
         scope="현재 발견된 Azure AI 리소스의 비용 이력. 과거 삭제 리소스·과거 Agent 귀속·M365 청구 제외",
         observed_at=now, period_start=start, period_end=now, complete=not failures,

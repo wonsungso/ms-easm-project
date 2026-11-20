@@ -20,14 +20,14 @@
 | --- | --- |
 | 수집·평가 | Microsoft Foundry, Azure 자체 호스팅 Agent, Azure Monitor·Log Analytics, 비용·보안 권고, Defender for Cloud 플랜, Entra Agent ID, Power Platform 관리자 읽기의 26개 항목 |
 | Copilot 인벤토리 | Agent Builder·Copilot Studio를 별도 `copilot_agents`로 수집. 26개 항목 분모에 합치지 않음 |
-| Entra 필수 조회 | DS-SE-03, DP-SE-15, OE-SE-16~17. 생략 옵션 없이 권한 부족은 항목을 유지하고 `null`과 사유 기록 |
-| 관리자 읽기 3개 | DM-SE-01·DS-SE-02·BI-SE-08. 승인된 관리자의 별도 읽기 내보내기 증적을 사용하며 진단 SP 권한은 확대하지 않음 |
+| Entra 필수 조회 | DS-SY-03, DP-SY-15, OE-SY-16~17. 생략 옵션 없이 권한 부족은 항목을 유지하고 `null`과 사유 기록 |
+| 관리자 읽기 3개 | DM-SY-01·DS-SY-02·BI-SY-08. 승인된 관리자의 별도 읽기 내보내기 증적을 사용하며 진단 SP 권한은 확대하지 않음 |
 | 자체 Agent 탐지 | 승인 구독의 App Service·Container Apps·AKS. 기본 LangChain 조건에 사용자 태그 OR 조건 추가. 태그만 일치하면 `custom` 후보이며 실행 증거는 아님. [설정 예시](../README.md#자체-agent-탐지-태그) |
 | 승인 경계 | 지정 테넌트의 접근 가능한 구독을 기본 열거하고 CLI·설정의 승인 범위를 적용. 외부 workspace·청구 범위로 자동 확대하지 않음 |
 | 실행 신원 | 진단 SP의 DefaultAzureCredential. Reader 중심 GET 및 Resource Graph·비용·로그의 읽기 query POST만 허용 |
 | 보안 권고 범위 | 현재 발견한 AI 리소스·하위 리소스로 Resource Graph 요청과 응답을 제한. 삭제·무관 리소스 권고는 제외 |
 | 관리자 예외 | `scripts/setup.sh`, `setup_account.py`, 정리 스크립트와 demo만 승인된 배포·역할·일회성 인증 준비 수행. 수집기에서 import 금지 |
-| 결과 번호 | `assessment_revision: 7`은 `XX-SE-NN` 연속 번호 01~26. Demand 01, Design 02~07, Build 08~14, Deploy 15, Operate 16~22, Optimize 23~26 |
+| 결과 번호 | `assessment_revision: 7`은 `XX-SY-NN` 연속 번호 01~26. Demand 01, Design 02~07, Build 08~14, Deploy 15, Operate 16~22, Optimize 23~26 |
 | 제외 API | Red team·조건부 접근·위험 Agent 진단 제외 |
 
 ## 판정 근거와 재현성
@@ -43,7 +43,7 @@
 | Excel 6번 상단 | 등급 산정·판정 보류·결과 없음 및 조회 이슈 요약. L5는 API 구성·기록 100% 충족이며 조직 전체 성숙도·정책 실효성의 증명이 아님 |
 | 결과 Excel 4·5번 | 4번은 확인 증적(L열)까지 표시하고 M·N열은 제외. 점수·메모는 6번 시트에서만 관리하며 5번 집계 수식도 6번 M열을 참조 |
 | Excel 7번 | 항목 요약·전체 리소스 목록·대상별 판정·평가 출처. 비용은 건수가 아닌 금액·통화로 확인 |
-| Excel 7번 PPT 요구 지표 | 원본 PPT의 20개 요구 지표와 현재 SE의 범위 차이 및 판정 보류 사유 |
+| Excel 7번 PPT 요구 지표 | 원본 PPT의 20개 요구 지표와 현재 SY의 범위 차이 및 판정 보류 사유 |
 | 보고서 지표 | PPT의 안정된 키·관측값·사유·범위·증적 계약. 저장된 raw JSON 수집 결과로 PPT 생성 때 계산. `report_groups`는 표시 분류이며 등급 규칙 아님 |
 
 ## Copilot 인벤토리 읽기 계약 (2026-11-19 문서 확인)
@@ -159,19 +159,19 @@
 
 | 원본 요구 지표 | 현재 처리 |
 | --- | --- |
-| 생성 승인·독립 등록부 | `DM-SE-27`, `DP-SE-28`: 승인 워크플로·조직 등록부의 명시적 ID·시간을 승인 파일로 대사. 배포 승인·서비스 카탈로그로 대체하지 않음 |
-| 배포 전 완료 평가 | `BI-SE-29`: 동일 버전·완료 시각·배포 시각의 대사. 평가 실행 생성 시각으로 대체하지 않음 |
-| 조건부 접근 | `OE-SE-30`: 별도 관리자 읽기 내보내기의 명시적 Agent ID 대상. 미확인 선택자·속성 필터는 보류 |
-| 사용자 지정 감사 보존 | `OE-SE-31`: 실제 정책 enum·우선순위. 월 단위 최소 구성만 표시하며 실제 보존이 아님 |
-| 90일 미사용 | `OT-SE-32`: Agent 단위 전체 관측 구간·30/90일 호출 수. 짧은 로그 구간으로 미사용을 단정하지 않음 |
-| 고위험 노출 조치 | `OT-SE-33`: 승인된 발견·심각도·조치 상태 내보내기. Defender 플랜·단순 경보 종료와 다름 |
-| 월별 실제 비용 | `OT-SE-34`: `--report-cost-history`로 현재 발견된 Azure AI 리소스의 기간별 비용 조회. 삭제 리소스·과거 Agent 귀속·M365 청구는 제외. 검증된 기간별 귀속 기록도 승인 파일로 수용 |
-| Copilot 구성 | `DP-SE-35`, `DS-SE-36`, `OE-SE-37`: 공식 인벤토리의 게시 시각·인증 방식·소유자 존재. 독립된 보안 평가가 아님 |
-| 패키지 게시 요청 | `DP-SE-38`: 카탈로그 `requestType=publish`의 반환된 승인 상태. Agent 생성 업무 승인이 아님 |
-| 소유자 퇴사 대사 | `OE-SE-39`: 승인된 인사 대사 결과의 Agent ID·nullable bool만 사용. 인사 원본·사용자 ID·이름은 입력하지 않음. 계정 비활성은 퇴사 증거가 아님 |
+| 생성 승인·독립 등록부 | `DM-SY-27`, `DP-SY-28`: 승인 워크플로·조직 등록부의 명시적 ID·시간을 승인 파일로 대사. 배포 승인·서비스 카탈로그로 대체하지 않음 |
+| 배포 전 완료 평가 | `BI-SY-29`: 동일 버전·완료 시각·배포 시각의 대사. 평가 실행 생성 시각으로 대체하지 않음 |
+| 조건부 접근 | `OE-SY-30`: 별도 관리자 읽기 내보내기의 명시적 Agent ID 대상. 미확인 선택자·속성 필터는 보류 |
+| 사용자 지정 감사 보존 | `OE-SY-31`: 실제 정책 enum·우선순위. 월 단위 최소 구성만 표시하며 실제 보존이 아님 |
+| 90일 미사용 | `OT-SY-32`: Agent 단위 전체 관측 구간·30/90일 호출 수. 짧은 로그 구간으로 미사용을 단정하지 않음 |
+| 고위험 노출 조치 | `OT-SY-33`: 승인된 발견·심각도·조치 상태 내보내기. Defender 플랜·단순 경보 종료와 다름 |
+| 월별 실제 비용 | `OT-SY-34`: `--report-cost-history`로 현재 발견된 Azure AI 리소스의 기간별 비용 조회. 삭제 리소스·과거 Agent 귀속·M365 청구는 제외. 검증된 기간별 귀속 기록도 승인 파일로 수용 |
+| Copilot 구성 | `DP-SY-35`, `DS-SY-36`, `OE-SY-37`: 공식 인벤토리의 게시 시각·인증 방식·소유자 존재. 독립된 보안 평가가 아님 |
+| 패키지 게시 요청 | `DP-SY-38`: 카탈로그 `requestType=publish`의 반환된 승인 상태. Agent 생성 업무 승인이 아님 |
+| 소유자 퇴사 대사 | `OE-SY-39`: 승인된 인사 대사 결과의 Agent ID·nullable bool만 사용. 인사 원본·사용자 ID·이름은 입력하지 않음. 계정 비활성은 퇴사 증거가 아님 |
 | PPT 렌더링 | 원본 12장의 테마·배경·미디어를 보존하고 제목·머리글·라벨은 템플릿 원문 유지. 미확보 도형은 '확인 중'으로 표시하고 예시 막대는 숨김 |
 
-추가 SE의 명칭·지표·기간·보고서 검토 목표는 `config/criteria.yaml`의 `report_items`·`report_options`를 수집 당시 기준 사본에 보존합니다. **기존 26개 API 등급에는 합산하지 않습니다.** Excel 7번의 별도 표·8번 Raw에서 값·분모·원천·한계를 추적하며 월별 차트는 최근 최대 6개 월만 표시합니다.
+추가 SY의 명칭·지표·기간·보고서 검토 목표는 `config/criteria.yaml`의 `report_items`·`report_options`를 수집 당시 기준 사본에 보존합니다. **기존 26개 API 등급에는 합산하지 않습니다.** Excel 7번의 별도 표·8번 Raw에서 값·분모·원천·한계를 추적하며 월별 차트는 최근 최대 6개 월만 표시합니다.
 
 | 원천·계약 | 공식 근거·해석 한계 |
 | --- | --- |
@@ -241,54 +241,54 @@ easm-agent collect --setup-file .easm-agent\setup.json --report-cost-history --r
 
 | 코드·현재 명칭 | 분모 | 충족 API 증거 | 해석 한계 |
 | --- | --- | --- | --- |
-| DM-SE-01 Power Platform 환경 역할 할당 | 관리자에게 보이는 환경 수 | 환경별 역할 할당 건수 1 이상(`Get-AdminPowerAppEnvironmentRoleAssignment`) | [공식 명령](https://learn.microsoft.com/en-us/powershell/module/microsoft.powerapps.administration.powershell/get-adminpowerappenvironmentroleassignment?view=pa-ps-latest)은 비 Dataverse 환경만 반환하므로 Dataverse 환경은 관리자가 `scripts\export_dataverse_roles.py`로 별도 내보낸 `powerplatform.dataverse_roles`(`systemusers`의 System Administrator 또는 Environment Maker 역할을 가진 사용 설정 대화형 사용자 건수, 사용자·역할 이름 미내보내기)로 보완. 두 원천 중 명령 결과를 우선. 건수 미확인 환경은 0이 아닌 판정 보류. 고유 제작자 수·전체 유효 권한 아님 |
-| DS-SE-02 데이터 정책 환경 적용 | 관리자에게 보이는 환경 수 | DLP 정책 `FilterType`·`Environments`로 환경이 범위에 포함(전체·포함·제외 해석) | 커넥터 분류·차단 효과 아님. 정책이 없으면 0% |
-| BI-SE-08 관리형 환경 보호 수준 | 관리자에게 보이는 환경 수 | 환경 `protectionLevel=Standard` | `Standard`=관리형 환경은 필드 값에 근거한 해석. 환경 분리 실효성 아님 |
-| DS-SE-03 Agent ID의 Blueprint 연결 | Graph Agent ID 수 | `applications/microsoft.graph.agentIdentityBlueprint`와 `servicePrincipals/microsoft.graph.agentIdentity`의 `agentIdentityBlueprintId` 대조 | Blueprint 조직 표준 승인·업무 유형 분류 아님 |
-| DS-SE-04 모델 배포 버전·업데이트 구성 | 모델 배포 수 | `model.name·version·format`과 기준에 정의된 `versionUpgradeOption` 모두 존재 | 허용 모델 대조·퇴역 대응 완료 아님 |
-| DS-SE-05 AI 리소스 인바운드 경계 구성 | AI 계정·자체 Agent 호스트 수 | AI 계정의 `publicNetworkAccess`와 Approved `privateEndpointConnections`, 호스트의 기본 거부 접근 제한 또는 비공개 ingress | 송신 경계·실제 차단 효과 아님. HTTPS·VNet 통합만으로 충족하지 않음 |
-| DS-SE-06 MCP 도구 필수 승인 모드 | MCP 도구 선언 수 | 최신 Agent 버전 `definition.tools`의 MCP `require_approval=always`만 충족 | `never`·명시적 객체형 `custom`은 미충족, 값 미확인은 null. 함수·내장 도구 제외. 런타임 승인 우회 방지 검증 아님 |
-| DS-SE-07 외부 도구 HTTPS 연결 구성 | 명시적 외부 도구 URL 수 | `server_url·url`의 HTTPS scheme·유효 hostname·userinfo 부재 | 업무 승인·상대 서버 신뢰·인증 성공 아님. 경로·쿼리·인증값 미저장 |
-| BI-SE-09 Foundry 프로젝트 평가 실행 이력 | Foundry 프로젝트 수 | `/openai/v1/evals`와 `/evals/{id}/runs`에서 `completed` 또는 `succeeded` 실행 보유 | 프로젝트 이력이며 배포 전 평가·Agent 버전별 품질 통과율 아님 |
-| BI-SE-10 AI 리소스 보안 권고 상태 | 적용 가능한 AI 보안 권고 수 | `SecurityResources` assessments의 `resourceDetails.Id` 연결과 `status.code=Healthy`, `NotApplicable` 제외 | 권고 없음은 100% 아님. 구독 보안 점수·권고 나이·조치 SLA 채점 안 함 |
-| BI-SE-11 콘텐츠 필터 정책 연결 | 모델 배포 수 | 배포 `raiPolicyName`으로 연결된 실제 `accounts/raiPolicies`를 식별하고 `contentFilters.enabled` 확인 | 필터 값 미확인은 null. 실제 차단 효과·강도 승인 아님. 정책명만으로 충족하지 않음 |
-| BI-SE-12 Agent 버전·호스트 런타임 식별 | Foundry Agent·자체 호스트 수 | Agent `version`, `sites/config/web.linuxFxVersion`, Container Apps 이미지 sha256 다이제스트 | 소스·빌드 출처·운영 배포 승인·롤백 기록 아님 |
-| BI-SE-13 Agent 책임·환경·비용 메타데이터 | Azure Agent 수 | 같은 Agent의 태그 또는 API metadata에 owner·sponsor·env·cost-center 모두 존재 | 값의 업무 승인·인사 상태 아님 |
-| BI-SE-14 AI 리소스 정책 평가 준수 | 정책 평가가 있는 AI 관련 리소스 수 | `PolicyResources` policyStates를 리소스별 대조해 모든 평가가 `Compliant` | `Exempt·Unknown`·평가 없음은 준수 아님. 자동 교정 효과 아님 |
-| DP-SE-15 Azure Agent의 Entra Blueprint 귀속 | Azure Agent 수 | Entra Agent ID·Blueprint 전체 조회 완료 후 Blueprint tags의 subscriptionId·accountName·projectName·agentName을 Foundry Agent와 정확 대조하고 실제 Agent ID의 해당 Blueprint 참조 확인 | Blueprint 태그만으로 충족하지 않으며 LangChain 관리 ID를 Entra Agent ID로 대신 간주하지 않음 |
-| OE-SE-16 Agent ID 소유자·스폰서 연결 | Graph Agent ID 수 | 실제 `owners` 수 > 0 및 `sponsors` 수 > 0 | 기본 Graph 읽기 권한의 사용자 속성 제한 때문에 accountEnabled는 조건에서 제외. 계정 활성 상태·퇴사자 판정·인사 대사 아님. 이름·UPN 미저장 |
-| OE-SE-17 Agent ID 앱 역할 읽기 범위 | Graph Agent ID 수 | `appRoleAssignments`와 대상 SP의 `appRoles.value`를 해석해 기준의 쓰기·전체제어 패턴 앱 역할 없음 | ARM·위임·앱 내부 권한 제외 |
-| OE-SE-18 Agent 리소스 실행 로그 연결 | AI 계정·자체 Agent 호스트 수 | `diagnosticSettings.logs.enabled`와 `workspaceId` 연결 | 구독 공통 Activity Log 제외. 이벤트 유입·테이블 유효 보존기간 아님 |
-| OE-SE-19 관리 ID·키 인증·직접 ARM 역할 구성 | AI 계정·자체 Agent 호스트 수 | `identity.principalId·type` 존재, 동일 구독의 광범위 직접 역할 없음, AI 계정 `disableLocalAuth=true` | 타 구독·상속·데이터 평면 역할과 실제 인증 사용 제외 |
-| OE-SE-20 AI 리소스 활성 경보 범위 | AI 계정·자체 Agent 호스트 수 | `metricAlerts·scheduledQueryRules·activityLogAlerts`의 enabled·scopes를 실제 AI 리소스 ID에 대조 | 경보 발생·SLO 충족·trace 유입 아님 |
-| OE-SE-21 AI 경보의 작업 그룹·수신자 연결 | AI 대상 경보 수 | 활성 경보의 actionGroupId·actionGroups에 존재하는 작업 그룹과 활성 email·SMS·webhook·armRole·Function·LogicApp·ITSM receivers 연결 | 실제 전달 성공·온콜 대응 시간·복구 시험 아님. 주소·이름 미저장 |
-| OE-SE-22 리소스 지역·workspace 보존 구성 | AI 계정·자체 Agent 호스트 수 | `resources.location` 식별·활성 로그의 연결 workspace `retentionInDays` 기준 충족, 기본 90일 | 실제 처리 지역·테이블별 유효 보존·법적 삭제 아님 |
-| OT-SE-23 AI 리소스 사용량 관측 범위 | AI 계정·자체 Agent 호스트 수 | `metricDefinitions`와 `metrics.timeseries.data`에 기간 내 숫자 표본, 기본 30일 | 숫자 0도 관측됨. Agent별 사용자 수·90일 미사용 여부 아님 |
-| OT-SE-24 AI 비용의 단일 Agent 귀속 | 동일 통화의 양수 AI 비용 금액 | Daily query의 ResourceId·UsageDate·Cost·Currency와 Agent·모델·호스트·플랜 ID 대조. 일자 존재·단일 Agent 귀속 금액, 기본 30일 | 공유 비용 중복 배분 금지. 통화 혼재·음수 조정·분모 0은 산출하지 않음 |
-| OT-SE-25 AI 민감 데이터 노출 점검 구성 | 승인 구독 수 | `Microsoft.Security/pricings`(2024-01-01)의 `AI` 플랜 `pricingTier=Standard`, `CloudPosture` 플랜 `Standard`와 `SensitiveDataDiscovery` 확장 `isEnabled=True`를 모두 충족. `AIPromptEvidence`·`AIModelScanner` 확장은 상태만 기록 | 플랜·확장 구성이며 실제 경보 발생·민감 데이터 노출·조치 완료 아님. 구독 안 모든 AI 리소스 적용 범위 미확인. 필드 누락은 `null` |
-| OT-SE-26 구독 예산·실제·예측 경보 구성 | 승인 구독 수 | 현재 유효한 양수·무필터 `Cost` 예산과 활성 Actual·Forecasted 임계값 경보·수신자 존재 | Agent별 예산·실제 전달 성공·통보 후 자동 조치 아님 |
+| DM-SY-01 Power Platform 환경 역할 할당 | 관리자에게 보이는 환경 수 | 환경별 역할 할당 건수 1 이상(`Get-AdminPowerAppEnvironmentRoleAssignment`) | [공식 명령](https://learn.microsoft.com/en-us/powershell/module/microsoft.powerapps.administration.powershell/get-adminpowerappenvironmentroleassignment?view=pa-ps-latest)은 비 Dataverse 환경만 반환하므로 Dataverse 환경은 관리자가 `scripts\export_dataverse_roles.py`로 별도 내보낸 `powerplatform.dataverse_roles`(`systemusers`의 System Administrator 또는 Environment Maker 역할을 가진 사용 설정 대화형 사용자 건수, 사용자·역할 이름 미내보내기)로 보완. 두 원천 중 명령 결과를 우선. 건수 미확인 환경은 0이 아닌 판정 보류. 고유 제작자 수·전체 유효 권한 아님 |
+| DS-SY-02 데이터 정책 환경 적용 | 관리자에게 보이는 환경 수 | DLP 정책 `FilterType`·`Environments`로 환경이 범위에 포함(전체·포함·제외 해석) | 커넥터 분류·차단 효과 아님. 정책이 없으면 0% |
+| BI-SY-08 관리형 환경 보호 수준 | 관리자에게 보이는 환경 수 | 환경 `protectionLevel=Standard` | `Standard`=관리형 환경은 필드 값에 근거한 해석. 환경 분리 실효성 아님 |
+| DS-SY-03 Agent ID의 Blueprint 연결 | Graph Agent ID 수 | `applications/microsoft.graph.agentIdentityBlueprint`와 `servicePrincipals/microsoft.graph.agentIdentity`의 `agentIdentityBlueprintId` 대조 | Blueprint 조직 표준 승인·업무 유형 분류 아님 |
+| DS-SY-04 모델 배포 버전·업데이트 구성 | 모델 배포 수 | `model.name·version·format`과 기준에 정의된 `versionUpgradeOption` 모두 존재 | 허용 모델 대조·퇴역 대응 완료 아님 |
+| DS-SY-05 AI 리소스 인바운드 경계 구성 | AI 계정·자체 Agent 호스트 수 | AI 계정의 `publicNetworkAccess`와 Approved `privateEndpointConnections`, 호스트의 기본 거부 접근 제한 또는 비공개 ingress | 송신 경계·실제 차단 효과 아님. HTTPS·VNet 통합만으로 충족하지 않음 |
+| DS-SY-06 MCP 도구 필수 승인 모드 | MCP 도구 선언 수 | 최신 Agent 버전 `definition.tools`의 MCP `require_approval=always`만 충족 | `never`·명시적 객체형 `custom`은 미충족, 값 미확인은 null. 함수·내장 도구 제외. 런타임 승인 우회 방지 검증 아님 |
+| DS-SY-07 외부 도구 HTTPS 연결 구성 | 명시적 외부 도구 URL 수 | `server_url·url`의 HTTPS scheme·유효 hostname·userinfo 부재 | 업무 승인·상대 서버 신뢰·인증 성공 아님. 경로·쿼리·인증값 미저장 |
+| BI-SY-09 Foundry 프로젝트 평가 실행 이력 | Foundry 프로젝트 수 | `/openai/v1/evals`와 `/evals/{id}/runs`에서 `completed` 또는 `succeeded` 실행 보유 | 프로젝트 이력이며 배포 전 평가·Agent 버전별 품질 통과율 아님 |
+| BI-SY-10 AI 리소스 보안 권고 상태 | 적용 가능한 AI 보안 권고 수 | `SecurityResources` assessments의 `resourceDetails.Id` 연결과 `status.code=Healthy`, `NotApplicable` 제외 | 권고 없음은 100% 아님. 구독 보안 점수·권고 나이·조치 SLA 채점 안 함 |
+| BI-SY-11 콘텐츠 필터 정책 연결 | 모델 배포 수 | 배포 `raiPolicyName`으로 연결된 실제 `accounts/raiPolicies`를 식별하고 `contentFilters.enabled` 확인 | 필터 값 미확인은 null. 실제 차단 효과·강도 승인 아님. 정책명만으로 충족하지 않음 |
+| BI-SY-12 Agent 버전·호스트 런타임 식별 | Foundry Agent·자체 호스트 수 | Agent `version`, `sites/config/web.linuxFxVersion`, Container Apps 이미지 sha256 다이제스트 | 소스·빌드 출처·운영 배포 승인·롤백 기록 아님 |
+| BI-SY-13 Agent 책임·환경·비용 메타데이터 | Azure Agent 수 | 같은 Agent의 태그 또는 API metadata에 owner·sponsor·env·cost-center 모두 존재 | 값의 업무 승인·인사 상태 아님 |
+| BI-SY-14 AI 리소스 정책 평가 준수 | 정책 평가가 있는 AI 관련 리소스 수 | `PolicyResources` policyStates를 리소스별 대조해 모든 평가가 `Compliant` | `Exempt·Unknown`·평가 없음은 준수 아님. 자동 교정 효과 아님 |
+| DP-SY-15 Azure Agent의 Entra Blueprint 귀속 | Azure Agent 수 | Entra Agent ID·Blueprint 전체 조회 완료 후 Blueprint tags의 subscriptionId·accountName·projectName·agentName을 Foundry Agent와 정확 대조하고 실제 Agent ID의 해당 Blueprint 참조 확인 | Blueprint 태그만으로 충족하지 않으며 LangChain 관리 ID를 Entra Agent ID로 대신 간주하지 않음 |
+| OE-SY-16 Agent ID 소유자·스폰서 연결 | Graph Agent ID 수 | 실제 `owners` 수 > 0 및 `sponsors` 수 > 0 | 기본 Graph 읽기 권한의 사용자 속성 제한 때문에 accountEnabled는 조건에서 제외. 계정 활성 상태·퇴사자 판정·인사 대사 아님. 이름·UPN 미저장 |
+| OE-SY-17 Agent ID 앱 역할 읽기 범위 | Graph Agent ID 수 | `appRoleAssignments`와 대상 SP의 `appRoles.value`를 해석해 기준의 쓰기·전체제어 패턴 앱 역할 없음 | ARM·위임·앱 내부 권한 제외 |
+| OE-SY-18 Agent 리소스 실행 로그 연결 | AI 계정·자체 Agent 호스트 수 | `diagnosticSettings.logs.enabled`와 `workspaceId` 연결 | 구독 공통 Activity Log 제외. 이벤트 유입·테이블 유효 보존기간 아님 |
+| OE-SY-19 관리 ID·키 인증·직접 ARM 역할 구성 | AI 계정·자체 Agent 호스트 수 | `identity.principalId·type` 존재, 동일 구독의 광범위 직접 역할 없음, AI 계정 `disableLocalAuth=true` | 타 구독·상속·데이터 평면 역할과 실제 인증 사용 제외 |
+| OE-SY-20 AI 리소스 활성 경보 범위 | AI 계정·자체 Agent 호스트 수 | `metricAlerts·scheduledQueryRules·activityLogAlerts`의 enabled·scopes를 실제 AI 리소스 ID에 대조 | 경보 발생·SLO 충족·trace 유입 아님 |
+| OE-SY-21 AI 경보의 작업 그룹·수신자 연결 | AI 대상 경보 수 | 활성 경보의 actionGroupId·actionGroups에 존재하는 작업 그룹과 활성 email·SMS·webhook·armRole·Function·LogicApp·ITSM receivers 연결 | 실제 전달 성공·온콜 대응 시간·복구 시험 아님. 주소·이름 미저장 |
+| OE-SY-22 리소스 지역·workspace 보존 구성 | AI 계정·자체 Agent 호스트 수 | `resources.location` 식별·활성 로그의 연결 workspace `retentionInDays` 기준 충족, 기본 90일 | 실제 처리 지역·테이블별 유효 보존·법적 삭제 아님 |
+| OT-SY-23 AI 리소스 사용량 관측 범위 | AI 계정·자체 Agent 호스트 수 | `metricDefinitions`와 `metrics.timeseries.data`에 기간 내 숫자 표본, 기본 30일 | 숫자 0도 관측됨. Agent별 사용자 수·90일 미사용 여부 아님 |
+| OT-SY-24 AI 비용의 단일 Agent 귀속 | 동일 통화의 양수 AI 비용 금액 | Daily query의 ResourceId·UsageDate·Cost·Currency와 Agent·모델·호스트·플랜 ID 대조. 일자 존재·단일 Agent 귀속 금액, 기본 30일 | 공유 비용 중복 배분 금지. 통화 혼재·음수 조정·분모 0은 산출하지 않음 |
+| OT-SY-25 AI 민감 데이터 노출 점검 구성 | 승인 구독 수 | `Microsoft.Security/pricings`(2024-01-01)의 `AI` 플랜 `pricingTier=Standard`, `CloudPosture` 플랜 `Standard`와 `SensitiveDataDiscovery` 확장 `isEnabled=True`를 모두 충족. `AIPromptEvidence`·`AIModelScanner` 확장은 상태만 기록 | 플랜·확장 구성이며 실제 경보 발생·민감 데이터 노출·조치 완료 아님. 구독 안 모든 AI 리소스 적용 범위 미확인. 필드 누락은 `null` |
+| OT-SY-26 구독 예산·실제·예측 경보 구성 | 승인 구독 수 | 현재 유효한 양수·무필터 `Cost` 예산과 활성 Actual·Forecasted 임계값 경보·수신자 존재 | Agent별 예산·실제 전달 성공·통보 후 자동 조치 아님 |
 
-- DS-SE-04의 업데이트 옵션은 `NoAutoUpgrade`, `OnceNewDefaultVersionAvailable`, `OnceCurrentVersionExpired`이며 어느 옵션도 모델 승인이나 퇴역 대응을 보장하지 않습니다.
-- OE-SE-17의 기본 패턴은 `*.ReadWrite.All`, `*.Write.All`, `*FullControl*`이며 `criteria.yaml`에서 관리합니다. 매칭되지 않는 역할을 최소 권한 인증으로 해석하지 않습니다.
-- 기본 기간은 OE-SE-22 `workspace_retention_target_days: 90`, OT-SE-23 `usage_window_days: 30`, OT-SE-24 `cost_window_days: 30`입니다. workspace 설정값은 테이블별 유효 보존기간이 아닙니다.
-- OT-SE-26은 `amount·category·timePeriod·filter`, 활성 notifications의 `thresholdType·threshold`와 수신자 존재를 함께 확인합니다. 만료·향후·필터 예산 또는 예측 경보만 있는 예산을 구독 전체 충족으로 보지 않습니다.
-- OT-SE-25은 진단 SP의 Security Reader로 `Microsoft.Security/pricings`를 읽습니다. AI 또는 CloudPosture 플랜이 없거나 필드를 확인하지 못한 구독이 있으면 `null`과 사유를 유지하고 L1로 대체하지 않습니다. 공식 근거: [AI 서비스 위협 방지 활성화](https://learn.microsoft.com/en-us/azure/defender-for-cloud/ai-onboarding), [AI 보안 상태 관리](https://learn.microsoft.com/en-us/azure/defender-for-cloud/ai-security-posture), [Pricings REST API](https://learn.microsoft.com/en-us/rest/api/defenderforcloud/pricings).
+- DS-SY-04의 업데이트 옵션은 `NoAutoUpgrade`, `OnceNewDefaultVersionAvailable`, `OnceCurrentVersionExpired`이며 어느 옵션도 모델 승인이나 퇴역 대응을 보장하지 않습니다.
+- OE-SY-17의 기본 패턴은 `*.ReadWrite.All`, `*.Write.All`, `*FullControl*`이며 `criteria.yaml`에서 관리합니다. 매칭되지 않는 역할을 최소 권한 인증으로 해석하지 않습니다.
+- 기본 기간은 OE-SY-22 `workspace_retention_target_days: 90`, OT-SY-23 `usage_window_days: 30`, OT-SY-24 `cost_window_days: 30`입니다. workspace 설정값은 테이블별 유효 보존기간이 아닙니다.
+- OT-SY-26은 `amount·category·timePeriod·filter`, 활성 notifications의 `thresholdType·threshold`와 수신자 존재를 함께 확인합니다. 만료·향후·필터 예산 또는 예측 경보만 있는 예산을 구독 전체 충족으로 보지 않습니다.
+- OT-SY-25은 진단 SP의 Security Reader로 `Microsoft.Security/pricings`를 읽습니다. AI 또는 CloudPosture 플랜이 없거나 필드를 확인하지 못한 구독이 있으면 `null`과 사유를 유지하고 L1로 대체하지 않습니다. 공식 근거: [AI 서비스 위협 방지 활성화](https://learn.microsoft.com/en-us/azure/defender-for-cloud/ai-onboarding), [AI 보안 상태 관리](https://learn.microsoft.com/en-us/azure/defender-for-cloud/ai-security-posture), [Pricings REST API](https://learn.microsoft.com/en-us/rest/api/defenderforcloud/pricings).
 
 ### 보고서와 기존 결과
 
 | 항목 | 계약 |
 | --- | --- |
 | 출력 | 실행별 `output/<실행시각-UTC>/`에 Excel·PPT·원본 JSON(raw·evidence·meta 통합). manifest는 생성 시점의 파일 해시 기록 |
-| PPT | Excel 6번의 SE·인터뷰 점수로 생성. 인터뷰 입력 후 `easm-agent deck`으로 갱신. [입력 절차](../README.md#중요---인터뷰-입력-후-ppt-재생성) |
-| PPT 상세 표 | 인터뷰 질문·SE 수집 항목은 왼쪽 정렬. 항목 번호와 점수를 별도 열로 구분(인터뷰: 평가 점수, SE: 실측 점수) |
+| PPT | Excel 6번의 SY·인터뷰 점수로 생성. 인터뷰 입력 후 `easm-agent deck`으로 갱신. [입력 절차](../README.md#중요---인터뷰-입력-후-ppt-재생성) |
+| PPT 상세 표 | 인터뷰 질문·SY 수집 항목은 왼쪽 정렬. 항목 번호와 점수를 별도 열로 구분(인터뷰: 평가 점수, SY: 실측 점수) |
 | 실행 시각 | 마이크로초 포함 UTC·충돌 접미사를 폴더와 새 파일명에 동일 적용. 실제 수집 시각은 `collection.collected_at` 유지 |
 | 시트 1~5 | 평가 템플릿의 수식 캐시·메타데이터·사용자 강조·스타일·입력 점수·메모·민감도 레이블 보존. 시트 4 점수 자동 덮어쓰기 안 함 |
 | 6. 수집 결과 | 시트 4의 A~F·서식·행 순서를 복사. G 수집 상태, I Level·평가기준, J 수집 내용·판정 근거, K 수집결과 링크, L 다음조치, M 평가 점수(1~5), N 검토메모. 판정 불가는 M 빈칸 |
-| 근거 이동 | 6번 K의 수집결과는 같은 SE 코드의 7번 행으로 이동하는 통합 문서 내부 링크. 외부 URL·파일·사용자 입력을 링크 대상으로 쓰지 않음 |
+| 근거 이동 | 6번 K의 수집결과는 같은 SY 코드의 7번 행으로 이동하는 통합 문서 내부 링크. 외부 URL·파일·사용자 입력을 링크 대상으로 쓰지 않음 |
 | 원본·실패 | 7. 수집결과 근거, 8. 수집 Raw 데이터, 9. 수집이슈 Raw 데이터, 10. 필드누락사유. 원래 숫자·불리언·null·JSON 및 evidence_refs 보존 |
 | 리소스 이름 | 6번 J·7번 요약은 최대 3개와 나머지 건수. 7번 하단 두 번째 표에 전체 이름·분류·구독·리소스 그룹·ID 기록. 목록은 준수 증거가 아님 |
-| 집계 | 인터뷰 54개·SE 26개, 총 80개. 결과 시트 5 집계는 시트 6 입력 기준이며 빈칸·N/A 제외. 4개 인터뷰 관점·SE 확보 시 영역, 6개 영역 확보 시 종합 산정 |
-| 괴리 보정 | 인터뷰 평균 - SE 평균 >= 1.5이면 SE 평균 + 1.0으로 하향 보정, 소수 첫째 자리 반올림. 미확보를 0으로 보간하지 않음 |
+| 집계 | 인터뷰 54개·SY 26개, 총 80개. 결과 시트 5 집계는 시트 6 입력 기준이며 빈칸·N/A 제외. 4개 인터뷰 관점·SY 확보 시 영역, 6개 영역 확보 시 종합 산정 |
+| 괴리 보정 | 인터뷰 평균 - SY 평균 >= 1.5이면 SY 평균 + 1.0으로 하향 보정, 소수 첫째 자리 반올림. 미확보를 0으로 보간하지 않음 |
 | 템플릿 갱신 | `python -m scripts.merge_assessment --source <검토할-xlsx> --output <다른-경로.xlsx>`. 원본 덮어쓰기 금지. 패키지에도 템플릿 포함, 누락 시 오류 |
 | 기존 결과 | `easm-agent package --output-dir output`은 최신 실행의 Excel·PPT 재생성. 특정 실행 폴더·기존 평면 구조 지원. 기본적으로 기존 파일명·판정 보존 |
 
@@ -305,8 +305,8 @@ PPT는 항상 같은 형식으로 나오도록 아래 규칙을 따릅니다. �
 | 문장 | 각 장 상단 회색 한 줄은 결론 한 문장으로 씁니다. 본문은 근거 수치와 비즈니스 영향을 비엔지니어 용어로 쓰고 항목 코드는 표의 코드 열에만 둡니다. 확인하지 못한 사실(유출 발생, 손실 금액 등)은 단정하지 않고 가능성으로 씁니다. |
 | 값이 없을 때 | `N/A`, 사유 코드, 시트 번호를 쓰지 않고 '확인 중'으로 표시합니다. 0점이나 L1로 대체하지 않으며 평균에서 제외합니다. 판정 분포에는 '확인 중' 칸을 따로 둡니다. |
 | 대체 지표 | 원천이 없는 보고서 전용 지표는 수집된 유사 지표로 대체하고 각주에 범위를 씁니다. 월별 신규 등록은 Agent 365 목록 패키지 기준이며 `created_at`이 테넌트 등록일이 아닐 수 있어 '월 신규 목록 패키지(Agent 365 목록)'로 표기하고 Agent 수·고유 Agent 수라고 쓰지 않습니다. 월 경계는 KST(Asia/Seoul)이며 청구 월은 청구일 기준입니다. 직접 만든 Agent는 `platform`으로 구분해 함께 보여 주고 Azure 에이전트와 다른 모집단임을 각주에 씁니다. 'Microsoft 제공 앱'이라고 쓰지 않습니다. |
-| 라벨 | 라벨은 지표의 실제 의미를 따릅니다. 역할 할당이 확인된 환경 비율을 '제작 권한 통제'(DM-SE-01), 프로젝트 평가 실행 이력을 '배포 전 평가'(BI-SE-09), 청사진 연결 비율을 '책임 소재 기록'(DP-SE-15)이라고 쓰지 않습니다. 목표(80%)를 넘은 항목은 '체계 확보'가 아니라 '목표 충족, 나머지 보완 필요'로 씁니다. 같은 데이터는 한 판정 함수로 2장·3장에 같은 해석으로 씁니다. |
-| 확인 중 사유 | 보안 권고(BI-SE-10)는 '보안 권고 N개 구독 확인, M개 구독 반영 대기(Defender 평가 반영 후 판정)'처럼 씁니다. Defender 플랜이 켜져 있는데 '활성화 후 판정'이라고 쓰지 않습니다. 월별 비용은 청구 행이 없는 달을 '청구 내역 없음'으로 쓰고 금액 달은 수집된 청구 일수와 리소스 단위 귀속을 각주에 씁니다. |
+| 라벨 | 라벨은 지표의 실제 의미를 따릅니다. 역할 할당이 확인된 환경 비율을 '제작 권한 통제'(DM-SY-01), 프로젝트 평가 실행 이력을 '배포 전 평가'(BI-SY-09), 청사진 연결 비율을 '책임 소재 기록'(DP-SY-15)이라고 쓰지 않습니다. 목표(80%)를 넘은 항목은 '체계 확보'가 아니라 '목표 충족, 나머지 보완 필요'로 씁니다. 같은 데이터는 한 판정 함수로 2장·3장에 같은 해석으로 씁니다. |
+| 확인 중 사유 | 보안 권고(BI-SY-10)는 '보안 권고 N개 구독 확인, M개 구독 반영 대기(Defender 평가 반영 후 판정)'처럼 씁니다. Defender 플랜이 켜져 있는데 '활성화 후 판정'이라고 쓰지 않습니다. 월별 비용은 청구 행이 없는 달을 '청구 내역 없음'으로 쓰고 금액 달은 수집된 청구 일수와 리소스 단위 귀속을 각주에 씁니다. |
 | 로드맵 | 과제 표에는 L3 미달·확인 중 항목만 올리고 L3 항목은 'L4 상향'(목표 90% 이상)으로 구분합니다. 현재값이 목표를 넘는 행은 두지 않으며 목표 수준 막대는 계획(안)이므로 '확보'로 단정하지 않습니다. |
 | 단위 | 항목 수는 '개'·'곳'·'건', 금액은 `$0.40`처럼 통화로 씁니다. 100% 미만 비율은 `99.8%`처럼 소수 한 자리까지 씁니다. 금액이 작으면 '비율은 참고용'을 각주에 씁니다. |
 | 각주 | 생소한 용어는 윗첨자 번호와 하단 각주(8pt 이상)로 풀어 씁니다. 용어 풀이는 `report_terms.py` 한 곳에서 관리하며 해당 장에 쓰인 용어만 넣습니다. |
@@ -372,7 +372,7 @@ PPT는 항상 같은 형식으로 나오도록 아래 규칙을 따릅니다. �
 | ARM 역할 | GET `/subscriptions/{id}/providers/Microsoft.Authorization/roleAssignments`, `2022-04-01`. [List](https://learn.microsoft.com/rest/api/authorization/role-assignments/list-for-subscription) | 관리 ID의 동일 구독 직접 할당과 Graph 앱 역할 구분 |
 | Resource Graph | 읽기 query POST, `2022-10-01`. [Resources](https://learn.microsoft.com/rest/api/azureresourcegraph/resourcegraph/resources/resources?view=rest-azureresourcegraph-resourcegraph-2022-10-01) | Resources·PolicyResources·SecurityResources 조회. [지원 테이블](https://learn.microsoft.com/azure/governance/resource-graph/reference/supported-tables-resources#securityresources) |
 | 보안 권고 | SecurityResources assessments의 resourceDetails.Id·status.code | 조회 성공·빈 결과가 Defender AI 기능·라이선스 활성화 증거는 아님 |
-| 보안 점수 참고 | GET `/subscriptions/{id}/providers/Microsoft.Security/secureScores`, `2020-01-01`. [안내](https://learn.microsoft.com/azure/defender-for-cloud/secure-score-security-controls#get-your-secure-score-from-the-rest-api) | `ascScore`, `score.current/max/percentage`(0~1) 실측. 현재 BI-SE-10 등급에는 미사용 |
+| 보안 점수 참고 | GET `/subscriptions/{id}/providers/Microsoft.Security/secureScores`, `2020-01-01`. [안내](https://learn.microsoft.com/azure/defender-for-cloud/secure-score-security-controls#get-your-secure-score-from-the-rest-api) | `ascScore`, `score.current/max/percentage`(0~1) 실측. 현재 BI-SY-10 등급에는 미사용 |
 | 진단 설정 | GET `{resourceId}/providers/Microsoft.Insights/diagnosticSettings`, `2021-05-01-preview`. [List](https://learn.microsoft.com/rest/api/monitor/diagnostic-settings/list?view=rest-monitor-2021-05-01-preview) | Agent 관련 실행 로그만. 구독 Activity Log는 `log_scope_exclusions`로 제외하며 조회 안 함 |
 | workspace | GET `{workspaceResourceId}`, `2022-10-01`. [Get](https://learn.microsoft.com/rest/api/loganalytics/workspaces/get?view=rest-loganalytics-2022-10-01) | 보존 설정과 실제 로그·보호 테이블 권한 구분. 승인 구독 밖 sink는 권한 확대 없이 permission_denied |
 | 메트릭 | GET `{resourceId}/providers/Microsoft.Insights/metrics`, `2018-01-01`. [List](https://learn.microsoft.com/rest/api/monitor/metrics/list?view=rest-monitor-2018-01-01) | metricDefinitions와 수치 표본 확인. timespan은 UTC `YYYY-MM-DDTHH:MM:SSZ`로 보내 `+` 재해석 방지 |
@@ -398,7 +398,7 @@ PPT는 항상 같은 형식으로 나오도록 아래 규칙을 따릅니다. �
 | --- | --- |
 | Blueprint | GET `/applications/microsoft.graph.agentIdentityBlueprint`, `AgentIdentityBlueprint.Read.All`. [공식 목록](https://learn.microsoft.com/graph/api/agentidentityblueprint-list) |
 | Agent ID | GET `/servicePrincipals/microsoft.graph.agentIdentity`, `AgentIdentity.Read.All`. [공식 목록](https://learn.microsoft.com/graph/api/agentidentity-list) |
-| 소유자·스폰서 | GET `/servicePrincipals/{id}/microsoft.graph.agentIdentity/owners` 또는 `/sponsors`, `$select=id,accountEnabled`. 사람 이름·UPN 없이 관계 수를 보관. accountEnabled는 기본 권한에서 제한될 수 있는 참고 속성이며 OE-SE-16 충족 조건에 미사용 |
+| 소유자·스폰서 | GET `/servicePrincipals/{id}/microsoft.graph.agentIdentity/owners` 또는 `/sponsors`, `$select=id,accountEnabled`. 사람 이름·UPN 없이 관계 수를 보관. accountEnabled는 기본 권한에서 제한될 수 있는 참고 속성이며 OE-SY-16 충족 조건에 미사용 |
 | 앱 역할 | GET `/servicePrincipals/{id}/appRoleAssignments`, `Application.Read.All`. 대상 리소스 SP의 `appRoles`로 역할 이름 해석 |
 | 제외 | 위임 동의는 Directory.Read.All로 범위를 넓혀야 하므로 수집 안 함. ARM 관리 ID를 Graph Agent Identity로 간주하지 않음 |
 
@@ -440,7 +440,7 @@ PPT는 항상 같은 형식으로 나오도록 아래 규칙을 따릅니다. �
 - 모든 권한이 있어도 제품 기능·라이선스·데이터가 없을 수 있습니다. 403은 IAM·방화벽·Private Endpoint 모두 가능하며 permission_denied로 남기되 원인을 단정하지 않습니다. license_missing은 명시적 라이선스 상태 응답에만 사용합니다.
 - LangChain 앱 설정 list는 비밀을 반환할 수 있어 기본 수집에서 호출하지 않습니다. 승인 태그·메타데이터 또는 명시적 CSV 입력을 사용합니다.
 - 공통 AgentEvidence는 platform과 필드별 null 사유로 플랫폼 차이를 보존합니다. 같은 이름의 Foundry Agent도 platform·subscription_id·resource_id·agent_id 복합 키로 구분하며 공유 리소스의 비용·사용량을 중복 귀속하지 않습니다.
-- `easm-agent collect --manual-agents config/manual_agents.csv`는 manual/other 플랫폼의 직접 등록이며 Google/AWS 자동 수집이 아닙니다. 최소 필드는 agent_id·agent_name·platform이고 날짜는 시간대 포함 ISO 8601, tags·tools·usage_30d·field_status는 JSON입니다. 빈 값은 null + not_found이며 0으로 채우지 않습니다. 수동 Agent는 인벤토리·플랫폼 개수에만 포함하고 Azure 전용 SE 분모에 섞지 않으며 CSV 행 evidence_refs로 API 실측과 구분합니다.
+- `easm-agent collect --manual-agents config/manual_agents.csv`는 manual/other 플랫폼의 직접 등록이며 Google/AWS 자동 수집이 아닙니다. 최소 필드는 agent_id·agent_name·platform이고 날짜는 시간대 포함 ISO 8601, tags·tools·usage_30d·field_status는 JSON입니다. 빈 값은 null + not_found이며 0으로 채우지 않습니다. 수동 Agent는 인벤토리·플랫폼 개수에만 포함하고 Azure 전용 SY 분모에 섞지 않으며 CSV 행 evidence_refs로 API 실측과 구분합니다.
 - 확장 Collector Protocol은 `discover(subscriptions)`와 `required_roles`를 사용합니다. API Management AI Gateway·OpenTelemetry gen_ai 연계는 재사용 후보이며 구현·검증 완료로 표시하지 않습니다.
 
 ## 관리자 읽기 3개 항목의 계산 범위
@@ -501,9 +501,9 @@ easm-agent package --output-dir output\<실행폴더> --tenant-id <테넌트-ID>
 
 | 경로 | 확인한 기능 | 평가 적용 한계 |
 | --- | --- | --- |
-| [공식 PAC CLI](https://learn.microsoft.com/en-us/power-platform/developer/cli/reference/admin#pac-admin-dlp-policy-list) | `pac admin dlp-policy list`, `show --policy-name <정책-ID>`. Gallery 대신 [NuGet](https://learn.microsoft.com/en-us/power-platform/developer/howto/install-cli-net-tool) 또는 [MSI](https://learn.microsoft.com/en-us/power-platform/developer/howto/install-cli-msi)로 설치 | DLP 조회만 지원. 정책 적용 범위·환경 ID·전체 조회 완료를 확인해야 하며 Dataverse `list-roles`는 역할 정의 목록이므로 DM-SE-01의 역할 할당으로 쓰지 않음 |
+| [공식 PAC CLI](https://learn.microsoft.com/en-us/power-platform/developer/cli/reference/admin#pac-admin-dlp-policy-list) | `pac admin dlp-policy list`, `show --policy-name <정책-ID>`. Gallery 대신 [NuGet](https://learn.microsoft.com/en-us/power-platform/developer/howto/install-cli-net-tool) 또는 [MSI](https://learn.microsoft.com/en-us/power-platform/developer/howto/install-cli-msi)로 설치 | DLP 조회만 지원. 정책 적용 범위·환경 ID·전체 조회 완료를 확인해야 하며 Dataverse `list-roles`는 역할 정의 목록이므로 DM-SY-01의 역할 할당으로 쓰지 않음 |
 | Power Platform 관리 센터 | 비 Dataverse 환경의 [환경 관리자·환경 제작자 역할](https://learn.microsoft.com/en-us/power-platform/admin/database-security)과 [DLP 정책 적용 범위](https://learn.microsoft.com/en-us/power-platform/admin/prevent-data-loss) 확인 | 승인된 관리자 로그인 필요. 역할 정의가 아닌 실제 할당과 모든 정책의 포함·제외 환경을 확인. 변경은 수행하지 않음 |
-| [환경 역할 할당 REST API](https://learn.microsoft.com/en-us/rest/api/power-platform/authorization/role-based-access-control/list-environment-role-assignments) 2024-10-01 | 공식 Authorization API의 미리 보기 조회 | [Power Platform API 계층 RBAC](https://learn.microsoft.com/en-us/power-platform/admin/security/role-based-access-control)이며 기존 환경 관리자·제작자 할당과 동등함을 확인하지 못해 DM-SE-01 대체 증적으로 쓰지 않음 |
+| [환경 역할 할당 REST API](https://learn.microsoft.com/en-us/rest/api/power-platform/authorization/role-based-access-control/list-environment-role-assignments) 2024-10-01 | 공식 Authorization API의 미리 보기 조회 | [Power Platform API 계층 RBAC](https://learn.microsoft.com/en-us/power-platform/admin/security/role-based-access-control)이며 기존 환경 관리자·제작자 할당과 동등함을 확인하지 못해 DM-SY-01 대체 증적으로 쓰지 않음 |
 
 - 관리 센터 JSON은 `--admin-evidence-file`로 반영합니다. `command`는 역할 조회의 `/manage/environments` 또는 정책 조회의 `/security/dataprotection/dlp` 공식 URL이며 `module_version`은 `Power Platform admin center (browser)`로 기록합니다. 각 `portal_pages`에는 공식 화면의 정규 URL(쿼리 제외)·`observed_at`·`http_status=200`·`state=empty|populated`·확인된 `object_count`를 기록합니다.
 - 필터 없는 전체 목록을 확인한 승인된 관리자만 내보냅니다. 역할은 환경별 두 화면의 합계, 정책은 목록 건수와 범위가 일치해야 합니다. 조회 실패·로딩 중 화면을 빈 목록으로 기록하지 않으며 확인하지 않은 환경 역할은 `null`을 유지합니다. 파일 해시는 원천 인증 서명이 아니며 개인 이름·사용자 이름·토큰은 저장하지 않습니다.

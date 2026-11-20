@@ -5,7 +5,7 @@ EASM(Enterprise Agent Service Management)은 **읽기 전용 API로 Agent 구성
 | 구분 | 내용 |
 | --- | --- |
 | 대상 | Microsoft Foundry(API 조회), Azure 자체 호스팅 Agent(`agent-type: langchain` 태그, `custom-config.yaml` 태그 추가 가능), Entra Agent ID, Microsoft 365 Copilot Agent Builder·Copilot Studio 인벤토리, Agent 365 패키지, Power Platform 관리자 증적 |
-| 점검 | API 등급 26개, [보고서 전용 SE 13개(27~39)](#보고서-전용-점검-항목), Copilot·Agent 365 인벤토리. 보고서 전용 SE와 인벤토리는 API 등급 분모에 합산하지 않음 |
+| 점검 | API 등급 26개, [보고서 전용 SY 13개(27~39)](#보고서-전용-점검-항목), Copilot·Agent 365 인벤토리. 보고서 전용 SY와 인벤토리는 API 등급 분모에 합산하지 않음 |
 | 결과 | 실행별 `output/<실행시각-UTC>/`에 Excel·PPT·원본 JSON 저장 |
 | 안전 원칙 | 진단 앱은 리소스 변경·배포·삭제·비밀 조회를 하지 않음. 권한 설정·정리는 승인된 관리자가 별도 수행 |
 
@@ -253,7 +253,7 @@ easm-agent deck --output-dir output --customer "<고객사명>"
 **입력 규칙**
 
 - 문서 증적이 없으면 최대 2점, 시스템 증적이 없으면 최대 3점이며 인터뷰 답변만으로는 Level 3 이상을 주지 않습니다.
-- 빈칸과 `N/A`는 평균에서 제외하며 0점으로 취급하지 않습니다. System Evidence 항목(`-SE-`)의 M열은 점검 결과가 채우므로 수정하지 않습니다.
+- 빈칸과 `N/A`는 평균에서 제외하며 0점으로 취급하지 않습니다. System Evidence 항목(`-SY-`)의 M열은 점검 결과가 채우므로 수정하지 않습니다.
 - 일부만 입력해도 PPT를 만들 수 있으며 입력하지 않은 영역은 실측 기준 잠정값입니다.
 
 **샘플 인터뷰 응답:** `interview_samples.py`의 샘플 응답을 별도 사본에 기입합니다. 6번 시트에서 값이 없는 인터뷰 행만 G~N열을 채우며 원본과 입력한 답변은 덮어쓰지 않습니다. `--raw-json`을 주면 PPT에 보고서 지표도 반영합니다.
@@ -315,32 +315,32 @@ bash setup.sh cleanup-apply  # 진단 앱·SP·해당 역할 할당 삭제, 미�
 
 | 코드 | 영역 | 점검 내용 | 수집 방법 | 수집 |
 | --- | --- | --- | --- | --- |
-| [DM-SE-01](docs/checklist.md#dm-se-01-copilot-studio-제작-권한-보유자-수-및-환경-현황) | 1. Demand | 환경별 역할 할당 기록 | Power Platform Admin Center → Environments → 권한 | ✅ |
-| [DS-SE-02](docs/checklist.md#ds-se-02-커넥터-분류차단-정책데이터-정책-적용-현황) | 2. Design | 데이터 정책 환경 적용 범위 | Power Platform Admin Center → Policies → Data policies | ✅ |
-| [DS-SE-03](docs/checklist.md#ds-se-03-agent-id의-blueprint-연결) | 2. Design | Agent ID의 Blueprint 연결 | Entra → Agents → Agent identities / Blueprints | ✅ |
-| [DS-SE-04](docs/checklist.md#ds-se-04-모델-배포-버전업데이트-구성) | 2. Design | 모델 배포 버전·업데이트 구성 | Azure → Microsoft Foundry → Model deployments | ✅ |
-| [DS-SE-05](docs/checklist.md#ds-se-05-ai-리소스-인바운드-경계-구성) | 2. Design | AI 리소스 인바운드 경계 구성 | Azure → Foundry / App Service → Networking | ✅ |
-| [DS-SE-06](docs/checklist.md#ds-se-06-mcp-도구-필수-승인-모드) | 2. Design | MCP 도구 필수 승인 모드 | Microsoft Foundry → Agents → Tools | ✅ |
-| [DS-SE-07](docs/checklist.md#ds-se-07-외부-도구-https-연결-구성) | 2. Design | 외부 도구 HTTPS 연결 구성 | Microsoft Foundry → Agents → Tools | ✅ |
-| [BI-SE-08](docs/checklist.md#bi-se-08-환경-분리-및-관리형-환경-적용-여부) | 3. Build | 관리형 환경 보호 수준 | Power Platform Admin Center → Environments | ✅ |
-| [BI-SE-09](docs/checklist.md#bi-se-09-foundry-프로젝트-평가-실행-이력) | 3. Build | Foundry 프로젝트 평가 실행 이력 | Microsoft Foundry → Evaluation | ✅ |
-| [BI-SE-10](docs/checklist.md#bi-se-10-ai-리소스-보안-권고-상태) | 3. Build | AI 리소스 보안 권고 상태 | Azure → Defender for Cloud → Recommendations | ✅ |
-| [BI-SE-11](docs/checklist.md#bi-se-11-콘텐츠-필터-정책-연결) | 3. Build | 콘텐츠 필터 정책 연결 | Azure → Microsoft Foundry → Content filters | ✅ |
-| [BI-SE-12](docs/checklist.md#bi-se-12-agent-버전호스트-런타임-식별) | 3. Build | Agent 버전·호스트 런타임 식별 | Foundry → Agent versions / App Service → Configuration | ✅ |
-| [BI-SE-13](docs/checklist.md#bi-se-13-agent-책임환경비용-메타데이터) | 3. Build | Agent 책임·환경·비용 메타데이터 | Foundry → Agent metadata / Azure → Tags | ✅ |
-| [BI-SE-14](docs/checklist.md#bi-se-14-ai-리소스-정책-평가-준수) | 3. Build | AI 리소스 정책 평가 준수 | Azure → Policy → Compliance | ✅ |
-| [DP-SE-15](docs/checklist.md#dp-se-15-azure-agent의-entra-blueprint-귀속) | 4. Deploy | Azure Agent의 Entra Blueprint 귀속 | Entra → Agents → Blueprints / Foundry → Agents | ✅ |
-| [OE-SE-16](docs/checklist.md#oe-se-16-agent-id-소유자스폰서-연결) | 5. Operate | Agent ID 소유자·스폰서 연결 | Entra → Agents → Owners / Sponsors | ✅ |
-| [OE-SE-17](docs/checklist.md#oe-se-17-agent-id-앱-역할-읽기-범위) | 5. Operate | Agent ID 앱 역할 읽기 범위 | Entra → Agents → Permissions | ✅ |
-| [OE-SE-18](docs/checklist.md#oe-se-18-agent-리소스-실행-로그-연결) | 5. Operate | Agent 리소스 실행 로그 연결 | Azure → Monitor → Diagnostic settings | ✅ |
-| [OE-SE-19](docs/checklist.md#oe-se-19-관리-id키-인증직접-arm-역할-구성) | 5. Operate | 관리 ID·키 인증·직접 ARM 역할 구성 | Azure → Foundry / App Service → Identity / IAM | ✅ |
-| [OE-SE-20](docs/checklist.md#oe-se-20-ai-리소스-활성-경보-범위) | 5. Operate | AI 리소스 활성 경보 범위 | Azure → Monitor → Alerts | ✅ |
-| [OE-SE-21](docs/checklist.md#oe-se-21-ai-경보의-작업-그룹수신자-연결) | 5. Operate | AI 경보의 작업 그룹·수신자 연결 | Azure → Monitor → Action groups | ✅ |
-| [OE-SE-22](docs/checklist.md#oe-se-22-리소스-지역workspace-보존-구성) | 5. Operate | 리소스 지역·workspace 보존 구성 | Azure → Resource overview / Log Analytics → Retention | ✅ |
-| [OT-SE-23](docs/checklist.md#ot-se-23-ai-리소스-사용량-관측-범위) | 6. Optimize | AI 리소스 사용량 관측 범위 | Azure → Monitor → Metrics | ✅ |
-| [OT-SE-24](docs/checklist.md#ot-se-24-ai-비용의-단일-agent-귀속) | 6. Optimize | AI 비용의 단일 Agent 귀속 | Azure → Cost Management → Cost analysis | ✅ |
-| [OT-SE-25](docs/checklist.md#ot-se-25-ai-민감-데이터-노출-점검-구성) | 6. Optimize | AI 민감 데이터 노출 점검 | Azure → Microsoft Defender for Cloud → Environment settings → Defender plans | ✅ |
-| [OT-SE-26](docs/checklist.md#ot-se-26-구독-예산실제예측-경보-구성) | 6. Optimize | 구독 예산·실제·예측 경보 구성 | Azure → Cost Management → Budgets | ✅ |
+| [DM-SY-01](docs/checklist.md#dm-sy-01-copilot-studio-제작-권한-보유자-수-및-환경-현황) | 1. Demand | 환경별 역할 할당 기록 | Power Platform Admin Center → Environments → 권한 | ✅ |
+| [DS-SY-02](docs/checklist.md#ds-sy-02-커넥터-분류차단-정책데이터-정책-적용-현황) | 2. Design | 데이터 정책 환경 적용 범위 | Power Platform Admin Center → Policies → Data policies | ✅ |
+| [DS-SY-03](docs/checklist.md#ds-sy-03-agent-id의-blueprint-연결) | 2. Design | Agent ID의 Blueprint 연결 | Entra → Agents → Agent identities / Blueprints | ✅ |
+| [DS-SY-04](docs/checklist.md#ds-sy-04-모델-배포-버전업데이트-구성) | 2. Design | 모델 배포 버전·업데이트 구성 | Azure → Microsoft Foundry → Model deployments | ✅ |
+| [DS-SY-05](docs/checklist.md#ds-sy-05-ai-리소스-인바운드-경계-구성) | 2. Design | AI 리소스 인바운드 경계 구성 | Azure → Foundry / App Service → Networking | ✅ |
+| [DS-SY-06](docs/checklist.md#ds-sy-06-mcp-도구-필수-승인-모드) | 2. Design | MCP 도구 필수 승인 모드 | Microsoft Foundry → Agents → Tools | ✅ |
+| [DS-SY-07](docs/checklist.md#ds-sy-07-외부-도구-https-연결-구성) | 2. Design | 외부 도구 HTTPS 연결 구성 | Microsoft Foundry → Agents → Tools | ✅ |
+| [BI-SY-08](docs/checklist.md#bi-sy-08-환경-분리-및-관리형-환경-적용-여부) | 3. Build | 관리형 환경 보호 수준 | Power Platform Admin Center → Environments | ✅ |
+| [BI-SY-09](docs/checklist.md#bi-sy-09-foundry-프로젝트-평가-실행-이력) | 3. Build | Foundry 프로젝트 평가 실행 이력 | Microsoft Foundry → Evaluation | ✅ |
+| [BI-SY-10](docs/checklist.md#bi-sy-10-ai-리소스-보안-권고-상태) | 3. Build | AI 리소스 보안 권고 상태 | Azure → Defender for Cloud → Recommendations | ✅ |
+| [BI-SY-11](docs/checklist.md#bi-sy-11-콘텐츠-필터-정책-연결) | 3. Build | 콘텐츠 필터 정책 연결 | Azure → Microsoft Foundry → Content filters | ✅ |
+| [BI-SY-12](docs/checklist.md#bi-sy-12-agent-버전호스트-런타임-식별) | 3. Build | Agent 버전·호스트 런타임 식별 | Foundry → Agent versions / App Service → Configuration | ✅ |
+| [BI-SY-13](docs/checklist.md#bi-sy-13-agent-책임환경비용-메타데이터) | 3. Build | Agent 책임·환경·비용 메타데이터 | Foundry → Agent metadata / Azure → Tags | ✅ |
+| [BI-SY-14](docs/checklist.md#bi-sy-14-ai-리소스-정책-평가-준수) | 3. Build | AI 리소스 정책 평가 준수 | Azure → Policy → Compliance | ✅ |
+| [DP-SY-15](docs/checklist.md#dp-sy-15-azure-agent의-entra-blueprint-귀속) | 4. Deploy | Azure Agent의 Entra Blueprint 귀속 | Entra → Agents → Blueprints / Foundry → Agents | ✅ |
+| [OE-SY-16](docs/checklist.md#oe-sy-16-agent-id-소유자스폰서-연결) | 5. Operate | Agent ID 소유자·스폰서 연결 | Entra → Agents → Owners / Sponsors | ✅ |
+| [OE-SY-17](docs/checklist.md#oe-sy-17-agent-id-앱-역할-읽기-범위) | 5. Operate | Agent ID 앱 역할 읽기 범위 | Entra → Agents → Permissions | ✅ |
+| [OE-SY-18](docs/checklist.md#oe-sy-18-agent-리소스-실행-로그-연결) | 5. Operate | Agent 리소스 실행 로그 연결 | Azure → Monitor → Diagnostic settings | ✅ |
+| [OE-SY-19](docs/checklist.md#oe-sy-19-관리-id키-인증직접-arm-역할-구성) | 5. Operate | 관리 ID·키 인증·직접 ARM 역할 구성 | Azure → Foundry / App Service → Identity / IAM | ✅ |
+| [OE-SY-20](docs/checklist.md#oe-sy-20-ai-리소스-활성-경보-범위) | 5. Operate | AI 리소스 활성 경보 범위 | Azure → Monitor → Alerts | ✅ |
+| [OE-SY-21](docs/checklist.md#oe-sy-21-ai-경보의-작업-그룹수신자-연결) | 5. Operate | AI 경보의 작업 그룹·수신자 연결 | Azure → Monitor → Action groups | ✅ |
+| [OE-SY-22](docs/checklist.md#oe-sy-22-리소스-지역workspace-보존-구성) | 5. Operate | 리소스 지역·workspace 보존 구성 | Azure → Resource overview / Log Analytics → Retention | ✅ |
+| [OT-SY-23](docs/checklist.md#ot-sy-23-ai-리소스-사용량-관측-범위) | 6. Optimize | AI 리소스 사용량 관측 범위 | Azure → Monitor → Metrics | ✅ |
+| [OT-SY-24](docs/checklist.md#ot-sy-24-ai-비용의-단일-agent-귀속) | 6. Optimize | AI 비용의 단일 Agent 귀속 | Azure → Cost Management → Cost analysis | ✅ |
+| [OT-SY-25](docs/checklist.md#ot-sy-25-ai-민감-데이터-노출-점검-구성) | 6. Optimize | AI 민감 데이터 노출 점검 | Azure → Microsoft Defender for Cloud → Environment settings → Defender plans | ✅ |
+| [OT-SY-26](docs/checklist.md#ot-sy-26-구독-예산실제예측-경보-구성) | 6. Optimize | 구독 예산·실제·예측 경보 구성 | Azure → Cost Management → Budgets | ✅ |
 
 ## 보고서 전용 점검 항목
 
@@ -348,19 +348,19 @@ bash setup.sh cleanup-apply  # 진단 앱·SP·해당 역할 할당 삭제, 미�
 
 | 코드 | 영역 | 점검 내용 | 원천 | 수집 방식 |
 | --- | --- | --- | --- | --- |
-| DM-SE-27 | 1. Demand | 생성·승인 요청의 시간·ID 대사 | 승인 워크플로 | 승인된 추가 증적 파일 |
-| DP-SE-28 | 4. Deploy | 독립 등록부와 관측 Agent ID 대사 | 조직 등록부 | 승인된 추가 증적 파일 |
-| BI-SE-29 | 3. Build | 동일 버전의 배포 전 완료 평가 기록 | Foundry 평가·배포 기록 | 승인된 추가 증적 파일 |
-| OE-SE-30 | 5. Operate | 조건부 접근의 명시적 Agent ID 대상 구성 | Entra 조건부 접근 | 관리자 읽기 내보내기(`export_report_evidence.py`) |
-| OE-SE-31 | 5. Operate | 사용자 지정 감사 보존 정책 구성 | Purview 감사 | 승인된 추가 증적 파일 |
-| OT-SE-32 | 6. Optimize | Agent별 90일 전체 관측과 미사용 현황 | Agent 단위 사용 이력 | 승인된 추가 증적 파일 |
-| OT-SE-33 | 6. Optimize | 고위험 민감 데이터 노출의 조치 상태 | Purview·Defender 발견·조치 | 승인된 추가 증적 파일 |
-| OT-SE-34 | 6. Optimize | 월별 실제 비용·귀속 금액 기록 | Azure Cost Management | 자동 수집(`report_cost_history`) |
-| DP-SE-35 | 4. Deploy | Copilot 인벤토리 게시 시각 보유 | Power Platform 인벤토리 | Copilot 인벤토리 내보내기 |
-| DS-SE-36 | 2. Design | Copilot 인벤토리 인증 방식 구성 | Power Platform 인벤토리 | Copilot 인벤토리 내보내기 |
-| OE-SE-37 | 5. Operate | Copilot 인벤토리 소유자 존재 | Power Platform 인벤토리 | Copilot 인벤토리 내보내기 |
-| DP-SE-38 | 4. Deploy | 카탈로그 패키지의 게시 요청 승인 상태 | Agent 365 카탈로그 | Agent 365 수집(`--agent365-registry`) |
-| OE-SE-39 | 5. Operate | 별도 인사 원천과 Agent 소유자 퇴사 대사 | 인사 대사 결과 | 승인된 추가 증적 파일 |
+| DM-SY-27 | 1. Demand | 생성·승인 요청의 시간·ID 대사 | 승인 워크플로 | 승인된 추가 증적 파일 |
+| DP-SY-28 | 4. Deploy | 독립 등록부와 관측 Agent ID 대사 | 조직 등록부 | 승인된 추가 증적 파일 |
+| BI-SY-29 | 3. Build | 동일 버전의 배포 전 완료 평가 기록 | Foundry 평가·배포 기록 | 승인된 추가 증적 파일 |
+| OE-SY-30 | 5. Operate | 조건부 접근의 명시적 Agent ID 대상 구성 | Entra 조건부 접근 | 관리자 읽기 내보내기(`export_report_evidence.py`) |
+| OE-SY-31 | 5. Operate | 사용자 지정 감사 보존 정책 구성 | Purview 감사 | 승인된 추가 증적 파일 |
+| OT-SY-32 | 6. Optimize | Agent별 90일 전체 관측과 미사용 현황 | Agent 단위 사용 이력 | 승인된 추가 증적 파일 |
+| OT-SY-33 | 6. Optimize | 고위험 민감 데이터 노출의 조치 상태 | Purview·Defender 발견·조치 | 승인된 추가 증적 파일 |
+| OT-SY-34 | 6. Optimize | 월별 실제 비용·귀속 금액 기록 | Azure Cost Management | 자동 수집(`report_cost_history`) |
+| DP-SY-35 | 4. Deploy | Copilot 인벤토리 게시 시각 보유 | Power Platform 인벤토리 | Copilot 인벤토리 내보내기 |
+| DS-SY-36 | 2. Design | Copilot 인벤토리 인증 방식 구성 | Power Platform 인벤토리 | Copilot 인벤토리 내보내기 |
+| OE-SY-37 | 5. Operate | Copilot 인벤토리 소유자 존재 | Power Platform 인벤토리 | Copilot 인벤토리 내보내기 |
+| DP-SY-38 | 4. Deploy | 카탈로그 패키지의 게시 요청 승인 상태 | Agent 365 카탈로그 | Agent 365 수집(`--agent365-registry`) |
+| OE-SY-39 | 5. Operate | 별도 인사 원천과 Agent 소유자 퇴사 대사 | 인사 대사 결과 | 승인된 추가 증적 파일 |
 
 ## 개발 참고
 

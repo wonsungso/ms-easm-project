@@ -70,7 +70,7 @@ class FoundryCollector:
         })
         base = {"subscription_id": project["subscriptionId"], "subject": record.agent_id, "evidence_refs": refs}
         found = [ProposalObservation(
-            code="DS-SE-06", kind="agent_tools",
+            code="DS-SY-06", kind="agent_tools",
             values={
                 "tool_types": sorted({str(tool.get("type")) for tool in tools}), "mcp_approval": approvals,
                 "mcp_approval_modes": [
@@ -87,7 +87,7 @@ class FoundryCollector:
         ]
         if urls:
             found.append(ProposalObservation(
-                code="DS-SE-07", kind="tool_endpoints", values={
+                code="DS-SY-07", kind="tool_endpoints", values={
                     "hosts": hosts,
                     "endpoint_https": [
                         parsed.scheme == "https" and bool(parsed.hostname) and not parsed.username
@@ -208,7 +208,7 @@ class FoundryCollector:
                             created_at=timestamp(version.get("created_at")),
                             detection_confidence="tag",
                             evidence_refs=[self.http.last_ref] if self.http.last_ref else [],
-                            se_codes=["DS-SE-04", "BI-SE-09", "BI-SE-10", "OE-SE-18", "OT-SE-23", "OT-SE-24"],
+                            se_codes=["DS-SY-04", "BI-SY-09", "BI-SY-10", "OE-SY-18", "OT-SY-23", "OT-SY-24"],
                         ).mark_unknowns()
                         record.unavailable(
                             "deployed_at", "not_found",

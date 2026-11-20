@@ -52,9 +52,9 @@ HEADLINE_IDS = {
 ALL_CODES = tuple(code for codes in DOMAIN_CODES.values() for code in codes)
 NOTE_CODES = {
     1: ALL_CODES, 2: ALL_CODES, 4: ALL_CODES, 5: ALL_CODES,
-    6: DOMAIN_CODES["creation"], 7: ("DP-SE-15", "OE-SE-16", "DS-SE-03", "OE-SE-17", "OE-SE-19"),
-    8: ("BI-SE-09", "BI-SE-10", "BI-SE-11", "BI-SE-14", "DS-SE-05", "DS-SE-06", "DS-SE-07", "OT-SE-25"),
-    9: ("OE-SE-18", "OE-SE-20", "OE-SE-21", "OE-SE-22", "OT-SE-23", "OT-SE-24", "OT-SE-26"),
+    6: DOMAIN_CODES["creation"], 7: ("DP-SY-15", "OE-SY-16", "DS-SY-03", "OE-SY-17", "OE-SY-19"),
+    8: ("BI-SY-09", "BI-SY-10", "BI-SY-11", "BI-SY-14", "DS-SY-05", "DS-SY-06", "DS-SY-07", "OT-SY-25"),
+    9: ("OE-SY-18", "OE-SY-20", "OE-SY-21", "OE-SY-22", "OT-SY-23", "OT-SY-24", "OT-SY-26"),
     10: ALL_CODES, 11: ALL_CODES,
 }
 NOTE_PREFIXES = {
@@ -69,50 +69,50 @@ NOTE_PREFIXES = {
     10: ("business.",),
     11: ("business.",),
 }
-OPS_BARS = ("OE-SE-18", "OE-SE-20", "OE-SE-21", "OE-SE-22", "OT-SE-26", "OT-SE-24")
-OPS_NAMES = {"OE-SE-18": "기록 저장", "OE-SE-20": "이상 알림", "OE-SE-21": "알림 담당",
-             "OE-SE-22": "기록 보관", "OT-SE-26": "예산 알림", "OT-SE-24": "비용 구분"}
-OPS_ROW_NAMES = {"OE-SE-18": "실행 기록 저장", "OE-SE-22": "기록 보관 설정", "OT-SE-24": "Agent별 비용 구분",
-                 "OT-SE-26": "예산 초과 알림"}
-IDENTITY_BARS = ("DP-SE-15", "OE-SE-16", "DS-SE-03", "OE-SE-17", "OE-SE-19")
+OPS_BARS = ("OE-SY-18", "OE-SY-20", "OE-SY-21", "OE-SY-22", "OT-SY-26", "OT-SY-24")
+OPS_NAMES = {"OE-SY-18": "기록 저장", "OE-SY-20": "이상 알림", "OE-SY-21": "알림 담당",
+             "OE-SY-22": "기록 보관", "OT-SY-26": "예산 알림", "OT-SY-24": "비용 구분"}
+OPS_ROW_NAMES = {"OE-SY-18": "실행 기록 저장", "OE-SY-22": "기록 보관 설정", "OT-SY-24": "Agent별 비용 구분",
+                 "OT-SY-26": "예산 초과 알림"}
+IDENTITY_BARS = ("DP-SY-15", "OE-SY-16", "DS-SY-03", "OE-SY-17", "OE-SY-19")
 IDENTITY_NAMES = {
-    "DP-SE-15": "에이전트 청사진 연결\n(DP-SE-15)", "OE-SE-16": "소유자·스폰서 지정\n(OE-SE-16)",
-    "DS-SE-03": "ID 청사진 연결\n(DS-SE-03)", "OE-SE-17": "과도한 권한 없음\n(OE-SE-17)",
-    "OE-SE-19": "안전한 권한 운영\n(OE-SE-19)",
+    "DP-SY-15": "에이전트 청사진 연결\n(DP-SY-15)", "OE-SY-16": "소유자·스폰서 지정\n(OE-SY-16)",
+    "DS-SY-03": "ID 청사진 연결\n(DS-SY-03)", "OE-SY-17": "과도한 권한 없음\n(OE-SY-17)",
+    "OE-SY-19": "안전한 권한 운영\n(OE-SY-19)",
 }
 IDENTITY_TITLE = {
-    "DP-SE-15": "청사진에 연결되지 않은 에이전트가 있다", "OE-SE-16": "담당자 공백이 있다",
-    "DS-SE-03": "청사진에 연결되지 않은 에이전트 ID가 있다", "OE-SE-17": "과도한 권한이 열려 있다",
-    "OE-SE-19": "개별 권한 방식이 남아 있다", "CA": "ID는 있으나 접속 조건 제한이 없다",
+    "DP-SY-15": "청사진에 연결되지 않은 에이전트가 있다", "OE-SY-16": "담당자 공백이 있다",
+    "DS-SY-03": "청사진에 연결되지 않은 에이전트 ID가 있다", "OE-SY-17": "과도한 권한이 열려 있다",
+    "OE-SY-19": "개별 권한 방식이 남아 있다", "CA": "ID는 있으나 접속 조건 제한이 없다",
 }
 IDENTITY_ACTION = {
-    "DP-SE-15": "미연결 에이전트의 청사진 연결 검토", "OE-SE-16": "스폰서 미지정 ID 보완",
-    "DS-SE-03": "에이전트 ID를 청사진에 연결", "OE-SE-17": "불필요한 권한 회수",
-    "OE-SE-19": "서비스 전용 ID로 전환", "CA": "접속 조건 제한 규칙 적용 결정",
+    "DP-SY-15": "미연결 에이전트의 청사진 연결 검토", "OE-SY-16": "스폰서 미지정 ID 보완",
+    "DS-SY-03": "에이전트 ID를 청사진에 연결", "OE-SY-17": "불필요한 권한 회수",
+    "OE-SY-19": "서비스 전용 ID로 전환", "CA": "접속 조건 제한 규칙 적용 결정",
 }
 RECOMMEND = {
-    "DP-SE-15": "미연결 에이전트 청사진 연결 검토", "OE-SE-16": "스폰서 미지정 ID 보완",
-    "DS-SE-03": "에이전트 ID 연결 정리", "OE-SE-17": "과도한 권한 회수",
-    "OE-SE-19": "서비스 전용 ID 전환", "CA": "접속 조건 제한 규칙 적용",
+    "DP-SY-15": "미연결 에이전트 청사진 연결 검토", "OE-SY-16": "스폰서 미지정 ID 보완",
+    "DS-SY-03": "에이전트 ID 연결 정리", "OE-SY-17": "과도한 권한 회수",
+    "OE-SY-19": "서비스 전용 ID 전환", "CA": "접속 조건 제한 규칙 적용",
 }
 RISK_SHORT = {
-    "DS-SE-02": "정보 유출 가능성", "BI-SE-08": "관리자 통제 약함", "DM-SE-01": "제작 권한 적정성 미확인",
-    "DP-SE-15": "일괄 관리 어려움", "OE-SE-16": "책임 공백 가능성", "DS-SE-05": "인터넷 접근 시도 가능",
-    "BI-SE-14": "규칙 위반 방치 가능성", "OE-SE-18": "원인 추적 어려움", "OE-SE-22": "기록 조기 소실 가능성",
-    "OT-SE-24": "비용 통제 어려움", "CA": "ID 탈취 시 악용 가능성", "OE-SE-17": "권한 오남용 가능성",
+    "DS-SY-02": "정보 유출 가능성", "BI-SY-08": "관리자 통제 약함", "DM-SY-01": "제작 권한 적정성 미확인",
+    "DP-SY-15": "일괄 관리 어려움", "OE-SY-16": "책임 공백 가능성", "DS-SY-05": "인터넷 접근 시도 가능",
+    "BI-SY-14": "규칙 위반 방치 가능성", "OE-SY-18": "원인 추적 어려움", "OE-SY-22": "기록 조기 소실 가능성",
+    "OT-SY-24": "비용 통제 어려움", "CA": "ID 탈취 시 악용 가능성", "OE-SY-17": "권한 오남용 가능성",
 }
 TOPIC = {
-    "DM-SE-01": "역할 할당 확인 환경", "DS-SE-02": "업무 데이터 유출 방지", "DS-SE-03": "에이전트 ID 청사진 연결",
-    "DS-SE-04": "모델 업그레이드 설정", "DS-SE-05": "외부 접속 제한", "DS-SE-06": "도구 연결 승인",
-    "DS-SE-07": "암호화 연결", "BI-SE-08": "관리자 보호 설정", "BI-SE-09": "프로젝트 평가 실행",
-    "BI-SE-10": "보안 권고 조치", "BI-SE-11": "응답 안전 필터", "BI-SE-12": "버전 식별",
-    "BI-SE-13": "담당자 정보", "BI-SE-14": "회사 규칙 준수", "DP-SE-15": "Azure 에이전트 청사진 연결",
-    "OE-SE-16": "담당자 지정", "OE-SE-17": "권한 범위", "OE-SE-18": "실행 기록 저장",
-    "OE-SE-19": "안전한 권한 운영", "OE-SE-20": "이상 알림", "OE-SE-21": "알림 담당 지정",
-    "OE-SE-22": "기록 보관", "OT-SE-23": "사용량 확인", "OT-SE-24": "비용 구분",
-    "OT-SE-25": "보안 점검 서비스", "OT-SE-26": "예산 알림",
+    "DM-SY-01": "역할 할당 확인 환경", "DS-SY-02": "업무 데이터 유출 방지", "DS-SY-03": "에이전트 ID 청사진 연결",
+    "DS-SY-04": "모델 업그레이드 설정", "DS-SY-05": "외부 접속 제한", "DS-SY-06": "도구 연결 승인",
+    "DS-SY-07": "암호화 연결", "BI-SY-08": "관리자 보호 설정", "BI-SY-09": "프로젝트 평가 실행",
+    "BI-SY-10": "보안 권고 조치", "BI-SY-11": "응답 안전 필터", "BI-SY-12": "버전 식별",
+    "BI-SY-13": "담당자 정보", "BI-SY-14": "회사 규칙 준수", "DP-SY-15": "Azure 에이전트 청사진 연결",
+    "OE-SY-16": "담당자 지정", "OE-SY-17": "권한 범위", "OE-SY-18": "실행 기록 저장",
+    "OE-SY-19": "안전한 권한 운영", "OE-SY-20": "이상 알림", "OE-SY-21": "알림 담당 지정",
+    "OE-SY-22": "기록 보관", "OT-SY-23": "사용량 확인", "OT-SY-24": "비용 구분",
+    "OT-SY-25": "보안 점검 서비스", "OT-SY-26": "예산 알림",
 }
-SECURITY_POOL = ("BI-SE-10", "BI-SE-11", "BI-SE-14", "DS-SE-05", "OT-SE-25")
+SECURITY_POOL = ("BI-SY-10", "BI-SY-11", "BI-SY-14", "DS-SY-05", "OT-SY-25")
 CONTROL_VERDICT = {
     "충족": "를 충족", "근접했으나 미달": "에 근접했으나 미달", "미달": "에 미달",
 }
@@ -253,7 +253,7 @@ def summary(d: DeckData) -> dict[int, str]:
     names = [str(row["short"]).replace(" · ", "·") for row in domains]
     later = " · ".join(names[2:5])
     gap = d.worst_gap(DOMAIN_CODES["identity"])
-    pair = d.counts("DP-SE-15")
+    pair = d.counts("DP-SY-15")
     if pair and pair[1] > pair[0]:
         missing = pair[1] - pair[0]
         identity_sub = pick([
@@ -358,20 +358,20 @@ def gap_box(d: DeckData) -> str:
 def insights(d: DeckData) -> tuple[str, str, str]:
     """One sentence per executive: CIO (assets/cost), CAIO (demand/quality), CISO (identity/security)."""
     catalog = d.catalog
-    waiting = d.score("OT-SE-24") is None
+    waiting = d.score("OT-SY-24") is None
     spread = ""
     if catalog:
         who = "Agent 365 목록 패키지가" if catalog.source.startswith("Agent 365") else "Azure 에이전트가"
         spread = f"{who} 월 {catalog.first}→{catalog.last}개로 늘고 "
-    cost = "비용 구분은 확인 중" if waiting else compact(d, "OT-SE-24")
-    action = ("전사 에이전트 목록과 비용 구분 체계 수립" if waiting or d.score("OT-SE-24") < 3
+    cost = "비용 구분은 확인 중" if waiting else compact(d, "OT-SY-24")
+    action = ("전사 에이전트 목록과 비용 구분 체계 수립" if waiting or d.score("OT-SY-24") < 3
               else "전사 에이전트 목록과 비용 구분 체계 유지 점검")
     first = (f"{spread or '에이전트가 늘고 '}{cost} → {action}"
              if catalog or waiting else "자산·비용 관리 기준 충족 → 현 체계 유지")
-    quality = d.worst_gap(("BI-SE-09", "BI-SE-11", "BI-SE-14", "DS-SE-02"))
+    quality = d.worst_gap(("BI-SY-09", "BI-SY-11", "BI-SY-14", "DS-SY-02"))
     second = (f"{compact(d, quality)} → 배포 전 품질·규칙 점검을 승인 관문(Gate)으로 제도화"
               if quality else "수요 승인·품질 기준 충족 → 현 승인 관문 유지")
-    security = [c for c in ("DS-SE-05", "BI-SE-14", "OE-SE-17", "OE-SE-19") if d.gaps((c,))]
+    security = [c for c in ("DS-SY-05", "BI-SY-14", "OE-SY-17", "OE-SY-19") if d.gaps((c,))]
     parts = [compact(d, c) for c in security[:2]]
     if d.conditional_access and d.conditional_access[0] < d.conditional_access[1]:
         parts.append(f"ID 접속 조건 제한 {d.conditional_access[0]}/{d.conditional_access[1]}")
@@ -391,7 +391,7 @@ def overview(d: DeckData) -> dict[int, str]:
     )
     if registry is not None:
         spread = f"{registry:.0%}\nRegistry - 공식 등록부 일치율"
-    responsibility = d.percent("OE-SE-16") or d.percent("BI-SE-13")
+    responsibility = d.percent("OE-SY-16") or d.percent("BI-SY-13")
     first, second, third = insights(d)
     note = [f"1) 측정 {len(d.scored)}개 항목 기준"
             + (f" ({len(d.pending)}개 항목은 확인 중)" if d.pending else "")]
@@ -644,14 +644,14 @@ def creation_notes(d: DeckData) -> list[str]:
 
 
 TABLE_LABEL = {
-    "DM-SE-01": "DM-SE-01 역할 할당 확인 환경", "DS-SE-02": "DS-SE-02 유출 방지 규칙(DLP)",
-    "BI-SE-08": "BI-SE-08 관리자 보호(관리형 환경)",
+    "DM-SY-01": "DM-SY-01 역할 할당 확인 환경", "DS-SY-02": "DS-SY-02 유출 방지 규칙(DLP)",
+    "BI-SY-08": "BI-SY-08 관리자 보호(관리형 환경)",
 }
 
 
 def creation_rows(d: DeckData) -> list[list[str]]:
     rows = [["항목", "실측 결과", "L3 목표 기준", "판정"]]
-    for code in ("DM-SE-01", "DS-SE-02", "BI-SE-08"):
+    for code in ("DM-SY-01", "DS-SY-02", "BI-SY-08"):
         if code not in d.items:
             continue
         target = f"기준 충족 {d.l3_min(code):.0%} 이상"
@@ -675,7 +675,7 @@ def ca_phrase(d: DeckData) -> str | None:
     return None
 
 
-HEAD_CONSEQUENCE = {"DP-SE-15": "소유자·권한 기본값의 일괄 관리와", "DS-SE-03": "소유자·권한 기본값의 일괄 관리와"}
+HEAD_CONSEQUENCE = {"DP-SY-15": "소유자·권한 기본값의 일괄 관리와", "DS-SY-03": "소유자·권한 기본값의 일괄 관리와"}
 
 
 def headline_identity(d: DeckData) -> str:
@@ -742,9 +742,9 @@ def identity_rows(d: DeckData) -> list[list[str]]:
             return label, PENDING_LABEL
         return label, f"{pair[1] - pair[0]:g} / {pair[1]:g}"
 
-    left = [gap("OE-SE-16", "소유자 · 스폰서 미지정"), gap("DP-SE-15", "청사진 미연결 에이전트"),
-            gap("DS-SE-03", "청사진 미연결 ID")]
-    right = [gap("OE-SE-17", "쓰기 · 전체 제어 권한"), gap("OE-SE-19", "개별 권한 · 비밀 키 사용")]
+    left = [gap("OE-SY-16", "소유자 · 스폰서 미지정"), gap("DP-SY-15", "청사진 미연결 에이전트"),
+            gap("DS-SY-03", "청사진 미연결 ID")]
+    right = [gap("OE-SY-17", "쓰기 · 전체 제어 권한"), gap("OE-SY-19", "개별 권한 · 비밀 키 사용")]
     if d.conditional_access:
         applied, total = d.conditional_access
         right.append(("접속 조건 제한 없음", f"{total - applied} / {total}"))
@@ -756,9 +756,9 @@ def identity_rows(d: DeckData) -> list[list[str]]:
 
 # ---- slide 9 ---------------------------------------------------------------------------------
 def card_ratio(d: DeckData, code: str) -> float | None:
-    if code == "BI-SE-29":
+    if code == "BI-SY-29":
         return d.rate("evaluation.predeploy")
-    if code == "OT-SE-33":
+    if code == "OT-SY-33":
         return d.rate("security.exposure")
     return d.ratio(code) if d.score(code) is not None else None
 
@@ -771,12 +771,12 @@ def security_cards(d: DeckData) -> list[str]:
         if len(chosen) < 2 and d.score(code) is None:
             chosen.append(code)
     if d.rate("security.exposure") is not None:
-        chosen = [*chosen[:1], "OT-SE-33"]
-    return ["BI-SE-29" if d.rate("evaluation.predeploy") is not None else "BI-SE-09", *chosen[:2]]
+        chosen = [*chosen[:1], "OT-SY-33"]
+    return ["BI-SY-29" if d.rate("evaluation.predeploy") is not None else "BI-SY-09", *chosen[:2]]
 
 
 def card_texts(d: DeckData, code: str) -> dict[str, str]:
-    if code == "BI-SE-29":
+    if code == "BI-SY-29":
         floor = d.rate("report.target.evaluation.predeploy") or 0.8
         return {
             "title": "배포 전 평가 이력", "value": f"{d.rate('evaluation.predeploy'):.0%}",
@@ -784,7 +784,7 @@ def card_texts(d: DeckData, code: str) -> dict[str, str]:
             "good": f"완료 {d.value('evaluation.evaluated') or 0:g}",
             "bad": f"미완료 {d.value('evaluation.missing') or 0:g}", "target": f"L3 목표 : {floor:.0%} 이상",
         }
-    if code == "OT-SE-33":
+    if code == "OT-SY-33":
         floor = d.rate("report.target.security.exposure") or 0.9
         return {
             "title": "민감 데이터 노출", "value": f"{d.rate('security.exposure'):.0%}",
@@ -801,7 +801,7 @@ def card_texts(d: DeckData, code: str) -> dict[str, str]:
     pair = d.counts(code)
     ratio = d.ratio(code)
     detail = pattern.format(n=f"{pair[0]:g}", d=f"{pair[1]:g}") if pair else d.level(code)
-    if code == "BI-SE-09" and d.collection and d.collection.evaluations and pair:
+    if code == "BI-SY-09" and d.collection and d.collection.evaluations and pair:
         runs = d.collection.evaluations
         passed = sum(r.passed_items or 0 for r in runs)
         total = sum(r.total_items or 0 for r in runs)
@@ -815,7 +815,7 @@ def card_texts(d: DeckData, code: str) -> dict[str, str]:
 
 
 def headline_security(d: DeckData) -> str:
-    strong = [c for c in ("BI-SE-09", "BI-SE-11") if d.score(c) is not None and d.score(c) >= 4]
+    strong = [c for c in ("BI-SY-09", "BI-SY-11") if d.score(c) is not None and d.score(c) >= 4]
     weak = sorted((c for c in SECURITY_POOL if d.score(c) is not None and d.score(c) < 3),
                   key=lambda c: (d.score(c), c))
     wait = [c for c in SECURITY_POOL if d.score(c) is None]
@@ -832,7 +832,7 @@ def headline_security(d: DeckData) -> str:
 
 
 def security_box(d: DeckData) -> tuple[str, str]:
-    protect = [compact(d, c) for c in ("DS-SE-06", "DS-SE-07") if c in d.items and d.score(c) is not None]
+    protect = [compact(d, c) for c in ("DS-SY-06", "DS-SY-07") if c in d.items and d.score(c) is not None]
     first = "\n".join(protect[:2]) if protect else "도구 연결 보호는 확인 중"
     weak = [c for c in SECURITY_POOL if d.score(c) is not None and d.score(c) < 3]
     if weak:
@@ -850,9 +850,9 @@ def security_notes(d: DeckData) -> str:
         if code not in d.items or d.score(code) is not None:
             continue
         note = d.pending_note(code)
-        if code == "BI-SE-10" and "구독" in note:
+        if code == "BI-SY-10" and "구독" in note:
             note += "(Defender 평가 반영 후 판정)"
-        parts.append(note if code == "BI-SE-10" else f"{TOPIC[code]} {note}")
+        parts.append(note if code == "BI-SY-10" else f"{TOPIC[code]} {note}")
     return ", ".join(parts)
 
 
@@ -869,7 +869,7 @@ def defender_rows(d: DeckData) -> list[list[str]] | None:
         enabled = sum(flags)
         state = "전체 적용" if enabled == len(flags) else "일부 적용" if enabled else "기본(무료) 단계"
         rows.append([names.get(plan, plan), f"{enabled}개", f"{len(flags)}개", state])
-    for code in ("BI-SE-10", "OT-SE-25"):
+    for code in ("BI-SY-10", "OT-SY-25"):
         if code in d.items and d.score(code) is None:
             rows.append([d.label(code), "-", "-", d.pending_note(code)])
     return rows[:6]
@@ -903,11 +903,11 @@ def exposure_rows(d: DeckData) -> list[list[str]] | None:
 def headline_ops(d: DeckData) -> str:
     codes = DOMAIN_CODES["visibility"]
     gaps = sorted(d.gaps(codes), key=lambda c: (d.score(c), c))
-    good = [c for c in ("OE-SE-20", "OE-SE-21", "OT-SE-26") if d.score(c) is not None and d.score(c) >= 4]
+    good = [c for c in ("OE-SY-20", "OE-SY-21", "OT-SY-26") if d.score(c) is not None and d.score(c) >= 4]
     gap_text = fit([d.fact(c) for c in gaps[:2]], 44)
     good_text = " · ".join(TOPIC[c] for c in good[:3])
-    cost = ("에이전트별 비용은 청구 반영 후에야 확인 가능" if d.score("OT-SE-24") is None
-            else d.fact("OT-SE-24"))
+    cost = ("에이전트별 비용은 청구 반영 후에야 확인 가능" if d.score("OT-SY-24") is None
+            else d.fact("OT-SY-24"))
     if gaps and good:
         return pick([f"{good_text} 설정은 갖췄으나 {gap_text} - 사고 원인 추적이 불완전할 수 있음, {cost}",
                      f"{good_text} 설정은 갖췄으나 {gap_text}, {cost}"], 112)
@@ -919,7 +919,7 @@ def headline_ops(d: DeckData) -> str:
 def ops_bar(d: DeckData, code: str) -> tuple[str, str, str, float | None]:
     ratio = d.ratio(code) if d.score(code) is not None else None
     if ratio is None:
-        return OPS_NAMES[code], PENDING_LABEL, "청구 반영 후" if code == "OT-SE-24" else "확인 후", None
+        return OPS_NAMES[code], PENDING_LABEL, "청구 반영 후" if code == "OT-SY-24" else "확인 후", None
     return OPS_NAMES[code], pct(ratio), d.fraction(code) or d.level(code), ratio
 
 
@@ -929,7 +929,7 @@ def ops_rows(d: DeckData) -> list[list[str]]:
     if d.collection and d.collection.logs:
         days = [log.retention_days for log in d.collection.logs if log.enabled and log.retention_days]
         retention = min(days) if days else None
-    for code in ("OE-SE-18", "OE-SE-22", "OT-SE-24", "OT-SE-26"):
+    for code in ("OE-SY-18", "OE-SY-22", "OT-SY-24", "OT-SY-26"):
         if code not in d.items:
             continue
         target = f"기준 충족 {d.l3_min(code):.0%} 이상"
@@ -940,17 +940,17 @@ def ops_rows(d: DeckData) -> list[list[str]]:
         result = d.fact(code)
         if d.currency(code) and d.percent(code):
             result += f"({d.percent(code)})"
-        if code == "OE-SE-22" and retention:
+        if code == "OE-SY-22" and retention:
             result = f"{d.fact(code)} (최소 {retention}일)"
         rows.append([label, result, target, d.level(code)])
     return rows
 
 
 def ops_box(d: DeckData) -> str:
-    gaps = d.gaps(("OE-SE-18", "OE-SE-22"))
-    waiting = d.score("OT-SE-24") is None
-    fraction = d.fraction("OT-SE-26")
-    first = (f"예산 초과 알림은 설정됨 ({fraction}),\n" if d.score("OT-SE-26") is not None and fraction
+    gaps = d.gaps(("OE-SY-18", "OE-SY-22"))
+    waiting = d.score("OT-SY-24") is None
+    fraction = d.fraction("OT-SY-26")
+    first = (f"예산 초과 알림은 설정됨 ({fraction}),\n" if d.score("OT-SY-26") is not None and fraction
              else "예산 · 알림 설정은 점검 중,\n")
     second = "그러나 기록 · 비용 구분은 보완 필요\n" if gaps or waiting else "기록 · 비용 통제 유지\n"
     third = []
@@ -963,7 +963,7 @@ def ops_box(d: DeckData) -> str:
 
 def cost_note(d: DeckData) -> str:
     """Footnote for a billed amount that is still too small for the ratio to mean much."""
-    return "청구 금액이 아직 적어 비율은 참고용" if d.small_amount("OT-SE-24") else ""
+    return "청구 금액이 아직 적어 비율은 참고용" if d.small_amount("OT-SY-24") else ""
 
 
 HOSTING_RESOURCE = ("/microsoft.web/serverfarms/", "/microsoft.web/sites/", "/microsoft.app/")
@@ -989,7 +989,7 @@ def cost_notes(d: DeckData) -> list[str]:
         if empty and len(empty) < len(history.split(",")[-6:]):
             span = f"{int(empty[0][4:])}월" if len(empty) == 1 else f"{int(empty[0][4:])}~{int(empty[-1][4:])}월"
             lines.append(f"※ {span}은 조회 기간 안에 청구 내역이 없음")
-    if d.currency("OT-SE-24") and rows:
+    if d.currency("OT-SY-24") and rows:
         total = sum(row.amount for row in rows)
         hosting = sum(row.amount for row in rows if any(key in row.resource_id.lower() for key in HOSTING_RESOURCE))
         text = "※ 직접 귀속은 비용 리소스가 한 에이전트에만 연결된 비율이며 에이전트별 사용 비용이 아닌 리소스 단위 귀속"

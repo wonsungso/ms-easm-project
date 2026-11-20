@@ -1,4 +1,4 @@
-"""Admin-only demo step: enable the Defender for Cloud plans that the OT-SE-25 evidence reads.
+"""Admin-only demo step: enable the Defender for Cloud plans that the OT-SY-25 evidence reads.
 
 The collector only reads Microsoft.Security/pricings. This module is an approved administrator
 action for the demo subscriptions and is never imported by the collector.

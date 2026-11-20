@@ -6,7 +6,7 @@
 
 Excel 6번 상단에서 범위·보류 항목을, 7번에서 계산값·대상별 판정·직접 증적·기준 출처를 확인합니다. 아래 포털 경로는 참고용이며 캡처는 데모 환경(빨간 네모는 확인 위치, 식별자 마스킹)입니다.
 
-## DM-SE-01 Copilot Studio 제작 권한 보유자 수 및 환경 현황
+## DM-SY-01 Copilot Studio 제작 권한 보유자 수 및 환경 현황
 
 - **영역·제품:** Demand / Power Platform
 - **구현:** ✅ 구현
@@ -14,7 +14,7 @@ Excel 6번 상단에서 범위·보류 항목을, 7번에서 계산값·대상�
 - **비율 평가 기준:** (역할 할당이 1건 이상인 환경 수 / 관리자에게 보이는 환경 수) × 100. 환경 목록이나 대상별 역할 건수가 미확인이면 점수를 보류합니다.
 - **Azure Portal 기준(참고):** 해당 없음 - Power Platform 관리 센터 > 환경
 
-## DS-SE-02 커넥터 분류·차단 정책(데이터 정책) 적용 현황
+## DS-SY-02 커넥터 분류·차단 정책(데이터 정책) 적용 현황
 
 - **영역·제품:** Design / Power Platform 데이터 정책
 - **구현:** ✅ 구현
@@ -22,7 +22,7 @@ Excel 6번 상단에서 범위·보류 항목을, 7번에서 계산값·대상�
 - **비율 평가 기준:** (정책 범위에 포함되는 환경 수 / 관리자에게 보이는 환경 수) × 100. 정책이 없으면 0%이며, 환경 목록이나 정책 조회가 미완료이면 점수를 보류합니다.
 - **Azure Portal 기준(참고):** 해당 없음 - Power Platform 관리 센터 > 정책 > 데이터 정책
 
-## DS-SE-03 Agent ID의 Blueprint 연결
+## DS-SY-03 Agent ID의 Blueprint 연결
 
 - **영역·제품:** Design / Microsoft Entra Agent ID
 - **구현:** ✅ 구현
@@ -30,9 +30,9 @@ Excel 6번 상단에서 범위·보류 항목을, 7번에서 계산값·대상�
 - **비율 평가 기준:** (존재하는 청사진에 연결된 Agent ID 수 / 조회한 전체 Agent ID 수) × 100.
 - **Azure Portal 기준(참고):** Azure Portal > Microsoft Entra ID > Agent ID > Blueprint 목록
 
-![DS-SE-03 확인 화면](portal/imgs/DS-SE-03.png)
+![DS-SY-03 확인 화면](portal/imgs/DS-SY-03.png)
 
-## DS-SE-04 모델 배포 버전·업데이트 구성
+## DS-SY-04 모델 배포 버전·업데이트 구성
 
 - **영역·제품:** Design / Microsoft Foundry
 - **구현:** ✅ 구현
@@ -40,9 +40,9 @@ Excel 6번 상단에서 범위·보류 항목을, 7번에서 계산값·대상�
 - **비율 평가 기준:** (모델명·버전·형식과 업데이트 옵션이 모두 확인된 모델 배포 수 / 조회한 전체 모델 배포 수) × 100.
 - **Azure Portal 기준(참고):** Azure Portal > Microsoft Foundry > (계정) > Go to Foundry portal > 모델 + 엔드포인트(배포 목록·업데이트 옵션)
 
-![DS-SE-04 확인 화면](portal/imgs/DS-SE-04.png)
+![DS-SY-04 확인 화면](portal/imgs/DS-SY-04.png)
 
-## DS-SE-05 AI 리소스 인바운드 경계 구성
+## DS-SY-05 AI 리소스 인바운드 경계 구성
 
 - **영역·제품:** Design / AI 계정·자체 Agent 호스트
 - **구현:** ✅ 구현
@@ -50,9 +50,9 @@ Excel 6번 상단에서 범위·보류 항목을, 7번에서 계산값·대상�
 - **비율 평가 기준:** (위 네트워크 접근 제한 조건을 충족한 리소스 수 / 점검 대상 AI 계정·자체 Agent 호스트 수) × 100.
 - **Azure Portal 기준(참고):** Azure Portal > Microsoft Foundry > (계정) > Resource Management > Networking, App Service > (앱) > Networking
 
-![DS-SE-05 확인 화면](portal/imgs/DS-SE-05.png)
+![DS-SY-05 확인 화면](portal/imgs/DS-SY-05.png)
 
-## DS-SE-06 MCP 도구 필수 승인 모드
+## DS-SY-06 MCP 도구 필수 승인 모드
 
 - **영역·제품:** Design / Microsoft Foundry Agent 도구
 - **구현:** ✅ 구현
@@ -60,9 +60,9 @@ Excel 6번 상단에서 범위·보류 항목을, 7번에서 계산값·대상�
 - **비율 평가 기준:** (항상 승인을 요구하는 MCP 도구 설정 수 / 최신 Agent 버전에서 조회한 전체 MCP 도구 설정 수) × 100.
 - **Azure Portal 기준(참고):** Azure Portal > Microsoft Foundry > (계정) > Go to Foundry portal > (프로젝트) > Agents > (Agent) > Tools
 
-![DS-SE-06 확인 화면](portal/imgs/DS-SE-06.png)
+![DS-SY-06 확인 화면](portal/imgs/DS-SY-06.png)
 
-## DS-SE-07 외부 도구 HTTPS 연결 구성
+## DS-SY-07 외부 도구 HTTPS 연결 구성
 
 - **영역·제품:** Design / Microsoft Foundry Agent 도구
 - **구현:** ✅ 구현
@@ -70,9 +70,9 @@ Excel 6번 상단에서 범위·보류 항목을, 7번에서 계산값·대상�
 - **비율 평가 기준:** (HTTPS·유효한 서버 주소·URL 내 인증정보 없음 조건을 모두 충족한 URL 수 / 명시적으로 설정된 전체 외부 도구 URL 수) × 100.
 - **Azure Portal 기준(참고):** Azure Portal > Microsoft Foundry > (계정) > Go to Foundry portal > (프로젝트) > Agents > (Agent) > Tools(MCP)
 
-![DS-SE-07 확인 화면](portal/imgs/DS-SE-07.png)
+![DS-SY-07 확인 화면](portal/imgs/DS-SY-07.png)
 
-## BI-SE-08 환경 분리 및 관리형 환경 적용 여부
+## BI-SY-08 환경 분리 및 관리형 환경 적용 여부
 
 - **영역·제품:** Build / Power Platform
 - **구현:** ✅ 구현
@@ -80,7 +80,7 @@ Excel 6번 상단에서 범위·보류 항목을, 7번에서 계산값·대상�
 - **비율 평가 기준:** (보호 수준이 `Standard`인 환경 수 / 관리자에게 보이는 환경 수) × 100. 보호 수준을 확인하지 못한 환경이 있으면 점수를 보류합니다.
 - **Azure Portal 기준(참고):** 해당 없음 - Power Platform 관리 센터 > 환경 > 관리형 환경
 
-## BI-SE-09 Foundry 프로젝트 평가 실행 이력
+## BI-SY-09 Foundry 프로젝트 평가 실행 이력
 
 - **영역·제품:** Build / Microsoft Foundry
 - **구현:** ✅ 구현
@@ -88,9 +88,9 @@ Excel 6번 상단에서 범위·보류 항목을, 7번에서 계산값·대상�
 - **비율 평가 기준:** (완료·성공 상태의 평가 실행 기록이 있는 프로젝트 수 / 발견한 전체 Foundry 프로젝트 수) × 100.
 - **Azure Portal 기준(참고):** Azure Portal > Microsoft Foundry > (계정) > Go to Foundry portal > Build > Evaluations
 
-![BI-SE-09 확인 화면](portal/imgs/BI-SE-09.png)
+![BI-SY-09 확인 화면](portal/imgs/BI-SY-09.png)
 
-## BI-SE-10 AI 리소스 보안 권고 상태
+## BI-SY-10 AI 리소스 보안 권고 상태
 
 - **영역·제품:** Build / Microsoft Defender for Cloud
 - **구현:** ✅ 구현
@@ -98,9 +98,9 @@ Excel 6번 상단에서 범위·보류 항목을, 7번에서 계산값·대상�
 - **비율 평가 기준:** (정상 상태인 보안 권고 수 / AI 리소스에 적용되는 전체 보안 권고 수) × 100.
 - **Azure Portal 기준(참고):** Azure Portal > Microsoft Defender for Cloud > Recommendations(AI 리소스 필터), Security posture(보안 점수)
 
-![BI-SE-10 확인 화면](portal/imgs/BI-SE-10.png)
+![BI-SY-10 확인 화면](portal/imgs/BI-SY-10.png)
 
-## BI-SE-11 콘텐츠 필터 정책 연결
+## BI-SY-11 콘텐츠 필터 정책 연결
 
 - **영역·제품:** Build / Microsoft Foundry 콘텐츠 필터
 - **구현:** ✅ 구현
@@ -108,9 +108,9 @@ Excel 6번 상단에서 범위·보류 항목을, 7번에서 계산값·대상�
 - **비율 평가 기준:** (실제로 존재하고 활성 필터가 확인된 정책에 연결된 모델 배포 수 / 조회한 전체 모델 배포 수) × 100.
 - **Azure Portal 기준(참고):** Azure Portal > Microsoft Foundry > (계정) > Go to Foundry portal > Build > Guardrails(콘텐츠 필터)
 
-![BI-SE-11 확인 화면](portal/imgs/BI-SE-11.png)
+![BI-SY-11 확인 화면](portal/imgs/BI-SY-11.png)
 
-## BI-SE-12 Agent 버전·호스트 런타임 식별
+## BI-SY-12 Agent 버전·호스트 런타임 식별
 
 - **영역·제품:** Build / Foundry·App Service·컨테이너
 - **구현:** ✅ 구현
@@ -118,9 +118,9 @@ Excel 6번 상단에서 범위·보류 항목을, 7번에서 계산값·대상�
 - **비율 평가 기준:** (버전 또는 고유한 실행 이미지 식별 조건을 충족한 Agent·호스트 수 / 점검 대상 Foundry Agent 수와 자체 Agent 호스트 수의 합계) × 100.
 - **Azure Portal 기준(참고):** Azure Portal > Microsoft Foundry > (계정) > Go to Foundry portal > 모델 + 엔드포인트(버전 업데이트 정책), App Service > (앱) > Settings > Configuration > Stack settings
 
-![BI-SE-12 확인 화면](portal/imgs/BI-SE-12.png)
+![BI-SY-12 확인 화면](portal/imgs/BI-SY-12.png)
 
-## BI-SE-13 Agent 책임·환경·비용 메타데이터
+## BI-SY-13 Agent 책임·환경·비용 메타데이터
 
 - **영역·제품:** Build / Azure 태그·Agent 메타데이터
 - **구현:** ✅ 구현
@@ -128,9 +128,9 @@ Excel 6번 상단에서 범위·보류 항목을, 7번에서 계산값·대상�
 - **비율 평가 기준:** (소유자·스폰서·환경·비용센터 정보가 모두 있는 Azure Agent 수 / 조회한 전체 Azure Agent 수) × 100.
 - **Azure Portal 기준(참고):** Azure Portal > Microsoft Foundry 또는 App Service > (리소스) > Tags
 
-![BI-SE-13 확인 화면](portal/imgs/BI-SE-13.png)
+![BI-SY-13 확인 화면](portal/imgs/BI-SY-13.png)
 
-## BI-SE-14 AI 리소스 정책 평가 준수
+## BI-SY-14 AI 리소스 정책 평가 준수
 
 - **영역·제품:** Build / Azure Policy
 - **구현:** ✅ 구현
@@ -138,9 +138,9 @@ Excel 6번 상단에서 범위·보류 항목을, 7번에서 계산값·대상�
 - **비율 평가 기준:** (연결된 모든 정책 평가가 준수 상태인 리소스 수 / 정책 평가 대상인 AI 관련 리소스 수) × 100.
 - **Azure Portal 기준(참고):** Azure Portal > Policy > Compliance
 
-![BI-SE-14 확인 화면](portal/imgs/BI-SE-14.png)
+![BI-SY-14 확인 화면](portal/imgs/BI-SY-14.png)
 
-## DP-SE-15 Azure Agent의 Entra Blueprint 귀속
+## DP-SY-15 Azure Agent의 Entra Blueprint 귀속
 
 - **영역·제품:** Deploy / Microsoft Entra Agent ID
 - **구현:** ✅ 구현 - 현재 API 기준 완료, 연결 충족률과 구현 여부는 별개
@@ -148,9 +148,9 @@ Excel 6번 상단에서 범위·보류 항목을, 7번에서 계산값·대상�
 - **비율 평가 기준:** (위 이름·구독 정보와 실제 Agent ID 연결이 모두 확인된 Azure Agent 수 / 조회한 전체 Azure Agent 수) × 100. 전체 Agent 365 등록 패키지 수로 나누는 방식은 아닙니다.
 - **Azure Portal 기준(참고):** Microsoft Entra ID > Agent ID.
 
-![DP-SE-15 확인 화면](portal/imgs/DP-SE-15.png)
+![DP-SY-15 확인 화면](portal/imgs/DP-SY-15.png)
 
-## OE-SE-16 Agent ID 소유자·스폰서 연결
+## OE-SY-16 Agent ID 소유자·스폰서 연결
 
 - **영역·제품:** Operate / Microsoft Entra Agent ID
 - **구현:** ✅ 구현
@@ -158,9 +158,9 @@ Excel 6번 상단에서 범위·보류 항목을, 7번에서 계산값·대상�
 - **비율 평가 기준:** (소유자와 스폰서가 모두 연결된 Agent ID 수 / 조회한 전체 Agent ID 수) × 100.
 - **Azure Portal 기준(참고):** Azure Portal > Microsoft Entra ID > Agent ID > (에이전트 ID) > 소유자/스폰서
 
-![OE-SE-16 확인 화면](portal/imgs/OE-SE-16.png)
+![OE-SY-16 확인 화면](portal/imgs/OE-SY-16.png)
 
-## OE-SE-17 Agent ID 앱 역할 읽기 범위
+## OE-SY-17 Agent ID 앱 역할 읽기 범위
 
 - **영역·제품:** Operate / Microsoft Entra Agent ID
 - **구현:** ✅ 구현
@@ -168,9 +168,9 @@ Excel 6번 상단에서 범위·보류 항목을, 7번에서 계산값·대상�
 - **비율 평가 기준:** (기준의 쓰기·전체 제어 권한 패턴에 해당하는 앱 역할이 없는 Agent ID 수 / 조회한 전체 Agent ID 수) × 100.
 - **Azure Portal 기준(참고):** Azure Portal > Microsoft Entra ID > Agent ID > (에이전트 ID) > 권한
 
-![OE-SE-17 확인 화면](portal/imgs/OE-SE-17.png)
+![OE-SY-17 확인 화면](portal/imgs/OE-SY-17.png)
 
-## OE-SE-18 Agent 리소스 실행 로그 연결
+## OE-SY-18 Agent 리소스 실행 로그 연결
 
 - **영역·제품:** Operate / Azure Monitor 진단 설정
 - **구현:** ✅ 구현
@@ -178,9 +178,9 @@ Excel 6번 상단에서 범위·보류 항목을, 7번에서 계산값·대상�
 - **비율 평가 기준:** (로그 수집이 켜져 있고 Log Analytics 작업 영역이 연결된 리소스 수 / 점검 대상 AI 계정·자체 Agent 호스트 수) × 100.
 - **Azure Portal 기준(참고):** Azure Portal > Microsoft Foundry > (계정) > Monitoring > Diagnostic settings, Log Analytics workspaces > (workspace) > Tables(보존 기간)
 
-![OE-SE-18 확인 화면](portal/imgs/OE-SE-18.png)
+![OE-SY-18 확인 화면](portal/imgs/OE-SY-18.png)
 
-## OE-SE-19 관리 ID·키 인증·직접 ARM 역할 구성
+## OE-SY-19 관리 ID·키 인증·직접 ARM 역할 구성
 
 - **영역·제품:** Operate / Azure Resource Graph·RBAC
 - **구현:** ✅ 구현
@@ -188,9 +188,9 @@ Excel 6번 상단에서 범위·보류 항목을, 7번에서 계산값·대상�
 - **비율 평가 기준:** (관리 ID 연결·광범위 직접 역할 없음 조건을 충족하고, AI 계정이면 키 인증도 꺼져 있는 리소스 수 / 점검 대상 AI 계정·자체 Agent 호스트 수) × 100.
 - **Azure Portal 기준(참고):** Azure Portal > Microsoft Foundry > (계정) > Resource Management > Identity, Access control (IAM) > Role assignments, Keys and Endpoint
 
-![OE-SE-19 확인 화면](portal/imgs/OE-SE-19.png)
+![OE-SY-19 확인 화면](portal/imgs/OE-SY-19.png)
 
-## OE-SE-20 AI 리소스 활성 경보 범위
+## OE-SY-20 AI 리소스 활성 경보 범위
 
 - **영역·제품:** Operate / Azure Monitor
 - **구현:** ✅ 구현
@@ -198,9 +198,9 @@ Excel 6번 상단에서 범위·보류 항목을, 7번에서 계산값·대상�
 - **비율 평가 기준:** (하나 이상의 활성 경보가 감시하는 리소스 수 / 점검 대상 AI 계정·자체 Agent 호스트 수) × 100.
 - **Azure Portal 기준(참고):** Azure Portal > Monitor > Alerts > Alert rules, Application Insights, Microsoft Foundry > (계정) > Monitoring > Diagnostic settings
 
-![OE-SE-20 확인 화면](portal/imgs/OE-SE-20.png)
+![OE-SY-20 확인 화면](portal/imgs/OE-SY-20.png)
 
-## OE-SE-21 AI 경보의 작업 그룹·수신자 연결
+## OE-SY-21 AI 경보의 작업 그룹·수신자 연결
 
 - **영역·제품:** Operate / Azure Monitor 작업 그룹
 - **구현:** ✅ 구현
@@ -208,9 +208,9 @@ Excel 6번 상단에서 범위·보류 항목을, 7번에서 계산값·대상�
 - **비율 평가 기준:** (활성 경보·작업 그룹·활성 수신자 연결 조건을 모두 충족한 경보 수 / AI 리소스를 대상으로 하는 전체 경보 수) × 100.
 - **Azure Portal 기준(참고):** Azure Portal > Monitor > Alerts > Action groups
 
-![OE-SE-21 확인 화면](portal/imgs/OE-SE-21.png)
+![OE-SY-21 확인 화면](portal/imgs/OE-SY-21.png)
 
-## OE-SE-22 리소스 지역·workspace 보존 구성
+## OE-SY-22 리소스 지역·workspace 보존 구성
 
 - **영역·제품:** Operate / Azure 리소스·Log Analytics
 - **구현:** ✅ 구현 - 현재 API 기준 완료, 보존 기준 충족률과 구현 여부는 별개
@@ -218,9 +218,9 @@ Excel 6번 상단에서 범위·보류 항목을, 7번에서 계산값·대상�
 - **비율 평가 기준:** (배포 지역이 확인되고 활성 로그 연결의 보존기간이 모두 기준 이상인 리소스 수 / 점검 대상 AI 계정·자체 Agent 호스트 수) × 100.
 - **Azure Portal 기준(참고):** Azure Portal > Microsoft Foundry > (계정) > Overview(Location), Log Analytics workspaces > (workspace) > Tables(보존 기간)
 
-![OE-SE-22 확인 화면](portal/imgs/OE-SE-22.png)
+![OE-SY-22 확인 화면](portal/imgs/OE-SY-22.png)
 
-## OT-SE-23 AI 리소스 사용량 관측 범위
+## OT-SY-23 AI 리소스 사용량 관측 범위
 
 - **영역·제품:** Optimize / Azure Monitor 메트릭
 - **구현:** ✅ 구현
@@ -228,9 +228,9 @@ Excel 6번 상단에서 범위·보류 항목을, 7번에서 계산값·대상�
 - **비율 평가 기준:** (조회 기간에 숫자로 된 메트릭 측정값이 하나 이상 있는 리소스 수 / 점검 대상 AI 계정·자체 Agent 호스트 수) × 100.
 - **Azure Portal 기준(참고):** Azure Portal > Microsoft Foundry > (계정) > Monitoring > Metrics, Logs
 
-![OT-SE-23 확인 화면](portal/imgs/OT-SE-23.png)
+![OT-SY-23 확인 화면](portal/imgs/OT-SY-23.png)
 
-## OT-SE-24 AI 비용의 단일 Agent 귀속
+## OT-SY-24 AI 비용의 단일 Agent 귀속
 
 - **영역·제품:** Optimize / Azure Cost Management
 - **구현:** ✅ 구현
@@ -238,9 +238,9 @@ Excel 6번 상단에서 범위·보류 항목을, 7번에서 계산값·대상�
 - **비율 평가 기준:** (사용일자가 있고 정확히 한 Agent에 연결되는 비용 금액 / 같은 통화로 조회한 전체 AI 관련 양수 비용 금액) × 100. 건수가 아닌 금액 기준입니다.
 - **Azure Portal 기준(참고):** Azure Portal > Cost Management > Cost analysis, Budgets
 
-![OT-SE-24 확인 화면](portal/imgs/OT-SE-24.png)
+![OT-SY-24 확인 화면](portal/imgs/OT-SY-24.png)
 
-## OT-SE-25 AI 민감 데이터 노출 점검 구성
+## OT-SY-25 AI 민감 데이터 노출 점검 구성
 
 - **영역·제품:** Optimize / Microsoft Defender for Cloud
 - **구현:** ✅ 구현
@@ -248,7 +248,7 @@ Excel 6번 상단에서 범위·보류 항목을, 7번에서 계산값·대상�
 - **비율 평가 기준:** (AI 플랜·CSPM 플랜이 Standard이고 민감 데이터 검색이 활성인 구독 수 / 점검 범위의 전체 승인 구독 수) × 100. 필드를 확인하지 못한 구독이 있으면 점수를 보류합니다.
 - **Azure Portal 기준(참고):** Azure Portal > Microsoft Defender for Cloud > Environment settings > 구독 > Defender plans
 
-## OT-SE-26 구독 예산·실제·예측 경보 구성
+## OT-SY-26 구독 예산·실제·예측 경보 구성
 
 - **영역·제품:** Optimize / Azure Cost Management
 - **구현:** ✅ 구현
@@ -256,4 +256,4 @@ Excel 6번 상단에서 범위·보류 항목을, 7번에서 계산값·대상�
 - **비율 평가 기준:** (위 예산·실제 비용 경보·예측 비용 경보·수신자 조건을 모두 충족한 구독 수 / 점검 범위의 전체 승인 구독 수) × 100.
 - **Azure Portal 기준(참고):** Azure Portal > Cost Management > Budgets
 
-![OT-SE-26 확인 화면](portal/imgs/OT-SE-26.png)
+![OT-SY-26 확인 화면](portal/imgs/OT-SY-26.png)

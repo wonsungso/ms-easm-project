@@ -88,16 +88,16 @@ def test_admin_receipt_records_provenance_and_scores_power_platform_environments
     data = ingest(tmp_path, power_platform_packet())
     assert all(Path(read.evidence_refs[0]).is_file() for read in data.admin_evidence)
     rows = graded(data)
-    assert (rows["BI-SE-08"].level, rows["BI-SE-08"].measurement.numerator) == ("L2", 2)
-    assert (rows["DM-SE-01"].level, rows["DM-SE-01"].measurement.numerator) == ("L2", 2)
-    assert (rows["DS-SE-02"].level, rows["DS-SE-02"].measurement.numerator) == ("L2", 2)
-    assert rows["DS-SE-02"].measurement.targets[0].observed["environment_type"] == "Default"
+    assert (rows["BI-SY-08"].level, rows["BI-SY-08"].measurement.numerator) == ("L2", 2)
+    assert (rows["DM-SY-01"].level, rows["DM-SY-01"].measurement.numerator) == ("L2", 2)
+    assert (rows["DS-SY-02"].level, rows["DS-SY-02"].measurement.numerator) == ("L2", 2)
+    assert rows["DS-SY-02"].measurement.targets[0].observed["environment_type"] == "Default"
     path = tmp_path / "report.xlsx"
     write_workbook(data, list(rows.values()), path)
     book = load_workbook(path)
     sheet = book["6. 수집 결과"]
     sheet_rows = {sheet.cell(row, 2).value: row for row in range(5, 90)}
-    for code in ("DM-SE-01", "DS-SE-02", "BI-SE-08"):
+    for code in ("DM-SY-01", "DS-SY-02", "BI-SY-08"):
         assert sheet.cell(sheet_rows[code], 7).value == "수집됨"
         assert sheet.cell(sheet_rows[code], 13).value == 2
     assert len(book["8. 수집 Raw 데이터"].tables) == 18
@@ -154,10 +154,10 @@ def test_failed_read_keeps_null_not_zero_and_does_not_hide_other_success(tmp_pat
     })
     data = ingest(tmp_path, value)
     rows = graded(data)
-    assert rows["BI-SE-08"].level == "L1" and rows["BI-SE-08"].metric_value == 0
-    assert rows["DM-SE-01"].level == "N/A" and rows["DM-SE-01"].metric_value is None
-    assert rows["DM-SE-01"].reason == "feature_unavailable"
-    assert rows["DS-SE-02"].level == "N/A" and rows["DS-SE-02"].reason == "not_found"
+    assert rows["BI-SY-08"].level == "L1" and rows["BI-SY-08"].metric_value == 0
+    assert rows["DM-SY-01"].level == "N/A" and rows["DM-SY-01"].metric_value is None
+    assert rows["DM-SY-01"].reason == "feature_unavailable"
+    assert rows["DS-SY-02"].level == "N/A" and rows["DS-SY-02"].reason == "not_found"
 
 
 def portal_packet() -> dict:
@@ -198,8 +198,8 @@ def test_portal_receipt_grades_actual_assignments_and_explicit_empty_policies(tm
     portal = ingest(tmp_path, portal_packet())
     data.admin_evidence.extend(portal.admin_evidence)
     rows = graded(data)
-    assert (rows["DM-SE-01"].level, rows["DM-SE-01"].metric_value) == ("L5", 1)
-    assert (rows["DS-SE-02"].level, rows["DS-SE-02"].metric_value) == ("L1", 0)
+    assert (rows["DM-SY-01"].level, rows["DM-SY-01"].metric_value) == ("L5", 1)
+    assert (rows["DS-SY-02"].level, rows["DS-SY-02"].metric_value) == ("L1", 0)
     saved = json.loads(Path(portal.admin_evidence[0].evidence_refs[0]).read_text(encoding="utf-8"))
     assert "official_admin_portal_read" in json.dumps(saved)
     assert portal.admin_evidence[0].command != "Get-AdminPowerAppEnvironmentRoleAssignment"
@@ -234,7 +234,7 @@ def test_portal_unqueried_environment_is_not_scored_as_zero(tmp_path: Path) -> N
     value["reads"][0]["object_count"] = 2
     data = ingest(tmp_path, value)
     data.admin_evidence.extend(ingest(tmp_path, portal_packet()).admin_evidence)
-    row = graded(data)["DM-SE-01"]
+    row = graded(data)["DM-SY-01"]
     assert row.level == "N/A" and row.metric_value is None
 
 
@@ -242,14 +242,14 @@ def test_powershell_unqueried_environment_is_not_scored_as_zero(tmp_path: Path) 
     value = power_platform_packet()
     value["reads"][1]["role_counts"].pop("Default-" + TENANT)
     rows = graded(ingest(tmp_path, value))
-    row = rows["DM-SE-01"]
+    row = rows["DM-SY-01"]
     assert row.level == "N/A" and row.metric_value is None and row.reason == "not_found"
     assert row.measurement is not None and not row.measurement.complete
     assert row.measurement.reason == "일부 환경의 역할 할당 조회 범위 미확인"
     assert [target.status for target in row.measurement.targets] == [
         "unknown", "compliant", "compliant",
     ]
-    assert rows["DS-SE-02"].level == "L2" and rows["BI-SE-08"].level == "L2"
+    assert rows["DS-SY-02"].level == "L2" and rows["BI-SY-08"].level == "L2"
 
 
 def test_dataverse_role_counts_cover_environments_the_cmdlet_does_not_return(tmp_path: Path) -> None:
@@ -257,7 +257,7 @@ def test_dataverse_role_counts_cover_environments_the_cmdlet_does_not_return(tmp
     value["reads"][1]["role_counts"].pop("Default-" + TENANT)
     value["reads"][1]["object_count"] = 3
     data = ingest(tmp_path, value)
-    assert graded(data)["DM-SE-01"].level == "N/A"
+    assert graded(data)["DM-SY-01"].level == "N/A"
     extra = packet()
     extra["reads"] = [{
         "source": "powerplatform.dataverse_roles",
@@ -267,7 +267,7 @@ def test_dataverse_role_counts_cover_environments_the_cmdlet_does_not_return(tmp
         "role_counts": {"Default-" + TENANT: 1}, "detail": "counts only",
     }]
     data.admin_evidence.extend(ingest(tmp_path, extra).admin_evidence)
-    row = graded(data)["DM-SE-01"]
+    row = graded(data)["DM-SY-01"]
     assert row.level == "L5" and row.metric_value == 1
 
 
@@ -319,7 +319,7 @@ def test_package_requires_existing_evidence_root(tmp_path: Path) -> None:
 
 def test_package_enriches_portable_embedded_evidence_without_regrading(tmp_path: Path) -> None:
     data = Collection(collected_at=NOW, facts={"evidence_directory": str(tmp_path / "old-evidence")})
-    finding = Finding(se_code="DS-SE-04", level="L5", scope="partial", metric_value=1, rationale="original")
+    finding = Finding(se_code="DS-SY-04", level="L5", scope="partial", metric_value=1, rationale="original")
     workbook = write_reports(data, [finding], tmp_path / "output")
     before = load_result(workbook.parent)
     assert before["collection"]["facts"]["evidence_directory"] == "embedded:evidence"
@@ -360,15 +360,15 @@ def test_package_reassess_grades_defender_protection_from_saved_collection(tmp_p
         "package", "--output-dir", str(workbook.parent), "--tenant-id", TENANT, "--reassess",
     ]) == 0
     after = load_result(workbook.parent)
-    row = next(item for item in after["findings"] if item["se_code"] == "OT-SE-25")
+    row = next(item for item in after["findings"] if item["se_code"] == "OT-SY-25")
     assert row["level"] == "L5" and row["metric_value"] == 1
     assert after["collection"]["assessment_provenance"]["origin"] == "saved_snapshot_reassessment"
     assert after["collection"]["assessment_provenance"]["source_result_data_sha256"]
     sheet = load_workbook(next(workbook.parent.glob("report-*.xlsx")))["6. 수집 결과"]
     rows = {sheet.cell(row, 2).value: row for row in range(5, 90)}
-    assert sheet.cell(rows["OT-SE-25"], 7).value == "수집됨"
-    assert "민감 데이터 검색 활성 1개 구독" in sheet.cell(rows["OT-SE-25"], 10).value
-    assert sheet.cell(rows["OT-SE-25"], 13).value == 5
+    assert sheet.cell(rows["OT-SY-25"], 7).value == "수집됨"
+    assert "민감 데이터 검색 활성 1개 구독" in sheet.cell(rows["OT-SY-25"], 10).value
+    assert sheet.cell(rows["OT-SY-25"], 13).value == 5
 
 
 def token(tenant: str = TENANT, app: bool = False) -> str:

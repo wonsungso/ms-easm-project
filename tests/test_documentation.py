@@ -176,8 +176,8 @@ def test_summary_table_links_resolve_to_checklist_sections_with_images() -> None
     def anchor(heading: str) -> str:
         return re.sub(r"[^\w\- ]", "", heading.lower()).replace(" ", "-")
 
-    anchors = {anchor(h) for h in re.findall(r"^## ([A-Z]{2}-SE-\d+ .+)$", detail, re.M)}
-    links = re.findall(r"^\| \[([A-Z]{2}-SE-[P\d]+)\]\(docs/checklist\.md#([^)]+)\)", readme, re.M)
+    anchors = {anchor(h) for h in re.findall(r"^## ([A-Z]{2}-SY-\d+ .+)$", detail, re.M)}
+    links = re.findall(r"^\| \[([A-Z]{2}-SY-[P\d]+)\]\(docs/checklist\.md#([^)]+)\)", readme, re.M)
     assert len(links) == 26
     assert {target for _, target in links} == anchors
     implemented = re.findall(r"^- \*\*구현:\*\* (?!❌)", detail, re.M)
@@ -185,7 +185,7 @@ def test_summary_table_links_resolve_to_checklist_sections_with_images() -> None
     assert len(re.findall(r"^!\[[^\]]+\]\(portal/imgs/[^)]+\.png\)$", detail, re.M)) == 22
     assert "<img" not in readme and not re.search(r"^\|.*!\[", readme, re.M)
     assert "## Agent 365 등록부 교차 확인" not in detail
-    for code in ("DP-SE-15", "OE-SE-22"):
+    for code in ("DP-SY-15", "OE-SY-22"):
         section = re.search(rf"^## {code} .+?(?=^## |\Z)", detail, re.M | re.S)
         assert section and "- **구현:** ✅ 구현 - 현재 API 기준 완료" in section[0]
 
@@ -195,14 +195,14 @@ def test_summary_lists_all_controls_without_new_item_markers() -> None:
     assert "| 점검 내용 | 수집 방법 | 수집 |" in readme
     methods = [
         line.split("|")[4].strip() for line in readme.splitlines()
-        if re.match(r"^\| \[[A-Z]{2}-SE-\d+\]", line)
+        if re.match(r"^\| \[[A-Z]{2}-SY-\d+\]", line)
     ]
     assert len(methods) == 26 and all("→" in method for method in methods)
     assert "신규 추가" not in readme
-    rows = re.findall(r"^\| \[([A-Z]{2}-SE-\d+)\].+$", readme, re.M)
+    rows = re.findall(r"^\| \[([A-Z]{2}-SY-\d+)\].+$", readme, re.M)
     assert len(rows) == 26
     for line in readme.splitlines():
-        match = re.match(r"^\| \[([A-Z]{2}-SE-\d+)\]", line)
+        match = re.match(r"^\| \[([A-Z]{2}-SY-\d+)\]", line)
         if match:
             fields = [field.strip() for field in line.strip("|").split("|")]
             assert len(fields) == 5 and fields[-1] == "✅"

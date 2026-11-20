@@ -324,11 +324,11 @@ class DeckData:
     def pending_note(self, code: str) -> str:
         metric = self.metrics.get("se." + code)
         reason = metric.reason if metric and metric.reason else ""
-        if code == "BI-SE-10" and reason in ("", "feature_unavailable", "not_found"):
+        if code == "BI-SY-10" and reason in ("", "feature_unavailable", "not_found"):
             state = self.advisory_state()
             if state and state[1]:
                 return f"보안 권고 {state[0]}개 구독 확인, {state[1]}개 구독 반영 대기"
-        if code == "BI-SE-10" and reason not in ("", "feature_unavailable", "not_found"):
+        if code == "BI-SY-10" and reason not in ("", "feature_unavailable", "not_found"):
             return PENDING_BY_REASON.get(reason, "재조회 후 판정")
         if code in PENDING_BY_CODE:
             return PENDING_BY_CODE[code]
@@ -338,7 +338,7 @@ class DeckData:
         """Short plain reason shown after '확인 중' in footnotes."""
         metric = self.metrics.get("se." + code)
         reason = metric.reason if metric and metric.reason else ""
-        if code == "BI-SE-10" and reason in ("", "feature_unavailable", "not_found"):
+        if code == "BI-SY-10" and reason in ("", "feature_unavailable", "not_found"):
             return "Defender 보안 권고 반영 대기"
         return PENDING_REASON_PLAIN.get(reason, "조회 범위 확인")
 
@@ -416,7 +416,7 @@ class DeckData:
         """Entra Agent IDs covered by an explicitly enabled conditional access target."""
         if self.collection is not None:
             for dataset in self.collection.report_evidence:
-                if dataset.code == "OE-SE-30" and dataset.kind == "target_controls" and dataset.complete:
+                if dataset.code == "OE-SY-30" and dataset.kind == "target_controls" and dataset.complete:
                     flags = [record.value for record in dataset.records if isinstance(record.value, bool)]
                     if flags:
                         return sum(flags), len(flags)
@@ -540,7 +540,7 @@ class DeckData:
             else:
                 label, codes = DEFAULT_GROUPS[key]
             if len(set(codes)) != len(codes) or any(code not in self.items for code in codes):
-                raise ValueError("보고서 유형 분류에 알 수 없거나 중복된 SE 코드가 있습니다.")
+                raise ValueError("보고서 유형 분류에 알 수 없거나 중복된 SY 코드가 있습니다.")
             result.append((key, label, codes))
         return result
 

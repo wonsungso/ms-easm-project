@@ -48,7 +48,7 @@ def merge(destination: Collection, source: Collection) -> None:
         raise ValueError("같은 환경의 Copilot 에이전트를 중복 반영할 수 없습니다.")
     codes = [row.code for row in [*destination.report_evidence, *source.report_evidence]]
     if len(set(codes)) != len(codes):
-        raise ValueError("같은 추가 보고서 SE 원천을 중복 반영할 수 없습니다.")
+        raise ValueError("같은 추가 보고서 SY 원천을 중복 반영할 수 없습니다.")
     for field in (
         "agents", "copilot_agents", "deployments", "evaluations", "costs", "security", "secure_scores", "defender_plans",
         "policy_assignments", "budgets", "entra_blueprints", "entra_agent_identities",

@@ -174,7 +174,7 @@ def supplemental_metrics(data: Collection, criteria: dict) -> list[EvidenceMetri
     results: list[EvidenceMetric] = []
     for code, config in definitions.items():
         dataset = by_code.get(code)
-        automatic = code in ("DP-SE-35", "DS-SE-36", "OE-SE-37", "DP-SE-38")
+        automatic = code in ("DP-SY-35", "DS-SY-36", "OE-SY-37", "DP-SY-38")
         ready = bool(dataset and dataset.complete and dataset.population_complete)
         base_reason: Reason = dataset.reason if dataset and dataset.reason else "not_found"
         limitation = (
@@ -183,16 +183,16 @@ def supplemental_metrics(data: Collection, criteria: dict) -> list[EvidenceMetri
         )
         refs = dataset.evidence_refs if dataset else []
         if automatic:
-            collector = "agent365_registry" if code == "DP-SE-38" else "copilot_inventory"
+            collector = "agent365_registry" if code == "DP-SY-38" else "copilot_inventory"
             failures = [item for item in data.issues if item.collector == collector]
             base_reason = failures[0].reason if failures else "not_found"
             ready = (
                 data.facts.get("agent365_registry_complete") is True
-                if code == "DP-SE-38" else data.facts.get("copilot_inventory_complete") is True
+                if code == "DP-SY-38" else data.facts.get("copilot_inventory_complete") is True
             )
             limitation = config["limit"]
             refs = sorted({
-                ref for item in (data.agent365_packages if code == "DP-SE-38" else data.copilot_agents)
+                ref for item in (data.agent365_packages if code == "DP-SY-38" else data.copilot_agents)
                 for ref in item.evidence_refs
             } | {ref for item in failures for ref in item.evidence_refs})
 
@@ -216,16 +216,16 @@ def supplemental_metrics(data: Collection, criteria: dict) -> list[EvidenceMetri
         add("report." + code + ".present", 1 if ready else None)
         if automatic:
             values: list[bool | None]
-            if code == "DP-SE-35":
+            if code == "DP-SY-35":
                 values = [agent.last_published_at is not None for agent in data.copilot_agents]
-            elif code == "DS-SE-36":
+            elif code == "DS-SY-36":
                 accepted = options.get("authenticated_modes", [])
                 known = set(accepted) | {"None"}
                 values = [
                     agent.authentication in accepted if agent.authentication in known else None
                     for agent in data.copilot_agents
                 ]
-            elif code == "OE-SE-37":
+            elif code == "OE-SY-37":
                 values = [agent.owner_present for agent in data.copilot_agents]
             else:
                 values = [] if any(package.request_type not in (
@@ -303,7 +303,7 @@ def supplemental_metrics(data: Collection, criteria: dict) -> list[EvidenceMetri
             add("evaluation.evaluated", matched if known else None)
             add("evaluation.missing", len(values) - matched if known else None)
         elif isinstance(dataset, BooleanControlEvidence):
-            key = "identity.conditional_access" if code == "OE-SE-30" else "identity.departed"
+            key = "identity.conditional_access" if code == "OE-SY-30" else "identity.departed"
             ratio(key, [record.value for record in dataset.records])
             add(key + ".count", sum(record.value is True for record in dataset.records)
                 if dataset.records and all(record.value is not None for record in dataset.records) else None)

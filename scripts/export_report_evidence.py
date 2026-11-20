@@ -108,7 +108,7 @@ def export_conditional_access(
         schema_version=1, source_type="approved_report_evidence", approved=True, tenant_id=tenant,
         tenant_verified=delegated.verified, data_mode="live", exported_at=instant,
         datasets=[BooleanControlEvidence(
-            kind="target_controls", code="OE-SE-30", source_kind="official_admin_read",
+            kind="target_controls", code="OE-SY-30", source_kind="official_admin_read",
             source_ref="graph-beta-agent-conditional-access",
             scope="조회 가능한 Entra Agent ID 서비스 주체의 명시적 enabled 정책 대상 구성",
             observed_at=instant, complete=reason is None, population_complete=reason is None,

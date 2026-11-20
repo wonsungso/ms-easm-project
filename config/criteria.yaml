@@ -16,59 +16,59 @@ report_options:
     evaluation.predeploy: 0.8
     identity.conditional_access: 0.9
     security.exposure: 0.9
-# 보고서 전용 추가 SE입니다. 아래 값은 기존 26개 API 등급·인터뷰 보정에 합산하지 않습니다.
+# 보고서 전용 추가 SY입니다. 아래 값은 기존 26개 API 등급·인터뷰 보정에 합산하지 않습니다.
 report_items:
-  DM-SE-27:
+  DM-SY-27:
     title: 생성·승인 요청의 시간·ID 대사
     metric: approval.match
     limit: 별도 승인 워크플로의 전체 생성 코호트. 패키지 게시 승인·배포 --apply와 다름
-  DP-SE-28:
+  DP-SY-28:
     title: 독립 등록부와 관측 Agent ID 대사
     metric: registry.match
     limit: 승인된 조직 등록부와 명시적 ID 대조. 서비스 카탈로그 자체를 독립 등록부로 간주하지 않음
-  BI-SE-29:
+  BI-SY-29:
     title: 동일 버전의 배포 전 완료 평가 기록
     metric: evaluation.predeploy
     limit: 실제 완료 시각·배포 시각·버전 연결 필요. 프로젝트 평가 존재·생성 시각으로 대체하지 않음
-  OE-SE-30:
+  OE-SY-30:
     title: 조건부 접근의 명시적 Agent ID 대상 구성
     metric: identity.conditional_access
     limit: enabled 정책의 명시적 대상 구성만 확인. 미확인 All·속성 필터는 보류하며 실제 토큰 집행을 증명하지 않음
-  OE-SE-31:
+  OE-SY-31:
     title: 사용자 지정 감사 보존 정책 구성
     metric: audit.retention
     unit: months
     limit: 사용자 지정 정책의 최소 기간 구성. 기본·최종 유효 보존기간이나 실제 보존·수집을 뜻하지 않음
-  OT-SE-32:
+  OT-SY-32:
     title: Agent별 90일 전체 관측과 미사용 현황
     metric: usage.inactive90
     limit: 전체 관측 구간·호출 수가 확인된 Agent 단위 이력만 사용. 호스트·사용자 활동을 대신 사용하지 않음
-  OT-SE-33:
+  OT-SY-33:
     title: 고위험 민감 데이터 노출의 명시적 조치 상태
     metric: security.exposure
     limit: 승인된 실제 발견·조치 내보내기. 경보 닫힘·Defender 플랜 구성을 조치 완료로 추론하지 않음
-  OT-SE-34:
+  OT-SY-34:
     title: 월별 실제 비용·귀속 금액 기록
     metric: cost.history
     unit: series
     limit: 동일 통화·기간·범위의 청구 기록. 미관측 월·귀속 금액은 null. 환급·음수 순비용은 별도 검토
-  DP-SE-35:
+  DP-SY-35:
     title: Copilot 인벤토리 게시 시각 보유
     metric: copilot.published
     limit: API가 반환한 게시 시각 보유 비율. 배포 승인·현재 채널 응답·업무 품질을 뜻하지 않음
-  DS-SE-36:
+  DS-SY-36:
     title: Copilot 인벤토리 인증 방식 구성
     metric: copilot.authentication
     limit: 명시적 인증 방식 구성. 실제 로그인·토큰 검증·권한 적정성은 별도 확인
-  OE-SE-37:
+  OE-SY-37:
     title: Copilot 인벤토리 소유자 존재
     metric: copilot.owner_presence
     limit: ownerId 존재 관측만 확인. 재직·스폰서 지정·업무 책임 승인은 추론하지 않음
-  DP-SE-38:
+  DP-SY-38:
     title: 카탈로그 패키지의 게시 요청 승인 상태
     metric: catalog.publish_request_approval
     limit: 반환된 requestType=publish 요청의 상태. Agent 생성 업무 승인이나 전체 승인 이력이 아님
-  OE-SE-39:
+  OE-SY-39:
     title: 별도 인사 원천과 Agent 소유자 퇴사 대사
     metric: identity.departed
     limit: 승인된 인사 대사 원천 필요. 계정 비활성·로그인 없음으로 퇴사를 추론하지 않음
@@ -76,19 +76,19 @@ report_items:
 report_groups:
   T1:
     label: 설정·정책
-    codes: [DM-SE-01, DS-SE-02, DS-SE-04, DS-SE-05, DS-SE-06, DS-SE-07, BI-SE-08, BI-SE-11, BI-SE-12, BI-SE-14, OE-SE-19]
+    codes: [DM-SY-01, DS-SY-02, DS-SY-04, DS-SY-05, DS-SY-06, DS-SY-07, BI-SY-08, BI-SY-11, BI-SY-12, BI-SY-14, OE-SY-19]
   T2:
     label: 자산 메타데이터
-    codes: [BI-SE-13]
+    codes: [BI-SY-13]
   T3:
     label: 신원·권한
-    codes: [DS-SE-03, DP-SE-15, OE-SE-16, OE-SE-17]
+    codes: [DS-SY-03, DP-SY-15, OE-SY-16, OE-SY-17]
   T4:
     label: 품질·보안
-    codes: [BI-SE-09, BI-SE-10, OT-SE-25]
+    codes: [BI-SY-09, BI-SY-10, OT-SY-25]
   T5:
     label: 관측·비용
-    codes: [OE-SE-18, OE-SE-20, OE-SE-21, OE-SE-22, OT-SE-23, OT-SE-24, OT-SE-26]
+    codes: [OE-SY-18, OE-SY-20, OE-SY-21, OE-SY-22, OT-SY-23, OT-SY-24, OT-SY-26]
 workspace_retention_target_days: 90
 version_upgrade_options:
 - NoAutoUpgrade
@@ -100,7 +100,7 @@ overprivileged_permission_patterns:
 - '*FullControl*'
 model_policy_definition_ids: []
 items:
-  DM-SE-01:
+  DM-SY-01:
     title: Power Platform 환경의 역할 할당 현황
     scope: partial
     metric: environment_role_ratio
@@ -142,7 +142,7 @@ items:
       when:
         coverage:
           eq: 0
-  DS-SE-02:
+  DS-SY-02:
     title: 데이터 정책(DLP) 적용 환경
     scope: partial
     metric: data_policy_environment_ratio
@@ -161,7 +161,7 @@ items:
       L4: 데이터 정책이 적용되는 환경 비율 90% 이상~100% 미만
       L5: 데이터 정책이 적용되는 환경 비율 100%
     rules: *coverage_rules
-  DS-SE-03:
+  DS-SY-03:
     title: Agent ID의 Blueprint 연결
     scope: in_scope
     metric: blueprint_link_ratio
@@ -207,7 +207,7 @@ items:
         coverage:
           eq: 0
     requires: entra
-  DS-SE-04:
+  DS-SY-04:
     title: 모델 배포 버전·업데이트 구성
     scope: partial
     metric: deployment_configuration_ratio
@@ -249,7 +249,7 @@ items:
       when:
         coverage:
           eq: 0
-  DS-SE-05:
+  DS-SY-05:
     title: AI 리소스 인바운드 경계 구성
     scope: partial
     metric: network_boundary_ratio
@@ -257,7 +257,7 @@ items:
     evidence: AI 계정 publicNetworkAccess 및 Approved privateEndpointConnections, 호스트 접근 제한 기본 거부 또는 비공개 ingress
     limit: 송신 경계·실제 연결 차단 효과를 뜻하지 않음
     collectors:
-    - proposal_DS-SE-05
+    - proposal_DS-SY-05
     complete_flags: []
     complete_subscriptions:
     - proposal_network_complete
@@ -291,7 +291,7 @@ items:
       when:
         coverage:
           eq: 0
-  DS-SE-06:
+  DS-SY-06:
     title: MCP 도구 필수 승인 모드
     scope: partial
     metric: mcp_approval_ratio
@@ -334,7 +334,7 @@ items:
         coverage:
           eq: 0
     agent_denominator: true
-  DS-SE-07:
+  DS-SY-07:
     title: 외부 도구 HTTPS 연결 구성
     scope: partial
     metric: https_endpoint_ratio
@@ -377,7 +377,7 @@ items:
         coverage:
           eq: 0
     agent_denominator: true
-  BI-SE-08:
+  BI-SY-08:
     title: 관리형 환경 적용
     scope: partial
     metric: managed_environment_ratio
@@ -396,7 +396,7 @@ items:
       L4: 관리형 환경 비율 90% 이상~100% 미만
       L5: 관리형 환경 비율 100%
     rules: *coverage_rules
-  BI-SE-09:
+  BI-SY-09:
     title: Foundry 프로젝트 평가 실행 이력
     scope: partial
     metric: evaluation_project_ratio
@@ -438,7 +438,7 @@ items:
       when:
         coverage:
           eq: 0
-  BI-SE-10:
+  BI-SY-10:
     title: AI 리소스 보안 권고 상태
     scope: partial
     metric: healthy_recommendation_ratio
@@ -480,7 +480,7 @@ items:
       when:
         coverage:
           eq: 0
-  BI-SE-11:
+  BI-SY-11:
     title: 콘텐츠 필터 정책 연결
     scope: partial
     metric: filter_connection_ratio
@@ -488,7 +488,7 @@ items:
     evidence: deployments.raiPolicyName과 accounts/raiPolicies의 name·contentFilters.enabled 대조
     limit: 필터 실제 차단 효과·강도 승인을 뜻하지 않음
     collectors:
-    - proposal_BI-SE-11
+    - proposal_BI-SY-11
     - model_deployments
     complete_flags:
     - deployment_inventory_complete
@@ -524,7 +524,7 @@ items:
       when:
         coverage:
           eq: 0
-  BI-SE-12:
+  BI-SY-12:
     title: Agent 버전·호스트 런타임 식별
     scope: partial
     metric: runtime_version_ratio
@@ -532,7 +532,7 @@ items:
     evidence: Agent version, sites/config/web linuxFxVersion, Container Apps containers.image의 sha256 다이제스트
     limit: 소스·빌드 출처·운영 배포 승인·롤백 기록을 뜻하지 않음
     collectors:
-    - proposal_DS-SE-05
+    - proposal_DS-SY-05
     - foundry_agents
     complete_flags: []
     complete_subscriptions:
@@ -568,7 +568,7 @@ items:
         coverage:
           eq: 0
     agent_denominator: true
-  BI-SE-13:
+  BI-SY-13:
     title: Agent 책임·환경·비용 메타데이터
     scope: partial
     metric: asset_metadata_ratio
@@ -611,7 +611,7 @@ items:
         coverage:
           eq: 0
     agent_denominator: true
-  BI-SE-14:
+  BI-SY-14:
     title: AI 리소스 정책 평가 준수
     scope: partial
     metric: policy_compliance_ratio
@@ -619,7 +619,7 @@ items:
     evidence: PolicyResources policyStates의 resourceId·complianceState. 리소스별 모든 평가를 대조
     limit: Exempt·Unknown·평가 없음은 Compliant로 간주하지 않음
     collectors:
-    - proposal_BI-SE-14
+    - proposal_BI-SY-14
     complete_flags: []
     complete_subscriptions:
     - proposal_policy_subscriptions
@@ -653,7 +653,7 @@ items:
       when:
         coverage:
           eq: 0
-  DP-SE-15:
+  DP-SY-15:
     title: Azure Agent의 Entra Blueprint 귀속
     scope: partial
     metric: agent_identity_link_ratio
@@ -699,7 +699,7 @@ items:
         coverage:
           eq: 0
     agent_denominator: true
-  OE-SE-16:
+  OE-SY-16:
     title: Agent ID 소유자·스폰서 연결
     scope: in_scope
     metric: ownership_ratio
@@ -742,7 +742,7 @@ items:
         coverage:
           eq: 0
     requires: entra
-  OE-SE-17:
+  OE-SY-17:
     title: Agent ID 앱 역할 읽기 범위
     scope: in_scope
     metric: nonprivileged_role_ratio
@@ -785,7 +785,7 @@ items:
         coverage:
           eq: 0
     requires: entra
-  OE-SE-18:
+  OE-SY-18:
     title: Agent 리소스 실행 로그 연결
     scope: partial
     metric: diagnostic_connection_ratio
@@ -827,7 +827,7 @@ items:
       when:
         coverage:
           eq: 0
-  OE-SE-19:
+  OE-SY-19:
     title: 관리 ID·키 인증·직접 ARM 역할 구성
     scope: partial
     metric: identity_configuration_ratio
@@ -835,7 +835,7 @@ items:
     evidence: identity.principalId·type, 동일 구독 roleAssignments, disableLocalAuth
     limit: 타 구독·상속·데이터 평면 역할이나 실제 인증 사용은 포함하지 않음
     collectors:
-    - proposal_OE-SE-19
+    - proposal_OE-SY-19
     complete_flags: []
     complete_subscriptions:
     - proposal_identity_complete
@@ -869,7 +869,7 @@ items:
       when:
         coverage:
           eq: 0
-  OE-SE-20:
+  OE-SY-20:
     title: AI 리소스 활성 경보 범위
     scope: partial
     metric: alert_target_ratio
@@ -877,7 +877,7 @@ items:
     evidence: metricAlerts·scheduledQueryRules·activityLogAlerts의 enabled와 scopes를 실제 AI 리소스 ID에 대조
     limit: 경보 발생·SLO 충족·trace 유입을 뜻하지 않음
     collectors:
-    - proposal_OE-SE-20
+    - proposal_OE-SY-20
     complete_flags: []
     complete_subscriptions:
     - proposal_monitoring_complete
@@ -911,7 +911,7 @@ items:
       when:
         coverage:
           eq: 0
-  OE-SE-21:
+  OE-SY-21:
     title: AI 경보의 작업 그룹·수신자 연결
     scope: partial
     metric: action_group_ratio
@@ -919,7 +919,7 @@ items:
     evidence: 경보 actionGroupId·actionGroups와 email·SMS·webhook·armRole·Function·LogicApp·ITSM receivers
     limit: 실제 전달 성공·온콜 대응 시간·복구 시험을 뜻하지 않음
     collectors:
-    - proposal_OE-SE-20
+    - proposal_OE-SY-20
     complete_flags: []
     complete_subscriptions:
     - proposal_monitoring_complete
@@ -953,7 +953,7 @@ items:
       when:
         coverage:
           eq: 0
-  OE-SE-22:
+  OE-SY-22:
     title: 리소스 지역·workspace 보존 구성
     scope: partial
     metric: location_retention_ratio
@@ -995,7 +995,7 @@ items:
       when:
         coverage:
           eq: 0
-  OT-SE-23:
+  OT-SY-23:
     title: AI 리소스 사용량 관측 범위
     scope: partial
     metric: metric_observation_ratio
@@ -1037,7 +1037,7 @@ items:
       when:
         coverage:
           eq: 0
-  OT-SE-24:
+  OT-SY-24:
     title: AI 비용의 단일 Agent 귀속
     scope: partial
     metric: cost_attribution_ratio
@@ -1080,7 +1080,7 @@ items:
         coverage:
           eq: 0
     agent_denominator: true
-  OT-SE-25:
+  OT-SY-25:
     title: AI 민감 데이터 노출 점검 구성
     scope: partial
     metric: sensitive_data_protection_ratio
@@ -1123,7 +1123,7 @@ items:
       when:
         coverage:
           eq: 0
-  OT-SE-26:
+  OT-SY-26:
     title: 구독 예산·실제·예측 경보 구성
     scope: partial
     metric: budget_configuration_ratio

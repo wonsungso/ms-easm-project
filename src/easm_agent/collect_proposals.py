@@ -64,7 +64,7 @@ def truthy(value: Any) -> bool | None:
 
 
 class ProposalCollector:
-    """Azure 운영 추가 제안(OE-SE-19, DS-SE-05, BI-SE-11, OE-SE-20, OE-SE-21, BI-SE-14)에 쓰는 읽기 전용 구성 사실을 수집한다."""
+    """Azure 운영 추가 제안(OE-SY-19, DS-SY-05, BI-SY-11, OE-SY-20, OE-SY-21, BI-SY-14)에 쓰는 읽기 전용 구성 사실을 수집한다."""
 
     required_roles = ("Reader",)
 
@@ -110,15 +110,15 @@ class ProposalCollector:
         result = Collection(collected_at=self.now)
         for sid in subscriptions:
             for name, step in (
-                ("OE-SE-19", self.identity), ("DS-SE-05", self.network), ("BI-SE-11", self.safety),
-                ("OE-SE-20", self.monitoring), ("BI-SE-14", self.policy),
+                ("OE-SY-19", self.identity), ("DS-SY-05", self.network), ("BI-SY-11", self.safety),
+                ("OE-SY-20", self.monitoring), ("BI-SY-14", self.policy),
             ):
                 try:
                     step(sid, result)
                     result.facts.setdefault({
-                        "OE-SE-19": "proposal_identity_complete", "DS-SE-05": "proposal_network_complete",
-                        "BI-SE-11": "proposal_safety_complete", "OE-SE-20": "proposal_monitoring_complete",
-                        "BI-SE-14": "proposal_policy_subscriptions",
+                        "OE-SY-19": "proposal_identity_complete", "DS-SY-05": "proposal_network_complete",
+                        "BI-SY-11": "proposal_safety_complete", "OE-SY-20": "proposal_monitoring_complete",
+                        "BI-SY-14": "proposal_policy_subscriptions",
                     }[name], []).append(sid)
                 except AccessError as exc:
                     result.issues.append(issue(self.http, "proposal_" + name, sid, exc, self.required_roles))
@@ -175,7 +175,7 @@ class ProposalCollector:
                 if str(item.get("roleDefinitionId", "")).rsplit("/", 1)[-1].lower() in PRIVILEGED_ROLES
             ]
             result.proposal_observations.append(ProposalObservation(
-                code="OE-SE-19", subscription_id=sid, subject=row["id"],
+                code="OE-SY-19", subscription_id=sid, subject=row["id"],
                 kind="ai_account" if row in accounts else "agent_host",
                 values={
                     "identity_type": row.get("identityType") or "None",
@@ -194,7 +194,7 @@ class ProposalCollector:
         refs = list(self.cache_refs.get(sid, []))
         for row in accounts:
             result.proposal_observations.append(ProposalObservation(
-                code="DS-SE-05", subscription_id=sid, subject=row["id"], kind="ai_account",
+                code="DS-SY-05", subscription_id=sid, subject=row["id"], kind="ai_account",
                 values={
                     "public_network_access": row.get("publicNetworkAccess") or None,
                     "default_action": row.get("defaultAction") or None,
@@ -233,7 +233,7 @@ class ProposalCollector:
                 default_deny = default_action == "Deny" if default_action in ("Allow", "Deny") else bool(rules)
                 ip_boundary = default_deny and not allow_all
             result.proposal_observations.append(ProposalObservation(
-                code="DS-SE-05", subscription_id=sid, subject=row["id"], kind="agent_host",
+                code="DS-SY-05", subscription_id=sid, subject=row["id"], kind="agent_host",
                 values={
                     "public_network_access": row.get("publicNetworkAccess") or None,
                     "https_only": truthy(row.get("httpsOnly")),
@@ -248,14 +248,14 @@ class ProposalCollector:
             if row["type"].lower() == "microsoft.web/sites":
                 runtime = str((config.get("properties") or {}).get("linuxFxVersion") or "")
                 result.proposal_observations.append(ProposalObservation(
-                    code="BI-SE-12", subscription_id=sid, subject=row["id"], kind="agent_host",
+                    code="BI-SY-12", subscription_id=sid, subject=row["id"], kind="agent_host",
                     values={"runtime": runtime or None, "image": None},
                     evidence_refs=self.refs(),
                 ))
             else:
                 image = row.get("image") or ""
                 result.proposal_observations.append(ProposalObservation(
-                    code="BI-SE-12", subscription_id=sid, subject=row["id"], kind="agent_host",
+                    code="BI-SY-12", subscription_id=sid, subject=row["id"], kind="agent_host",
                     values={"runtime": None, "image": image or None, "pinned_by_digest": "@sha256:" in image},
                     evidence_refs=refs,
                 ))
@@ -284,7 +284,7 @@ class ProposalCollector:
                 if isinstance(entry, dict) and entry.get("enabled") is not False
             ]
             result.proposal_observations.append(ProposalObservation(
-                code="BI-SE-11", subscription_id=sid, subject=row["id"], kind="ai_account",
+                code="BI-SY-11", subscription_id=sid, subject=row["id"], kind="ai_account",
                 values={
                     "policies": len(policies), "custom_policies": len(custom),
                     "custom_enabled_filters": len(filters),
@@ -367,7 +367,7 @@ class ProposalCollector:
                     True if True in resolved else None if None in resolved else False
                 )
             result.proposal_observations.append(ProposalObservation(
-                code="OE-SE-20", subscription_id=sid, subject=row["id"], kind=kind, values=values,
+                code="OE-SY-20", subscription_id=sid, subject=row["id"], kind=kind, values=values,
                 evidence_refs=refs,
             ))
 
@@ -396,13 +396,13 @@ class ProposalCollector:
                 "Compliant" if states == {"Compliant"} else "Unknown"
             )
             result.proposal_observations.append(ProposalObservation(
-                code="BI-SE-14", subscription_id=sid, subject=rid, kind="policy_resource",
+                code="BI-SY-14", subscription_id=sid, subject=rid, kind="policy_resource",
                 values={"state": state, "evaluation_states": sorted(states)}, evidence_refs=refs,
             ))
         for state in sorted({str(row.get("state") or "Unknown") for row in rows}):
             matched = [row for row in rows if str(row.get("state") or "Unknown") == state]
             result.proposal_observations.append(ProposalObservation(
-                code="BI-SE-14", subscription_id=sid, subject=f"/subscriptions/{sid}", kind="policy_state",
+                code="BI-SY-14", subscription_id=sid, subject=f"/subscriptions/{sid}", kind="policy_state",
                 values={
                     "state": state, "resources": len({row.get("resourceId", "").lower() for row in matched}),
                     "definitions": len({row.get("definition") for row in matched}),

@@ -86,7 +86,7 @@ def item(code: str, score: int | None) -> Item:
 def area_items(prefix: str, interview: int | None, system: int | None) -> list[Item]:
     return [item(f"{prefix}-PR-01", interview), item(f"{prefix}-PE-02", interview),
             item(f"{prefix}-DA-03", interview), item(f"{prefix}-TE-04", interview),
-            item(f"{prefix}-SE-05", system)]
+            item(f"{prefix}-SY-05", system)]
 
 
 def deck_text(path: Path) -> str:
@@ -164,9 +164,9 @@ def synthetic(
 
 
 FULL = {code: (3, 3) for code in CODES}
-FULL.update({"DS-SE-02": (0, 2), "BI-SE-08": (0, 2), "DS-SE-05": (0, 3), "BI-SE-14": (2, 4),
-             "OE-SE-18": (2, 3), "DP-SE-15": (8, 10)})
-PARTIAL = {**FULL, "DM-SE-01": None, "BI-SE-10": None, "OT-SE-24": None, "OT-SE-25": None}
+FULL.update({"DS-SY-02": (0, 2), "BI-SY-08": (0, 2), "DS-SY-05": (0, 3), "BI-SY-14": (2, 4),
+             "OE-SY-18": (2, 3), "DP-SY-15": (8, 10)})
+PARTIAL = {**FULL, "DM-SY-01": None, "BI-SY-10": None, "OT-SY-24": None, "OT-SY-25": None}
 HEALTHY = {code: (3, 3) for code in CODES}
 
 
@@ -236,13 +236,13 @@ def test_scores_follow_sheet5_rules_for_correction_and_provisional_values() -> N
 
 
 def test_unavailable_scores_are_not_zero() -> None:
-    areas, overall, status = compute_scores([item("DM-PR-01", None), item("DM-SE-01", None)])
+    areas, overall, status = compute_scores([item("DM-PR-01", None), item("DM-SY-01", None)])
     assert overall is None and status == "판정 보류"
     assert all(area.final is None for area in areas.values())
 
 
 def test_overall_weights_valid_areas_equally_not_individual_system_items() -> None:
-    items = [item("DM-SE-01", 1), *[item(f"DS-SE-{number:02}", 5) for number in range(2, 6)]]
+    items = [item("DM-SY-01", 1), *[item(f"DS-SY-{number:02}", 5) for number in range(2, 6)]]
     areas, overall, _status = compute_scores(items)
     assert areas["DM"].final == 1 and areas["DS"].final == 5
     assert overall == 3.0
@@ -256,7 +256,7 @@ def test_lower_interview_final_is_a_separate_branch_not_a_changed_api_average(
     system_scores: list[int], system_average: float,
 ) -> None:
     items = [item(f"DS-{kind}-01", 2) for kind in ("PR", "PE", "DA", "TE")]
-    items += [item(f"DS-SE-{index:02}", score) for index, score in enumerate(system_scores, 2)]
+    items += [item(f"DS-SY-{index:02}", score) for index, score in enumerate(system_scores, 2)]
     areas, overall, _ = compute_scores(items)
     assert areas["DS"].system == system_average
     assert areas["DS"].interview == areas["DS"].final == overall == 2.0
@@ -322,15 +322,15 @@ def test_story_never_exposes_collection_codes_or_dashes_and_adapts_to_pending_it
 
 
 def test_pending_items_use_plain_notes_and_become_values_when_measured() -> None:
-    partial, measured = synthetic(PARTIAL), synthetic({**PARTIAL, "OT-SE-24": (4, 5)})
-    assert partial.fact("OT-SE-24") == "에이전트별 비용 구분 확인 중"
-    assert partial.pending_note("OT-SE-24") == "청구 반영 후 판정"
-    assert measured.fact("OT-SE-24") == "비용 구분 5건 중 4건"
+    partial, measured = synthetic(PARTIAL), synthetic({**PARTIAL, "OT-SY-24": (4, 5)})
+    assert partial.fact("OT-SY-24") == "에이전트별 비용 구분 확인 중"
+    assert partial.pending_note("OT-SY-24") == "청구 반영 후 판정"
+    assert measured.fact("OT-SY-24") == "비용 구분 5건 중 4건"
     assert story.ops_rows(partial)[3][1:] == ["청구 반영 후 판정", "기준 충족 80% 이상", "확인 중"]
     assert story.ops_rows(measured)[3][1].startswith("비용 구분 5건 중 4건")
     assert story.ops_rows(measured)[3][3] == "L3"
-    assert story.ops_bar(partial, "OT-SE-24")[1:] == ("확인 중", "청구 반영 후", None)
-    assert story.ops_bar(measured, "OT-SE-24")[1] == "80%"
+    assert story.ops_bar(partial, "OT-SY-24")[1:] == ("확인 중", "청구 반영 후", None)
+    assert story.ops_bar(measured, "OT-SY-24")[1] == "80%"
     assert story.matrix_rows(partial)[1][1:3] == ["-", "확인 중"]
     assert "확인 중 4개" in story.matrix_footer(partial) and "확인 중" not in story.matrix_footer(synthetic(FULL))
     assert any(row["measured"] is False for row in partial.tasks()) and all(
@@ -338,7 +338,7 @@ def test_pending_items_use_plain_notes_and_become_values_when_measured() -> None
 
 
 def test_roadmap_phases_follow_the_weakest_item_of_each_theme() -> None:
-    data = synthetic({**HEALTHY, "DS-SE-02": (0, 2), "BI-SE-14": (2, 4), "DP-SE-15": (8, 10), "OT-SE-24": None})
+    data = synthetic({**HEALTHY, "DS-SY-02": (0, 2), "BI-SY-14": (2, 4), "DP-SY-15": (8, 10), "OT-SY-24": None})
     phases = {row["short"]: row["phase"] for row in data.tasks()}
     assert phases == {
         "데이터 유출 방지 규칙 적용": 1, "비용 구분 체계 수립": 1, "규칙 위반 자원 정리": 2,
@@ -353,7 +353,7 @@ def test_roadmap_phases_follow_the_weakest_item_of_each_theme() -> None:
     assert len(story.plan_rows(many)) - 1 <= 8
 
 
-@pytest.mark.parametrize("measures", [FULL, PARTIAL, HEALTHY, {**FULL, "OT-SE-24": (399, 400)}])
+@pytest.mark.parametrize("measures", [FULL, PARTIAL, HEALTHY, {**FULL, "OT-SY-24": (399, 400)}])
 def test_roadmap_never_lists_an_item_whose_current_value_already_exceeds_the_target(
     measures: dict[str, tuple[int, int] | None],
 ) -> None:
@@ -463,8 +463,8 @@ def test_slides_hide_unknown_values_and_keep_readable_font_sizes(measures: dict)
         assert any(cell.startswith(code) for cell in cells)
     ops = {s.shape_id: s for s in presentation.slides[9].shapes}
     hidden = ops[38673]._element.find(".//{*}spPr/{*}noFill") is not None
-    assert hidden == ("OT-SE-24" in pending)
-    assert ops[38818].text_frame.text == ("확인 중" if "OT-SE-24" in pending else "100%")
+    assert hidden == ("OT-SY-24" in pending)
+    assert ops[38818].text_frame.text == ("확인 중" if "OT-SY-24" in pending else "100%")
 
 
 def test_creation_chart_uses_catalog_months_and_template_bar_geometry() -> None:
@@ -482,7 +482,7 @@ def test_creation_chart_uses_catalog_months_and_template_bar_geometry() -> None:
 
 def test_identity_bars_follow_measured_ratio_and_leave_no_orphan_sample_bar() -> None:
     template = {s.shape_id for s in Presentation(presentation_template_path()).slides[7].shapes}
-    presentation = build_all(synthetic({**FULL, "OE-SE-19": (0, 3), "OE-SE-17": None}))
+    presentation = build_all(synthetic({**FULL, "OE-SY-19": (0, 3), "OE-SY-17": None}))
     slide = presentation.slides[7]
     shapes = {s.shape_id: s for s in slide.shapes}
     assert shapes[32796].text_frame.text == "80%" and shapes[34623].text_frame.text == "확인 중"
@@ -495,12 +495,12 @@ def test_identity_bars_follow_measured_ratio_and_leave_no_orphan_sample_bar() ->
 
 
 def test_security_cards_pick_the_weakest_measured_controls_and_pending_when_short() -> None:
-    assert story.security_cards(synthetic(FULL)) == ["BI-SE-09", "DS-SE-05", "BI-SE-14"]
-    assert story.security_cards(synthetic(PARTIAL)) == ["BI-SE-09", "DS-SE-05", "BI-SE-14"]
-    short = synthetic({**HEALTHY, "BI-SE-14": None, "DS-SE-05": None, "BI-SE-10": None, "OT-SE-25": None,
-                       "BI-SE-11": None})
+    assert story.security_cards(synthetic(FULL)) == ["BI-SY-09", "DS-SY-05", "BI-SY-14"]
+    assert story.security_cards(synthetic(PARTIAL)) == ["BI-SY-09", "DS-SY-05", "BI-SY-14"]
+    short = synthetic({**HEALTHY, "BI-SY-14": None, "DS-SY-05": None, "BI-SY-10": None, "OT-SY-25": None,
+                       "BI-SY-11": None})
     cards = story.security_cards(short)
-    assert cards[0] == "BI-SE-09" and all(short.score(code) is None for code in cards[1:])
+    assert cards[0] == "BI-SY-09" and all(short.score(code) is None for code in cards[1:])
     assert story.card_texts(short, cards[1])["value"] == "확인 중"
 
 
@@ -515,23 +515,23 @@ def amount_deck() -> DeckData:
     """Cost attribution measured in USD (not counts) with a single billed month, as in a fresh lab run."""
     months = ("202606", "202607", "202608", "202609", "202610", "202611")
     extra = {
-        "se.OT-SE-24": metric("se.OT-SE-24", 0.9984727683561392, "ratio"),
-        "se.OT-SE-24.numerator": metric("se.OT-SE-24.numerator", 0.39734181799999996, "USD"),
-        "se.OT-SE-24.denominator": metric("se.OT-SE-24.denominator", 0.39794957919, "USD"),
+        "se.OT-SY-24": metric("se.OT-SY-24", 0.9984727683561392, "ratio"),
+        "se.OT-SY-24.numerator": metric("se.OT-SY-24.numerator", 0.39734181799999996, "USD"),
+        "se.OT-SY-24.denominator": metric("se.OT-SY-24.denominator", 0.39794957919, "USD"),
         "cost.history": metric("cost.history", ",".join(months), "series"),
         "cost.currency": metric("cost.currency", "USD", "currency"),
     }
     for month in months[:-1]:
         extra[f"cost.month.{month}.total"] = metric(f"cost.month.{month}.total", None, "USD")
     extra["cost.month.202611.total"] = metric("cost.month.202611.total", 0.39794957919, "USD")
-    return synthetic({**FULL, "OT-SE-24": (399, 400)}, collection=catalog_collection(), extra=extra)
+    return synthetic({**FULL, "OT-SY-24": (399, 400)}, collection=catalog_collection(), extra=extra)
 
 
 def test_amount_measurements_are_shown_as_currency_everywhere_never_as_raw_counts() -> None:
     data = amount_deck()
-    assert data.currency("OT-SE-24") == "USD" and data.currency("DS-SE-02") is None
-    assert data.fraction("OT-SE-24") == "$0.40/$0.40" and data.percent("OT-SE-24") == "99.8%"
-    assert data.fact("OT-SE-24") == "비용 청구 $0.40 중 $0.40 직접 귀속"
+    assert data.currency("OT-SY-24") == "USD" and data.currency("DS-SY-02") is None
+    assert data.fraction("OT-SY-24") == "$0.40/$0.40" and data.percent("OT-SY-24") == "99.8%"
+    assert data.fact("OT-SY-24") == "비용 청구 $0.40 중 $0.40 직접 귀속"
     assert story.ops_rows(data)[3][1] == "비용 청구 $0.40 중 $0.40 직접 귀속(99.8%)"
     assert any("$0.40/$0.40 (99.8%)" in row for row in story.matrix_rows(data))
     assert "$0.40" in story.insights(data)[0] and "건" not in story.insights(data)[0]
@@ -552,10 +552,10 @@ def test_amount_measurements_are_shown_as_currency_everywhere_never_as_raw_count
 
 def test_large_and_won_amounts_keep_readable_units_and_small_amount_note_disappears() -> None:
     data = amount_deck()
-    data.metrics["se.OT-SE-24.numerator"] = metric("se.OT-SE-24.numerator", 90000.0, "KRW")
-    data.metrics["se.OT-SE-24.denominator"] = metric("se.OT-SE-24.denominator", 100000.0, "KRW")
-    assert data.fraction("OT-SE-24") == "90,000원/100,000원" and not story.cost_note(data)
-    assert "원" in data.fact("OT-SE-24") and not re.search(r"\d\.\d{3,}", data.fact("OT-SE-24", short=False))
+    data.metrics["se.OT-SY-24.numerator"] = metric("se.OT-SY-24.numerator", 90000.0, "KRW")
+    data.metrics["se.OT-SY-24.denominator"] = metric("se.OT-SY-24.denominator", 100000.0, "KRW")
+    assert data.fraction("OT-SY-24") == "90,000원/100,000원" and not story.cost_note(data)
+    assert "원" in data.fact("OT-SY-24") and not re.search(r"\d\.\d{3,}", data.fact("OT-SY-24", short=False))
 
 
 MISLEADING = re.compile(
@@ -582,11 +582,11 @@ def test_labels_follow_what_each_indicator_really_measures(measures: dict) -> No
     presentation = build_all(data)
     text = slide_text(presentation) + "\n" + "\n".join(notes_text(data, page, "") for page in range(1, 12))
     assert not MISLEADING.search(text)
-    assert data.fact("DM-SE-01") == ("역할 할당 확인 환경 확인 중" if measures.get("DM-SE-01") is None
+    assert data.fact("DM-SY-01") == ("역할 할당 확인 환경 확인 중" if measures.get("DM-SY-01") is None
                                      else "역할 할당이 확인된 환경 3곳 중 3곳")
-    assert data.label("BI-SE-09") == "프로젝트 평가 실행 이력"
-    assert "에이전트 ID 청사진에 연결되지 않음" in data.long_fact("DP-SE-15") or measures["DP-SE-15"] == (3, 3)
-    assert "모델 업그레이드 설정" in data.fact("DS-SE-04")
+    assert data.label("BI-SY-09") == "프로젝트 평가 실행 이력"
+    assert "에이전트 ID 청사진에 연결되지 않음" in data.long_fact("DP-SY-15") or measures["DP-SY-15"] == (3, 3)
+    assert "모델 업그레이드 설정" in data.fact("DS-SY-04")
 
 
 def test_agent_365_monthly_figures_are_packages_including_store_apps_not_agents() -> None:
@@ -620,31 +620,31 @@ def test_months_are_cut_in_kst_not_utc() -> None:
 
 def test_one_verdict_drives_summary_key_findings_and_control_box() -> None:
     data = synthetic(FULL, collection=catalog_collection())
-    state, code = story.control_state(data, ("DS-SE-03", "DP-SE-15", "OE-SE-16"))
-    assert (state, code) == ("partial", "DP-SE-15")
+    state, code = story.control_state(data, ("DS-SY-03", "DP-SY-15", "OE-SY-16"))
+    assert (state, code) == ("partial", "DP-SY-15")
     summary = story.summary(data)[43694]
     assert "목표(L3) 충족" in summary and "나머지 보완 필요" in summary and "청사진에 연결되지 않은 에이전트 2개" in summary
     rows = story.key_rows(data)
     assert rows[2][0].endswith("목표 충족 · 보완 필요") and rows[2][2] == "목표(80%) 충족, 나머지는 보완 필요"
     assert "L3 충족 · 청사진 연결 에이전트 8/10" in story.gap_box(data)
     healthy = synthetic(HEALTHY, collection=catalog_collection())
-    assert story.row_status(healthy, ("DS-SE-03", "DP-SE-15", "OE-SE-16")) == "양호"
+    assert story.row_status(healthy, ("DS-SY-03", "DP-SY-15", "OE-SY-16")) == "양호"
     assert "체계 확보" not in "".join(cell for row in story.key_rows(healthy) for cell in row)
 
 
 def test_security_advisory_wait_is_explained_per_subscription_in_both_cases() -> None:
-    waiting = synthetic({**FULL, "BI-SE-10": None}, collection=advisory_collection(1, 2))
-    assert waiting.pending_note("BI-SE-10") == "보안 권고 1개 구독 확인, 2개 구독 반영 대기"
-    assert waiting.pending_reason("BI-SE-10") == "Defender 보안 권고 반영 대기"
+    waiting = synthetic({**FULL, "BI-SY-10": None}, collection=advisory_collection(1, 2))
+    assert waiting.pending_note("BI-SY-10") == "보안 권고 1개 구독 확인, 2개 구독 반영 대기"
+    assert waiting.pending_reason("BI-SY-10") == "Defender 보안 권고 반영 대기"
     text = slide_text(build_all(waiting))
     assert "보안 권고 1개 구독 확인, 2개 구독 반영 대기(Defender 평가 반영 후 판정)" in text
     assert "활성화 후 판정" not in text and "Defender 보안 권고 반영 대기 후 판정" in text
-    judged = synthetic({**FULL, "BI-SE-10": (3, 3)}, collection=advisory_collection(3, 0))
+    judged = synthetic({**FULL, "BI-SY-10": (3, 3)}, collection=advisory_collection(3, 0))
     assert not judged.pending and story.security_notes(judged) == ""
     judged_text = slide_text(build_all(judged))
     assert "반영 대기" not in judged_text and "Defender 평가 반영" not in judged_text
-    unknown = synthetic({**FULL, "BI-SE-10": None}, collection=catalog_collection())
-    assert "반영 대기" in unknown.pending_note("BI-SE-10")
+    unknown = synthetic({**FULL, "BI-SY-10": None}, collection=catalog_collection())
+    assert "반영 대기" in unknown.pending_note("BI-SY-10")
 
 
 def test_cost_chart_says_no_billing_and_states_what_the_month_amount_covers() -> None:
@@ -679,7 +679,7 @@ def test_report_only_evidence_replaces_catalog_fallbacks_when_it_is_observed() -
     shapes = {s.shape_id: s for s in slide[6].shapes}
     assert [shapes[i].text_frame.text for i in (29337, 29542)] == ["4", "6"]
     assert shapes[29092].text_frame.text == "승인 매칭" and shapes[29376].text_frame.text == "2026.11"
-    assert story.security_cards(data)[0] == "BI-SE-29"
+    assert story.security_cards(data)[0] == "BI-SY-29"
     assert {s.shape_id: s for s in slide[8].shapes}[36182].text_frame.text == "50%"
 
 
@@ -709,8 +709,8 @@ def test_footnotes_explain_only_terms_used_on_the_slide_with_readable_size(measu
 
 def test_levels_and_template_labels_are_written_as_in_the_template() -> None:
     data = synthetic(FULL, collection=catalog_collection())
-    assert data.overall_label == "L3.0" and data.level("DS-SE-02") == "L1"
-    assert synthetic(PARTIAL).level("OT-SE-24") == "확인 중"
+    assert data.overall_label == "L3.0" and data.level("DS-SY-02") == "L1"
+    assert synthetic(PARTIAL).level("OT-SY-24") == "확인 중"
     text = slide_text(build_all(data))
     assert not re.search(r"\d\s?단계", text)
     for phrase in ("L1 Initial", "L2 Managed", "L3 Defined (목표)", "L4 Governed", "L5 Optimized"):
@@ -720,7 +720,7 @@ def test_levels_and_template_labels_are_written_as_in_the_template() -> None:
         assert phrase in text
     assert not re.search(r"관점 [123]|핵심 시사점 3가지|핵심 요약|시스템 확인|확인값", text)
     assert len(story.insights(data)) == 3 and all(story.insights(data))
-    assert not re.search(r"[A-Z]{2}-SE-\d{2}", "\n".join(story.insights(data)) + story.headline_overview(data))
+    assert not re.search(r"[A-Z]{2}-SY-\d{2}", "\n".join(story.insights(data)) + story.headline_overview(data))
 
 
 def squash(text: str) -> str:
@@ -796,9 +796,9 @@ def test_run_preserves_static_package_parts_and_replaces_all_sample_results(tmp_
     visible = slide_text(presentation)
     assessment = read_assessment(workbook)
     assert [row.code for row in assessment.system_items] == list(CODES)
-    rendered = set(re.findall(r"\b[A-Z]{2}-SE-\d{2}\b", visible))
+    rendered = set(re.findall(r"\b[A-Z]{2}-SY-\d{2}\b", visible))
     assert set(CODES) <= rendered
-    assert not re.search(r"\b[A-Z]{2}-SY-\d{2}\b", text)
+    assert set(re.findall(r"\b[A-Z]{2}-SY-\d{2}\b", text)) <= set(CODES)
     assert "<고객사>" in visible and "- System Evidence 분석 결과 보고서 -" in visible
     assert not FORBIDDEN.search(re.sub("합성 데모 - 실제 진단 결과 아님", "", visible))
     assert "합성 데모 - 실제 진단 결과 아님" in visible
@@ -869,7 +869,7 @@ def test_interview_responses_fill_every_pending_row_without_changing_api_rows_or
     interview_rows = []
     for row in range(5, before.max_row + 1):
         code = str(before.cell(row, 2).value or "")
-        if "-SE-" in code:
+        if "-SY-" in code:
             assert [(cell.value, cell.style_id, cell.data_type) for cell in before[row]] == [
                 (cell.value, cell.style_id, cell.data_type) for cell in after[row]
             ]
@@ -976,7 +976,7 @@ def test_deck_command_uses_workbook_interviews_without_rewriting_other_sheets(tm
     sheet = book[RESULT_SHEET]
     for row in range(5, sheet.max_row + 1):
         code = str(sheet.cell(row, 2).value or "")
-        if code and "-SE-" not in code:
+        if code and "-SY-" not in code:
             sheet.cell(row, 13).value = 4
     book.save(workbook)
     with ZipFile(workbook) as archive:

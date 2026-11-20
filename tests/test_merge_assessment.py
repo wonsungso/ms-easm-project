@@ -73,7 +73,7 @@ def test_delivered_workbook_preserves_user_formatting_and_is_idempotent(tmp_path
 def test_delivered_criteria_and_scoring_include_every_system_evidence() -> None:
     book = load_workbook(ROOT / "docs" / "assessment-result-template.xlsx")
     sheet = book[SOURCE_SHEET]
-    rows = {row[1].value: row for row in sheet if "-SE-" in str(row[1].value)}
+    rows = {row[1].value: row for row in sheet if "-SY-" in str(row[1].value)}
     assert len(rows) == 26
     for code, config in load_criteria()["items"].items():
         assert [rows[code][i].value for i in range(6, 11)] == list(config["levels"].values())
@@ -92,8 +92,8 @@ def test_delivered_criteria_and_scoring_include_every_system_evidence() -> None:
     assert str(sheet.data_validations.dataValidation[0].sqref) == "M5:M84"
     assert "N/A" in sheet.data_validations.dataValidation[0].formula1
     assert rows.keys() == load_criteria()["items"].keys()
-    assert "실행 로그" in rows["OE-SE-18"][5].value
-    assert "관리 ID" in rows["OE-SE-19"][5].value
+    assert "실행 로그" in rows["OE-SY-18"][5].value
+    assert "관리 ID" in rows["OE-SY-19"][5].value
     assert "조건부 접근" not in str(book.worksheets[1]["H8"].value)
 
 

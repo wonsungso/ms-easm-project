@@ -56,43 +56,43 @@ def packet() -> dict:
         "tenant_id": TENANT, "tenant_verified": True, "data_mode": "live",
         "exported_at": NOW.isoformat(),
         "datasets": [
-            dataset("creation_approvals", "DM-SE-27", [
+            dataset("creation_approvals", "DM-SY-27", [
                 {"subject": f"agent-{month}-{index}", "created_at": f"2026-{month:02}-09T00:00:00Z",
                  "approval_found": index == 0, "approval_id": f"request-{month}" if index == 0 else None,
                  "approved_at": f"2026-{month:02}-08T00:00:00Z" if index == 0 else None}
                 for month in range(6, 12) for index in range(2)
             ], source_kind="approval_workflow", period_start="2026-06-01T00:00:00Z", period_end=NOW.isoformat()),
-            dataset("registry", "DP-SE-28", [
+            dataset("registry", "DP-SY-28", [
                 {"subject": "agent-a", "owner_present": True, "deployment_scope_present": True},
                 {"subject": "agent-b", "owner_present": False, "deployment_scope_present": True},
             ], source_kind="organization_registry", observed_subjects=["agent-a", "agent-b", "agent-c"]),
-            dataset("predeployment_evaluations", "BI-SE-29", [
+            dataset("predeployment_evaluations", "BI-SY-29", [
                 {"subject": f"deployment-{index}", "version": "v1", "deployed_at": "2026-10-10T00:00:00Z",
                  "evaluation_found": True, "evaluation_version": "v1" if index == 0 else "v2",
                  "evaluation_completed_at": "2026-10-09T00:00:00Z", "evaluation_status": "completed"}
                 for index in range(2)
             ]),
-            dataset("target_controls", "OE-SE-30", [{"subject": "agent-a", "value": True}]),
-            dataset("audit_retention", "OE-SE-31", [
+            dataset("target_controls", "OE-SY-30", [{"subject": "agent-a", "value": True}]),
+            dataset("audit_retention", "OE-SY-31", [
                 {"subject": "policy-a", "retention_duration": "SixMonths", "priority": 1},
                 {"subject": "policy-b", "retention_duration": "TwelveMonths", "priority": 2},
             ]),
-            dataset("usage", "OT-SE-32", [
+            dataset("usage", "OT-SY-32", [
                 {"subject": f"agent-{index}", "created_at": "2026-05-01T00:00:00Z",
                  "coverage_start": "2026-06-01T00:00:00Z", "coverage_end": NOW.isoformat(),
                  "calls_30d": calls30, "calls_90d": calls90}
                 for index, (calls30, calls90) in enumerate(((1, 2), (0, 1), (0, 0)))
             ], period_start="2026-06-01T00:00:00Z", period_end=NOW.isoformat()),
-            dataset("exposures", "OT-SE-33", [
+            dataset("exposures", "OT-SY-33", [
                 {"subject": "case-a", "category": "personal", "severity": "high", "remediation": "remediated"},
                 {"subject": "case-b", "category": "financial", "severity": "high", "remediation": "open"},
             ]),
-            dataset("cost_history", "OT-SE-34", [
+            dataset("cost_history", "OT-SY-34", [
                 {"subject": f"bill-{month}", "occurred_at": f"2026-{month:02}-10T00:00:00Z",
                  "amount": 100.0, "attributed_amount": 60.0, "currency": "USD"}
                 for month in range(6, 12)
             ], period_start="2026-06-01T00:00:00Z", period_end=NOW.isoformat()),
-            dataset("target_controls", "OE-SE-39", [{"subject": "agent-a", "value": False}], source_kind="hr_export"),
+            dataset("target_controls", "OE-SY-39", [{"subject": "agent-a", "value": False}], source_kind="hr_export"),
         ],
     }
 

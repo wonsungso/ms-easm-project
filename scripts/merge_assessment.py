@@ -1,6 +1,6 @@
-"""평가 모델의 SE 기준과 실제 점수 집계를 같은 시트/서식으로 반영한다.
+"""평가 모델의 SY 기준과 실제 점수 집계를 같은 시트/서식으로 반영한다.
 
-원본 zip의 평가 XML과 지정된 행 높이·SE 배경색만 고친다.
+원본 zip의 평가 XML과 지정된 행 높이·SY 배경색만 고친다.
 다른 시트·민감도 레이블·점수·메모와 나머지 셀 서식은 보존한다.
 """
 
@@ -157,7 +157,7 @@ def review_parts(archive: ZipFile, patched: dict[str, bytes]) -> dict[str, bytes
     if seen != criteria.keys():
         raise ValueError("System Evidence 26개 코드가 정확히 일치하지 않습니다.")
     rows = {int(row.get("r")): row for row in data}
-    replace_text(rows[3], "B", "인터뷰 54개 + SE 26개 = 80개. 1~5 정수 또는 N/A. 미확보·대상 없음은 N/A, L1은 확인된 부재. 비율 임계값은 본 진단 기준이며 Microsoft 인증 기준 아님")
+    replace_text(rows[3], "B", "인터뷰 54개 + SY 26개 = 80개. 1~5 정수 또는 N/A. 미확보·대상 없음은 N/A, L1은 확인된 부재. 비율 임계값은 본 진단 기준이며 Microsoft 인증 기준 아님")
     validation = root.find(f"{Q}dataValidations/{Q}dataValidation")
     validation.set("type", "custom")
     validation.set("sqref", f"M5:M{max(rows)}")
@@ -233,7 +233,7 @@ def review_parts(archive: ZipFile, patched: dict[str, bytes]) -> dict[str, bytes
                 row.append(text_cell(ref, "23" if number == 63 else "61", text))
 
     append(61, {"B": "실제 평가 집계 - 시트 4 입력 점수 연동 (인터뷰 54개 + System Evidence 26개)"})
-    append(62, {"B": "빈칸·N/A는 평균 제외. 4개 인터뷰 관점과 SE 확보 시 영역 산정, 6개 영역 확보 시 종합 산정. 미확보는 0점 아님"})
+    append(62, {"B": "빈칸·N/A는 평균 제외. 4개 인터뷰 관점과 SY 확보 시 영역 산정, 6개 영역 확보 시 종합 산정. 미확보는 0점 아님"})
     headers = ("영역", "Process", "People", "Data", "Technology", "System Evidence", "인터뷰 평균", "괴리", "최종 점수", "Level", "상태")
     append(63, dict(zip("BCDEFGHIJKL", headers, strict=True)))
     for number, domain in enumerate(("1. Demand", "2. Design", "3. Build", "4. Deploy", "5. Operate", "6. Optimize"), 64):

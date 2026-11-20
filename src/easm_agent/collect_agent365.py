@@ -59,27 +59,27 @@ STATUS_LABELS = {
     "not_comparable": "동일 정보 미제공",
 }
 LIMITS = {
-    "DS-SE-04": "호출 모델 정보와 Azure 배포 버전·업데이트 옵션은 다른 필드",
-    "DS-SE-05": "등록부에 Azure 인바운드 경계 설정 없음",
-    "DS-SE-06": "등록부에 Foundry MCP require_approval 설정 없음",
-    "DS-SE-07": "등록부에 Foundry 전체 외부 도구 URL 선언 없음",
-    "BI-SE-09": "등록부에 Foundry 평가 실행 이력 없음",
-    "BI-SE-10": "등록부에 Azure 보안 권고 상태 없음",
-    "BI-SE-11": "등록부에 Azure 콘텐츠 필터 정책 연결·활성 필터 없음",
-    "BI-SE-12": "패키지 version과 Foundry 버전·호스트 런타임은 다른 필드",
-    "BI-SE-13": "등록부에 동일 Azure Agent의 owner·sponsor·env·cost-center 전체 없음",
-    "BI-SE-14": "등록부에 Azure Policy 리소스별 평가 없음",
-    "OE-SE-16": "owners·sponsors는 기존 Graph와 동일 원천, 등록부에 독립 대조 필드 없음",
-    "OE-SE-17": "앱 역할은 기존 Graph와 동일 원천, 등록부에 독립 대조 필드 없음",
-    "OE-SE-18": "활동 계측과 Azure 진단 설정·workspace 연결은 다른 증거",
-    "OE-SE-19": "등록부에 Azure 관리 ID·키 인증·직접 ARM 역할 구성 없음",
-    "OE-SE-20": "등록부에 Azure 경보의 실제 대상 범위 없음",
-    "OE-SE-21": "등록부에 Azure 작업 그룹·수신자 연결 없음",
-    "OE-SE-22": "테넌트 저장 지역과 Azure 리소스 지역·workspace 보존기간은 다른 증거",
-    "OT-SE-23": "활동 통계와 Azure 리소스 메트릭 표본은 다른 증거",
-    "OT-SE-24": "토큰·활동 통계와 Cost Management 실제 비용은 다른 증거",
-    "OT-SE-25": "등록부에 Azure 구독의 Defender for Cloud 플랜 구성 없음",
-    "OT-SE-26": "등록부에 Azure 구독 예산·실제/예측 경보 설정 없음",
+    "DS-SY-04": "호출 모델 정보와 Azure 배포 버전·업데이트 옵션은 다른 필드",
+    "DS-SY-05": "등록부에 Azure 인바운드 경계 설정 없음",
+    "DS-SY-06": "등록부에 Foundry MCP require_approval 설정 없음",
+    "DS-SY-07": "등록부에 Foundry 전체 외부 도구 URL 선언 없음",
+    "BI-SY-09": "등록부에 Foundry 평가 실행 이력 없음",
+    "BI-SY-10": "등록부에 Azure 보안 권고 상태 없음",
+    "BI-SY-11": "등록부에 Azure 콘텐츠 필터 정책 연결·활성 필터 없음",
+    "BI-SY-12": "패키지 version과 Foundry 버전·호스트 런타임은 다른 필드",
+    "BI-SY-13": "등록부에 동일 Azure Agent의 owner·sponsor·env·cost-center 전체 없음",
+    "BI-SY-14": "등록부에 Azure Policy 리소스별 평가 없음",
+    "OE-SY-16": "owners·sponsors는 기존 Graph와 동일 원천, 등록부에 독립 대조 필드 없음",
+    "OE-SY-17": "앱 역할은 기존 Graph와 동일 원천, 등록부에 독립 대조 필드 없음",
+    "OE-SY-18": "활동 계측과 Azure 진단 설정·workspace 연결은 다른 증거",
+    "OE-SY-19": "등록부에 Azure 관리 ID·키 인증·직접 ARM 역할 구성 없음",
+    "OE-SY-20": "등록부에 Azure 경보의 실제 대상 범위 없음",
+    "OE-SY-21": "등록부에 Azure 작업 그룹·수신자 연결 없음",
+    "OE-SY-22": "테넌트 저장 지역과 Azure 리소스 지역·workspace 보존기간은 다른 증거",
+    "OT-SY-23": "활동 통계와 Azure 리소스 메트릭 표본은 다른 증거",
+    "OT-SY-24": "토큰·활동 통계와 Cost Management 실제 비용은 다른 증거",
+    "OT-SY-25": "등록부에 Azure 구독의 Defender for Cloud 플랜 구성 없음",
+    "OT-SY-26": "등록부에 Azure 구독 예산·실제/예측 경보 설정 없음",
 }
 
 
@@ -514,7 +514,7 @@ def crosscheck_agent365(data: Collection, criteria: dict[str, Any]) -> list[Agen
                 detail=LIMITS[code] + ". 기존 등급 유지",
             ))
             continue
-        if code not in ("DS-SE-03", "DP-SE-15"):
+        if code not in ("DS-SY-03", "DP-SY-15"):
             records.append(Agent365Crosscheck(
                 se_code=code, status="not_comparable", scope="공개 등록 정보",
                 detail="이 항목의 독립 비교 필드가 검증되지 않음. 기존 등급 유지",
@@ -523,7 +523,7 @@ def crosscheck_agent365(data: Collection, criteria: dict[str, Any]) -> list[Agen
         record = Agent365Crosscheck(
             se_code=code, status="unavailable", scope=(
                 "등록부 agentIdentityId와 Graph Agent ID·Blueprint 참조의 연결"
-                if code == "DS-SE-03" else
+                if code == "DS-SY-03" else
                 "명시적 Blueprint 태그로 식별된 Azure Agent와 등록부 agentIdentityId의 연결"
             ), detail="등급 조건 전체가 아닌 명시적 ID 연결만 대조. 기존 등급 유지",
         )
@@ -550,7 +550,7 @@ def crosscheck_agent365(data: Collection, criteria: dict[str, Any]) -> list[Agen
                 records.append(record)
                 continue
             registered = {p.agent_identity_id.lower() for p in data.agent365_packages if p.agent_identity_id}
-            if code == "DS-SE-03":
+            if code == "DS-SY-03":
                 compared = len(registered)
                 matched = sum(
                     identifier in identities

@@ -84,7 +84,7 @@ def sample() -> Collection:
 
 
 def finding(**changes: object) -> Finding:
-    values = {"se_code": "BI-SE-09", "scope": "partial", "metric_value": 0, "level": "N/A",
+    values = {"se_code": "BI-SY-09", "scope": "partial", "metric_value": 0, "level": "N/A",
               "reason": "permission_denied", "rationale": "근거가 부족합니다.",
               "next_step": "조회 권한을 확인하세요.", **changes}
     return Finding.model_validate(values)
@@ -126,15 +126,15 @@ def test_presentation_evidence_keeps_unavailable_and_distinct_metrics_separate(t
 
     rows = [
         finding(
-            se_code="DS-SE-02", level="L1", reason=None, metric_value=0,
+            se_code="DS-SY-02", level="L1", reason=None, metric_value=0,
             measurement=AssessmentMeasurement(numerator=0, denominator=2, complete=True),
         ),
         finding(
-            se_code="BI-SE-08", level="N/A", reason="permission_denied",
+            se_code="BI-SY-08", level="N/A", reason="permission_denied",
             metric_value=None, measurement=AssessmentMeasurement(complete=False, reason="권한 부족"),
         ),
         finding(
-            se_code="BI-SE-09", level="L5", reason=None, metric_value=1,
+            se_code="BI-SY-09", level="L5", reason=None, metric_value=1,
             measurement=AssessmentMeasurement(numerator=1, denominator=1, complete=True),
         ),
     ]
@@ -170,7 +170,7 @@ def test_presentation_evidence_requires_the_original_metric_and_complete_measure
 
     data = sample()
     result = finding(
-        se_code="DS-SE-02", level="L5", reason=None, metric_value=1,
+        se_code="DS-SY-02", level="L5", reason=None, metric_value=1,
         measurement=AssessmentMeasurement(numerator=1, denominator=1, complete=True),
     )
     def row() -> dict:
@@ -181,10 +181,10 @@ def test_presentation_evidence_requires_the_original_metric_and_complete_measure
     assert row()["지표 값"] is None
     assert row()["사유 코드"] == "not_found"
     criteria = load_criteria()
-    criteria["items"]["DS-SE-02"]["metric"] = "other"
+    criteria["items"]["DS-SY-02"]["metric"] = "other"
     data.assessment_provenance = assessment_provenance(criteria, {}, "evaluation")
     assert row()["지표 값"] is None
-    criteria["items"]["DS-SE-02"]["metric"] = "data_policy_environment_ratio"
+    criteria["items"]["DS-SY-02"]["metric"] = "data_policy_environment_ratio"
     data.assessment_provenance = assessment_provenance(criteria, {}, "evaluation")
     result.measurement = AssessmentMeasurement(numerator=1, denominator=1, complete=False)
     assert row()["지표 값"] is None
@@ -265,19 +265,19 @@ def test_backdata_preserves_measurement_counts_without_inventing_business_impact
     data = sample()
     data.assessment_provenance = assessment_provenance(load_criteria(), {}, "evaluation")
     rows = [finding(
-        se_code="DS-SE-02", level="L1", reason=None, metric_value=0,
+        se_code="DS-SY-02", level="L1", reason=None, metric_value=0,
         measurement=AssessmentMeasurement(numerator=0, denominator=2, complete=True),
         evidence_refs=["evidence:measurement"],
     ), finding(
-        se_code="BI-SE-08", level="N/A", reason="permission_denied",
+        se_code="BI-SY-08", level="N/A", reason="permission_denied",
         measurement=AssessmentMeasurement(numerator=0, denominator=2, complete=False),
     )]
     values = {row.key: row for row in report_metrics(data, rows, "fixture")}
-    assert values["se.DS-SE-02.numerator"].value == 0
-    assert values["se.DS-SE-02.denominator"].value == 2
-    assert values["se.DS-SE-02.denominator"].evidence_refs == ["evidence:measurement"]
-    assert values["se.BI-SE-08.numerator"].value is None
-    assert values["se.BI-SE-08.denominator"].reason == "permission_denied"
+    assert values["se.DS-SY-02.numerator"].value == 0
+    assert values["se.DS-SY-02.denominator"].value == 2
+    assert values["se.DS-SY-02.denominator"].evidence_refs == ["evidence:measurement"]
+    assert values["se.BI-SY-08.numerator"].value is None
+    assert values["se.BI-SY-08.denominator"].reason == "permission_denied"
     assert values["business.loss_amount"].value is None
     assert values["business.roi"].reason == "feature_unavailable"
 
@@ -601,12 +601,12 @@ def test_load_result_rejects_missing_or_unsupported_files(tmp_path: Path) -> Non
 
 def test_packaged_findings_keep_their_codes_and_metrics(tmp_path: Path) -> None:
     write_reports(sample(), [
-        finding(se_code="OE-SE-18", level="L3", metric_value=365),
-        finding(se_code="OE-SE-19", level="L2", metric_value=0.5),
+        finding(se_code="OE-SY-18", level="L3", metric_value=365),
+        finding(se_code="OE-SY-19", level="L2", metric_value=0.5),
     ], tmp_path)
     result = load_result(tmp_path)
     assert [(row["se_code"], row["metric_value"]) for row in result["findings"]] == [
-        ("OE-SE-18", 365), ("OE-SE-19", 0.5),
+        ("OE-SY-18", 365), ("OE-SY-19", 0.5),
     ]
 
 
@@ -866,7 +866,7 @@ def test_workbook_sheets_tables_borders_and_validation(tmp_path: Path) -> None:
     assert checklist.freeze_panes == "G5" and checklist.auto_filter.ref == "B4:N84"
     assert all(checklist.cell(row, 13).alignment.horizontal == "center" for row in range(4, 85))
     for row in range(5, checklist.max_row + 1):
-        if "-SE-" in str(checklist.cell(row, 2).value):
+        if "-SY-" in str(checklist.cell(row, 2).value):
             assert checklist.row_dimensions[row].height == 150
     proposals = book[TITLES["수집결과 근거"]]
     assert proposals.row_dimensions[4].height == 60 and proposals["F4"].fill.patternType is None
@@ -906,7 +906,7 @@ def test_missing_metric_is_not_converted_to_zero_and_null_differs_from_zero(tmp_
     data.agents[0].unavailable("model", "permission_denied", "관리자가 조회 역할을 확인해야 합니다.")
     data.evaluations[0].failed_items = None
     path = tmp_path / "null.xlsx"
-    write_workbook(data, [finding(se_code="DS-SE-04", metric_value=None)], path)
+    write_workbook(data, [finding(se_code="DS-SY-04", metric_value=None)], path)
     book = load_workbook(path)
     assert record(book[RESULT_SHEET])["지표"].value == "확인 자료 없음 - 분모 확인 안됨"
     evaluation = raw_record(book, "평가 Raw 데이터")
@@ -923,21 +923,21 @@ def test_result_categories_do_not_hide_partial_collection_or_failed_queries(tmp_
     path = tmp_path / "categories.xlsx"
     write_workbook(sample(), [
         finding(),
-        finding(se_code="DS-SE-04", metric_value=None),
+        finding(se_code="DS-SY-04", metric_value=None),
     ], path)
     sheet = load_workbook(path)[RESULT_SHEET]
     rows = {sheet.cell(row, 2).value: row for row in range(5, sheet.max_row + 1)}
     assert {sheet.cell(row, 7).value for row in range(5, sheet.max_row + 1)} == {
         "수집됨", "수집하지 않음", "인터뷰 필요",
     }
-    assert sheet.cell(rows["BI-SE-09"], 7).value == "수집됨"
-    assert "일부 수집" in sheet.cell(rows["BI-SE-09"], 10).value
-    assert sheet.cell(rows["DS-SE-04"], 7).value == "수집하지 않음"
-    assert "조회 권한 부족" in sheet.cell(rows["DS-SE-04"], 10).value
-    assert sheet.cell(rows["DS-SE-04"], 13).value is None
+    assert sheet.cell(rows["BI-SY-09"], 7).value == "수집됨"
+    assert "일부 수집" in sheet.cell(rows["BI-SY-09"], 10).value
+    assert sheet.cell(rows["DS-SY-04"], 7).value == "수집하지 않음"
+    assert "조회 권한 부족" in sheet.cell(rows["DS-SY-04"], 10).value
+    assert sheet.cell(rows["DS-SY-04"], 13).value is None
     assert sheet.cell(rows["DM-PR-01"], 7).value == "인터뷰 필요"
     assert sheet.cell(rows["DM-PR-01"], 13).value is None
-    assert sheet.cell(rows["DM-SE-01"], 13).value is None
+    assert sheet.cell(rows["DM-SY-01"], 13).value is None
 
 
 def test_merged_raw_preserves_evidence_references_without_a_reference_sheet(tmp_path: Path) -> None:
