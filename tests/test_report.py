@@ -57,6 +57,7 @@ SECRETS = (
     "private-owner", "someone@example.invalid", "do-not-export", "api-key-in-evidence",
 )
 NO_AZURE = patch("easm_agent.cli.DefaultAzureCredential", side_effect=AssertionError("no Azure calls"))
+pytestmark = pytest.mark.usefixtures("legacy_report_template", "legacy_presentation_template")
 
 
 def sample() -> Collection:

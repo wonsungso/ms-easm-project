@@ -24,6 +24,9 @@ from easm_agent.azure import PP_INVENTORY_URL, EvidenceStore, redact
 from easm_agent.models import (
     Collection,
     CopilotAgentEvidence,
+    CopilotConnectorOperation,
+    CopilotEvaluationRead,
+    CopilotReview,
     EvidenceModel,
     FieldStatus,
     Issue,
@@ -54,6 +57,47 @@ def classify_created_in(
     return "unclassified_copilot"
 
 
+class CopilotReviewExport(EvidenceModel):
+    schema_version: Literal[1]
+    source_type: Literal["official_admin_portal_read"]
+    approved: StrictBool
+    tenant_id: StrictStr
+    tenant_verified: StrictBool
+    exported_at: AwareDatetime
+    reviews: list[CopilotReview]
+
+    @field_validator("schema_version", mode="before")
+    @classmethod
+    def strict_version(cls, value: object) -> object:
+        if type(value) is not int:
+            raise ValueError("schema_version은 정수여야 합니다.")
+        return value
+
+
+def read_copilot_reviews(path: Path, tenant: str, now: datetime, store: EvidenceStore) -> Collection:
+    raw = path.read_bytes()
+    export = CopilotReviewExport.model_validate_json(raw)
+    if not export.approved or not export.tenant_verified or uuid.UUID(export.tenant_id) != uuid.UUID(tenant):
+        raise ValueError("승인된 동일 테넌트 Copilot 검토 화면 증적만 허용합니다.")
+    if not export.reviews or export.exported_at > now + timedelta(minutes=5) or any(
+        row.observed_at > export.exported_at or now - row.observed_at > MAX_EXPORT_AGE
+        for row in export.reviews
+    ):
+        raise ValueError("Copilot 검토 화면의 최근 관측 시각·내보내기 시각을 확인해야 합니다.")
+    identities = [(row.environment_id.lower(), row.agent_id.lower()) for row in export.reviews]
+    if len(identities) != len(set(identities)):
+        raise ValueError("같은 Agent의 검토 화면 증적이 중복되었습니다.")
+    for row in export.reviews:
+        row.evidence_refs = []
+    ref = store.save("copilot-review-export:" + hashlib.sha256(raw).hexdigest(), {
+        "export": redact(export.model_dump(mode="json")),
+        "limit": "승인된 실제 작성 화면 관측. 게시 버전·보안 스캔·평가 통과·전체 거버넌스 증명이 아님",
+    })
+    for row in export.reviews:
+        row.evidence_refs = [ref]
+    return Collection(collected_at=now, copilot_reviews=export.reviews)
+
+
 class CopilotInventoryRow(EvidenceModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     agent_id: StrictStr
@@ -70,6 +114,12 @@ class CopilotInventoryRow(EvidenceModel):
     channels: list[StrictStr] | None
     is_quarantined: StrictBool | None
     shared_with_tenant: StrictBool | None
+    harness: StrictStr | None = None
+    orchestration: StrictStr | None = None
+    connector_count: StrictInt | None = Field(default=None, ge=0)
+    connector_operation_count: StrictInt | None = Field(default=None, ge=0)
+    connector_operations: list[CopilotConnectorOperation] | None = None
+    evaluation_read: CopilotEvaluationRead | None = None
 
     @field_validator("agent_id", "entra_agent_id", "blueprint_id")
     @classmethod
@@ -139,6 +189,10 @@ class CopilotInventoryExport(EvidenceModel):
                 row.created_at, row.last_published_at,
             )):
                 raise ValueError("관측 시각보다 미래의 에이전트 기록입니다.")
+            if row.evaluation_read and any(
+                run.end_time and run.end_time > self.observed_at for run in row.evaluation_read.runs
+            ):
+                raise ValueError("관측 시각보다 미래의 Copilot 평가 기록입니다.")
         if self.completed:
             if not self.tenant_verified or self.reason is not None or self.failure_code is not None or (
                 self.object_count != len(self.agents) or self.total_records != len(self.agents)
@@ -194,6 +248,7 @@ def read_copilot_inventory(
         "copilot_inventory_status": [{
             "completed": export.completed, "reason": export.reason, "evidence_refs": [ref],
             "failure_code": export.failure_code,
+            "observed_at": export.observed_at.isoformat(),
         }],
     })
     if not export.completed:
@@ -223,7 +278,20 @@ def read_copilot_inventory(
                 status[name] = FieldStatus(
                     reason="feature_unavailable", detail="Agent Builder에는 해당 없음 - 실패한 통제 아님",
                 )
+        if row.harness is not None and row.harness != "Standard" and row.evaluation_read is None:
+            status["evaluation_read"] = FieldStatus(
+                reason="not_found",
+                detail="기본 조회는 Standard 하니스 대상 - 다른 하니스는 별도 읽기 앱으로 실제 GET 확인 필요",
+            )
         result.copilot_agents.append(CopilotAgentEvidence(
             **values, platform=platform, field_status=status, evidence_refs=[ref],
         ))
+        if row.evaluation_read is not None and not row.evaluation_read.completed:
+            assert row.evaluation_read.reason is not None
+            result.issues.append(Issue(
+                collector="copilot_evaluations", target=row.agent_id,
+                reason=row.evaluation_read.reason,
+                detail="공식 Copilot 평가 실행 목록의 별도 사용자 읽기 미완료",
+                evidence_refs=[ref],
+            ))
     return result

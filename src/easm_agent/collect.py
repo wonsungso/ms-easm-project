@@ -17,7 +17,7 @@ from easm_agent.azure import (
 )
 from easm_agent.collect_admin_evidence import read_admin_evidence
 from easm_agent.collect_agent365 import REGISTRY_URL, Agent365Collector, crosscheck_agent365
-from easm_agent.collect_copilot import read_copilot_inventory
+from easm_agent.collect_copilot import read_copilot_inventory, read_copilot_reviews
 from easm_agent.collect_entra import EntraCollector
 from easm_agent.collect_foundry import FoundryCollector
 from easm_agent.collect_inventory import (
@@ -46,11 +46,17 @@ def merge(destination: Collection, source: Collection) -> None:
     ]
     if len(set(identifiers)) != len(identifiers):
         raise ValueError("같은 환경의 Copilot 에이전트를 중복 반영할 수 없습니다.")
+    reviews = [
+        (row.environment_id.lower(), row.agent_id.lower())
+        for row in [*destination.copilot_reviews, *source.copilot_reviews]
+    ]
+    if len(set(reviews)) != len(reviews):
+        raise ValueError("같은 Agent의 Copilot 검토 화면을 중복 반영할 수 없습니다.")
     codes = [row.code for row in [*destination.report_evidence, *source.report_evidence]]
     if len(set(codes)) != len(codes):
         raise ValueError("같은 추가 보고서 SY 원천을 중복 반영할 수 없습니다.")
     for field in (
-        "agents", "copilot_agents", "deployments", "evaluations", "costs", "security", "secure_scores", "defender_plans",
+        "agents", "copilot_agents", "copilot_reviews", "deployments", "evaluations", "costs", "security", "secure_scores", "defender_plans",
         "policy_assignments", "budgets", "entra_blueprints", "entra_agent_identities",
         "agent365_packages", "agent365_crosschecks",
         "admin_evidence", "report_evidence",
@@ -177,6 +183,8 @@ def collect(settings: Settings, credential: Credential, now: datetime | None = N
     result.facts["copilot_inventory_requested"] = bool(settings.copilot_inventory_files)
     for path in settings.copilot_inventory_files:
         merge(result, read_copilot_inventory(path, settings.tenant_id, instant, store))
+    for path in settings.copilot_review_files:
+        merge(result, read_copilot_reviews(path, settings.tenant_id, instant, store))
     for path in settings.report_evidence_files:
         merge(result, read_report_evidence(path, settings.tenant_id, instant, store))
     if settings.report_cost_history:

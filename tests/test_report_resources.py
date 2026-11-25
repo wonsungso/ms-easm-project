@@ -19,6 +19,8 @@ from easm_agent.models import (
 from easm_agent.report_excel import write_workbook
 from easm_agent.report_resources import resource_names, resource_summary
 
+pytestmark = pytest.mark.usefixtures("legacy_report_template")
+
 NOW = datetime(2026, 11, 9, tzinfo=UTC)
 SID = "11111111-1111-4111-8111-111111111111"
 ACCOUNT = f"/subscriptions/{SID}/resourceGroups/rg/providers/Microsoft.CognitiveServices/accounts/account"

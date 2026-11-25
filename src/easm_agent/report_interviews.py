@@ -19,7 +19,9 @@ PENDING_BASIS = "인터뷰를 통해 확인하는 수동 심사 항목"
 CellValue = str | int | tuple[str, str]
 
 
-def result_cell_updates(path: Path, updates: dict[str, CellValue]) -> bytes:
+def result_cell_updates(
+    path: Path, updates: dict[str, CellValue], *, sheet_name: str = RESULT_SHEET,
+) -> bytes:
     """Patch result-sheet cells in the raw XML, retaining styles and cached formulas.
 
     A (bold, rest) tuple is written as a rich text with a bold leading label.
@@ -29,7 +31,7 @@ def result_cell_updates(path: Path, updates: dict[str, CellValue]) -> bytes:
     output = BytesIO()
     with ZipFile(path) as source, ZipFile(output, "w") as target:
         workbook = etree.fromstring(source.read("xl/workbook.xml"))
-        result = next(node for node in workbook.iter(f"{{{main}}}sheet") if node.get("name") == RESULT_SHEET)
+        result = next(node for node in workbook.iter(f"{{{main}}}sheet") if node.get("name") == sheet_name)
         relationships = etree.fromstring(source.read("xl/_rels/workbook.xml.rels"))
         sheet_target = next(node.get("Target") for node in relationships if node.get("Id") == result.get(f"{{{rel}}}id"))
         part = sheet_target.lstrip("/") if sheet_target.startswith("/") else "xl/" + sheet_target
@@ -93,6 +95,31 @@ def write_interview_responses(source: Path, output: Path) -> list[tuple[str, str
     if source.resolve() == output.resolve() or output.exists():
         raise FileExistsError("인터뷰 응답 출력은 원본과 다른, 존재하지 않는 Excel 경로여야 합니다.")
     book = load_workbook(source, rich_text=False)
+    from easm_agent.report_integrated import PROCESS, is_integrated
+
+    if is_integrated(book):
+        sheet = book[PROCESS]
+        updates: dict[str, CellValue] = {}
+        filled = []
+        for row in range(5, 59):
+            code = str(sheet.cell(row, 3).value or "")
+            if not INTERVIEW_CODE.fullmatch(code):
+                raise ValueError(f"{code}: 통합 템플릿의 수동 평가 코드가 올바르지 않습니다.")
+            if any(sheet.cell(row, column).value not in (None, "") for column in (6, 7, 8, 9, 13)):
+                continue
+            sample = SAMPLES.get(code)
+            if sample is None:
+                raise ValueError(f"{code}: 인터뷰 응답 샘플이 없습니다.")
+            # A synthetic response is not a document, system, or improvement-history verification.
+            updates[f"F{row}"] = sample.level
+            updates[f"M{row}"] = "샘플 응답 - 실측·증적 확인 아님. " + sample.basis
+            filled.append((code, f"F{row}", f"M{row}"))
+        book.close()
+        if not filled:
+            raise ValueError("원문 입력을 보존하면서 채울 미입력 인터뷰 항목이 없습니다.")
+        with output.open("xb") as target:
+            target.write(result_cell_updates(source, updates, sheet_name=PROCESS))
+        return filled
     sheet, criteria = book[RESULT_SHEET], book[CRITERIA_SHEET]
     updates: dict[str, CellValue] = {}
     filled = []
@@ -187,8 +214,11 @@ def main(argv: list[str] | None = None) -> int:
         context_from_workbook(args.output_workbook, args.customer, metrics, collection),
     )
     print(f"샘플 인터뷰 응답 기입 - {len(filled)}개")
+    book = load_workbook(args.output_workbook, read_only=True)
+    sheet_name = "4_프로세스 점수" if "4_프로세스 점수" in book.sheetnames else RESULT_SHEET
+    book.close()
     for code, score_cell, answer_cell in filled:
-        print(f"{code}: {RESULT_SHEET}!{score_cell} (점수), {answer_cell} (근거)")
+        print(f"{code}: {sheet_name}!{score_cell} (점수), {answer_cell} (근거)")
     return 0
 
 

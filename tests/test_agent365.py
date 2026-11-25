@@ -268,7 +268,7 @@ def test_report_keeps_grades_and_separates_crosscheck_details(tmp_path: Path) ->
         Finding(se_code="OE-SY-17", scope="in_scope", level="L5", metric_value=1, rationale="primary role grade"),
     ], path)
     book = load_workbook(path)
-    details = book["7. 수집결과 근거"]
+    details = book["8_수집결과 근거"]
     table = next(table for table in details.tables.values() if table.ref.startswith("A3:"))
     rows = {details.cell(row, 1).value: row for row in range(4, range_boundaries(table.ref)[3] + 1)}
     assert details.cell(rows["DS-SY-03"], 10).value == "일부 일치"
@@ -276,7 +276,7 @@ def test_report_keeps_grades_and_separates_crosscheck_details(tmp_path: Path) ->
     assert details.cell(rows["OE-SY-17"], 10).value == "동일 정보 미제공"
     assert "기존 Azure/Graph API로 평가" in details.cell(rows["OE-SY-17"], 11).value
     assert "평가 제외 아님" in details.cell(rows["OE-SY-17"], 11).value
-    assert len(book["8. 수집 Raw 데이터"].tables) == 18
+    assert len(book["8a_수집 Raw 데이터"].tables) == 18
     assert finding.level == "L5"
 
 
@@ -791,7 +791,7 @@ def test_existing_excel_raw_export_preserves_metadata_values_and_field_evidence(
     data = Agent365Collector(source, NOW, EvidenceStore(tmp_path, NOW)).discover()
     path = tmp_path / "metadata.xlsx"
     write_workbook(data, [], path)
-    sheet = load_workbook(path)["8. 수집 Raw 데이터"]
+    sheet = load_workbook(path)["8a_수집 Raw 데이터"]
     for table in sheet.tables.values():
         first_column, header_row, last_column, _ = range_boundaries(table.ref)
         headers = [sheet.cell(header_row, column).value for column in range(first_column, last_column + 1)]

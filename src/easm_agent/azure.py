@@ -10,7 +10,7 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
-from urllib.parse import urlparse
+from urllib.parse import parse_qsl, urlparse
 
 import requests
 from azure.core.exceptions import ClientAuthenticationError
@@ -24,6 +24,8 @@ LOG_SCOPE = "https://api.loganalytics.io/.default"
 MSGRAPH = "https://graph.microsoft.com"
 MSGRAPH_SCOPE = MSGRAPH + "/.default"
 PP_SCOPE = "https://api.powerplatform.com/.default"
+BAP_SCOPE = "https://service.powerapps.com/.default"
+BAP_DLP_URL = "https://api.bap.microsoft.com/providers/PowerPlatform.Governance/v1/policies?$top=50"
 PP_INVENTORY_URL = (
     "https://api.powerplatform.com/resourcequery/resources/query?api-version=2024-10-01"
 )
@@ -49,7 +51,7 @@ class DelegatedReaderCredential:
     """Verify tenant/user claims on every token before sending delegated read requests."""
 
     def __init__(self, credential: Credential, tenant: str, scope: str = PP_SCOPE) -> None:
-        if scope not in (PP_SCOPE, MSGRAPH_SCOPE):
+        if scope not in (PP_SCOPE, MSGRAPH_SCOPE, BAP_SCOPE):
             raise ValueError("승인된 위임 읽기 대상만 허용합니다.")
         self.credential, self.tenant, self.scope = credential, str(uuid.UUID(tenant)), scope
         self.verified = False
@@ -107,7 +109,18 @@ def trusted_url(url: str, audience: str) -> None:
     elif audience == MSGRAPH_SCOPE:
         allowed = parsed.hostname == "graph.microsoft.com"
     elif audience == PP_SCOPE:
-        allowed = url == PP_INVENTORY_URL
+        allowed = url == PP_INVENTORY_URL or bool(
+            parsed.hostname == "api.powerplatform.com" and re.fullmatch(
+                r"/copilotstudio/environments/[a-z0-9-]+/bots/[0-9a-f-]+/api/makerevaluation/testruns",
+                parsed.path, re.IGNORECASE,
+            ) and parsed.query == "api-version=2024-10-01"
+        )
+    elif audience == BAP_SCOPE:
+        allowed = (
+            parsed.hostname == "api.bap.microsoft.com"
+            and parsed.path == "/providers/PowerPlatform.Governance/v1/policies"
+            and all(key.lower() in ("$top", "$skiptoken", "api-version") for key, _ in parse_qsl(parsed.query))
+        )
     else:
         allowed = False
     if not allowed:

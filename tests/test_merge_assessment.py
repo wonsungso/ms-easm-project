@@ -21,8 +21,9 @@ from scripts.merge_assessment import (
 
 UNTOUCHED = (
     "xl/worksheets/sheet1.xml", "xl/worksheets/sheet3.xml",
-    "xl/sharedStrings.xml", "xl/theme/theme1.xml", "docMetadata/LabelInfo.xml",
+    "xl/sharedStrings.xml", "xl/theme/theme1.xml",
 )
+LEGACY_TEMPLATE = Path(__file__).parent / "fixtures" / "legacy-assessment-template.xlsx"
 
 
 def test_office_compatibility_prefixes_survive_serialization() -> None:
@@ -54,7 +55,7 @@ def test_rejects_source_overwrite(tmp_path: Path) -> None:
 
 
 def test_delivered_workbook_preserves_user_formatting_and_is_idempotent(tmp_path: Path) -> None:
-    delivered = ROOT / "docs" / "assessment-result-template.xlsx"
+    delivered = LEGACY_TEMPLATE
     rebuilt = tmp_path / "rebuilt.xlsx"
     merge_assessment(delivered, rebuilt)
     with ZipFile(delivered) as old, ZipFile(rebuilt) as new:
@@ -71,7 +72,7 @@ def test_delivered_workbook_preserves_user_formatting_and_is_idempotent(tmp_path
 
 
 def test_delivered_criteria_and_scoring_include_every_system_evidence() -> None:
-    book = load_workbook(ROOT / "docs" / "assessment-result-template.xlsx")
+    book = load_workbook(LEGACY_TEMPLATE)
     sheet = book[SOURCE_SHEET]
     rows = {row[1].value: row for row in sheet if "-SY-" in str(row[1].value)}
     assert len(rows) == 26
@@ -98,7 +99,7 @@ def test_delivered_criteria_and_scoring_include_every_system_evidence() -> None:
 
 
 def test_only_implemented_evidence_has_bold_titles_and_bullet_descriptions() -> None:
-    book = load_workbook(ROOT / "docs" / "assessment-result-template.xlsx", rich_text=True)
+    book = load_workbook(LEGACY_TEMPLATE, rich_text=True)
     sheet = book[SOURCE_SHEET]
     rows = {row[1].value: row for row in sheet.iter_rows(min_row=5) if row[1].value}
     assert len(rows) == 80
@@ -121,3 +122,11 @@ def test_only_implemented_evidence_has_bold_titles_and_bullet_descriptions() -> 
         assert row[5].alignment.wrap_text
     summary = "\n".join(str(cell.value) for row in book.worksheets[1] for cell in row)
     assert not any(detail in summary for detail in ITEM_DETAILS.values())
+
+
+def test_integrated_template_is_validated_without_reformatting(tmp_path: Path) -> None:
+    source = ROOT / "docs" / "assessment-result-template.xlsx"
+    target = tmp_path / "integrated.xlsx"
+    result = merge_assessment(source, target)
+    assert result["merged_proposals"] == 26
+    assert source.read_bytes() == target.read_bytes()

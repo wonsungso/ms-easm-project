@@ -145,6 +145,194 @@ def and_known(*values: bool | None) -> bool | None:
     return None if None in values else all(values)
 
 
+def add_copilot_inventory_checks(
+    result: Measurement, data: Collection, check: str, criteria: dict[str, Any],
+) -> Measurement:
+    supported = {"owner", "authentication", "model", "access", "publishing", "security",
+                 "connector_consent", "evaluation", "blueprint", "region"}
+    if check not in supported:
+        raise ValueError(f"지원하지 않는 Copilot 인벤토리 점검: {check}")
+    accepted = []
+    if check in ("authentication", "access", "security"):
+        accepted = criteria["report_options"]["authenticated_modes"]
+        if not isinstance(accepted, list) or not accepted or any(
+            not isinstance(mode, str) or not mode or mode == "None" for mode in accepted
+        ):
+            raise ValueError("Copilot 인증 방식 기준이 올바르지 않습니다.")
+    modes = criteria.get("report_options", {}).get("orchestration_modes", [])
+    if check == "model" and (
+        not isinstance(modes, list) or not modes or any(mode not in ("Classic", "Generative") for mode in modes)
+    ):
+        raise ValueError("Copilot 오케스트레이션 구성 기준이 올바르지 않습니다.")
+    values: list[bool | None] = []
+    entries: list[TargetAssessment] = []
+    excluded: list[TargetAssessment] = []
+    identities = {row.identity_id.lower(): row for row in data.entra_agent_identities}
+    blueprints = {row.blueprint_id.lower() for row in data.entra_blueprints}
+    environment_read = admin_read(data, "powerplatform.environments") if check == "region" else None
+    environments = {
+        environment.environment_id.lower(): environment for environment in environment_read.environments
+    } if environment_read and environment_read.completed else {}
+    for agent in data.copilot_agents:
+        refs = agent.evidence_refs
+        observed: dict[str, Any] = {"platform": agent.platform}
+        auth = agent.authentication in accepted if agent.authentication in set(accepted) | {"None"} else None
+        scoped = agent.shared_with_tenant is False if agent.shared_with_tenant is not None else None
+        operations = agent.connector_operations
+        connectors_complete = bool(
+            agent.connector_count is not None and agent.connector_operation_count is not None
+            and operations is not None and agent.connector_count <= 200 and agent.connector_operation_count <= 200
+            and len({(row.connector_id, row.operation_id) for row in operations}) == len(operations)
+            and len(operations) == agent.connector_operation_count
+            and len({row.connector_id for row in operations}) == agent.connector_count
+        )
+        if check == "connector_consent":
+            if not connectors_complete:
+                values.append(None)
+                entries.append(decision(agent.agent_id + "#connectors", refs, **observed,
+                                        connector_count=agent.connector_count,
+                                        connector_operation_count=agent.connector_operation_count))
+            else:
+                for operation in operations or []:
+                    entry = decision(
+                        agent.agent_id + "#" + operation.connector_id + "/" + operation.operation_id,
+                        refs, **observed, **operation.model_dump(),
+                    )
+                    if operation.is_enabled is False:
+                        entry.status, entry.reason = "excluded", "사용하지 않는 커넥터 작업"
+                        excluded.append(entry)
+                    else:
+                        values.append(
+                            operation.requires_end_user_consent if operation.is_enabled is True else None
+                        )
+                        entries.append(entry)
+                if not operations:
+                    excluded.append(TargetAssessment(
+                        subject=agent.agent_id + "#connectors", status="excluded",
+                        reason="명시적으로 확인된 커넥터 작업 0개", observed=observed, evidence_refs=refs,
+                    ))
+            continue
+        if check == "owner":
+            value = agent.owner_present
+            observed["owner_present"] = agent.owner_present
+        elif check == "authentication":
+            value = auth
+            observed["authentication"] = agent.authentication
+        elif check == "model":
+            value = and_known(
+                bool(agent.model) if agent.model is not None else None,
+                agent.orchestration in modes if agent.orchestration in ("Classic", "Generative") else None,
+            )
+            observed.update(model=agent.model, orchestration=agent.orchestration)
+        elif check == "access":
+            value = and_known(auth, scoped)
+            observed.update(authentication=agent.authentication, shared_with_tenant=agent.shared_with_tenant)
+        elif check == "publishing":
+            value = agent.last_published_at is not None
+            observed.update(last_published_at=agent.last_published_at.isoformat()
+                            if agent.last_published_at else None)
+        elif check == "security":
+            safe_connections = [
+                operation.connection_provider == "User"
+                if operation.connection_provider in ("User", "Maker") else None
+                for operation in operations or []
+            ]
+            value = and_known(
+                auth, scoped,
+                all(safe_connections) if connectors_complete and None not in safe_connections else None,
+            )
+            observed.update(
+                authentication=agent.authentication, shared_with_tenant=agent.shared_with_tenant,
+                connector_inventory_complete=connectors_complete,
+                maker_credentials_count=sum(operation.connection_provider == "Maker"
+                                            for operation in operations or []) if connectors_complete else None,
+            )
+        elif check == "evaluation":
+            reviews = [
+                row for row in data.copilot_reviews
+                if row.agent_id.lower() == agent.agent_id.lower()
+                and row.environment_id.lower() == agent.environment_id.lower()
+            ]
+            if len(reviews) > 1:
+                raise ValueError("같은 Agent의 검토 화면 증적이 중복되었습니다.")
+            review = reviews[0] if reviews else None
+            no_run = bool(review and review.evaluation_run_missing is True)
+            read = agent.evaluation_read
+            if agent.harness is not None and agent.harness != "Standard" and read is None and not no_run:
+                excluded.append(TargetAssessment(
+                    subject=agent.agent_id, status="excluded",
+                    reason="기본 Standard 하니스 조회 범위 밖 - 별도 API·화면 증적 미수집",
+                    observed={**observed, "harness": agent.harness}, evidence_refs=refs,
+                ))
+                continue
+            states = [
+                run.state == "Completed" and run.end_time is not None
+                if run.state in ("Abandoned", "Cancelled", "Completed", "Deleted", "Failed", "InProgress", "Queued")
+                and (run.state != "Completed" or run.end_time is not None) else None
+                for run in read.runs
+            ] if read and read.completed else [None]
+            value = True if True in states else None if None in states else False
+            if no_run and review is not None and not (read and read.completed and value is False):
+                refs = sorted(set(refs + review.evidence_refs))
+                value = (
+                    False if read is None or read.completed and True not in states and None not in states else None
+                )
+                observed.update(
+                    review_source="official_admin_portal_read", review_state=review.state,
+                    evaluation_run_missing=True, warning_count=review.warning_count,
+                    channel_configuration_missing=review.channel_configuration_missing,
+                )
+            observed.update(harness=agent.harness, runs=[run.model_dump(mode="json") for run in read.runs]
+                            if read else None)
+        elif check == "region":
+            environment = environments.get(agent.environment_id.lower())
+            value = bool(environment.region) if environment and environment.region is not None else None
+            observed.update(environment_id=agent.environment_id,
+                            environment_region=environment.region if environment else None)
+            if environment_read:
+                refs = sorted(set(refs + environment_read.evidence_refs))
+                if not environment_read.completed:
+                    result.reason_code = environment_read.reason
+        else:
+            if agent.platform == "agent_builder":
+                excluded.append(TargetAssessment(
+                    subject=agent.agent_id, status="excluded", reason="Agent Builder의 Agent ID 필드 미적용",
+                    observed=observed, evidence_refs=refs,
+                ))
+                continue
+            identity = identities.get((agent.entra_agent_id or "").lower())
+            value = (
+                bool(identity and identity.blueprint_id and identity.blueprint_id.lower() in blueprints)
+                if agent.entra_agent_id is not None else None
+            )
+            observed.update(entra_agent_id=agent.entra_agent_id,
+                            blueprint_id=identity.blueprint_id if identity else None)
+            refs = sorted(set(refs + row_refs(data.entra_agent_identities) + row_refs(data.entra_blueprints)))
+        values.append(value)
+        entries.append(decision(agent.agent_id, refs, **observed))
+    copilot = measured(values, "", decisions=entries)
+    copilot.decisions.extend(excluded)
+    result.total += copilot.total
+    result.compliant += copilot.compliant
+    result.decisions.extend(copilot.decisions)
+    result.refs = sorted(set(result.refs + copilot.refs + data.facts.get("copilot_inventory_refs", [])))
+    if result.unavailable == "대상 없음" and result.total:
+        result.unavailable = None
+    if copilot.unavailable and copilot.unavailable != "대상 없음":
+        result.unavailable = copilot.unavailable
+    if not result.total:
+        result.unavailable = "대상 없음"
+    result.detail += "; 플랫폼별 Copilot 점검: " + {
+        "owner": "소유자 존재", "authentication": "인증 방식",
+        "model": "모델·오케스트레이션", "access": "인증·전체 테넌트 공유 제한",
+        "publishing": "게시 시각 보유(승인 아님)", "security": "인증·공유·제작자 자격 증명 위험 구성",
+        "connector_consent": "활성 커넥터의 사용자 동의(실행 승인 아님)",
+        "evaluation": "조회 성공 범위의 완료 평가 기록", "blueprint": "실제 Agent ID·청사진 연결",
+        "region": "정확 연결된 관리 환경의 지역 정보(실제 처리 지역·보존 준수 아님)",
+    }[check]
+    return result
+
+
 def numeric(value: Any) -> bool:
     return type(value) in (int, float) and math.isfinite(value)
 
@@ -514,6 +702,10 @@ def measurements(
         result[code].decisions.extend(TargetAssessment(
             subject=subject, reason="대상 구성 응답 미확보",
         ) for subject in sorted(expected - actual))
+    for code, definition in criteria["items"].items():
+        check = definition.get("copilot_inventory_check")
+        if check is not None:
+            result[code] = add_copilot_inventory_checks(result[code], data, check, criteria)
     return result
 
 

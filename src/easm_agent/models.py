@@ -16,6 +16,7 @@ from pydantic import (
     StrictBool,
     StrictInt,
     StrictStr,
+    field_validator,
     model_validator,
 )
 
@@ -39,6 +40,66 @@ class Usage(EvidenceModel):
     tokens: int | None = Field(default=None, ge=0)
 
 
+class CopilotConnectorOperation(EvidenceModel):
+    connector_id: StrictStr
+    operation_id: StrictStr
+    is_enabled: StrictBool | None = None
+    requires_end_user_consent: StrictBool | None = None
+    connection_provider: StrictStr | None = None
+    when_can_be_used: StrictStr | None = None
+
+
+class CopilotEvaluationRun(EvidenceModel):
+    run_id: StrictStr
+    state: StrictStr
+    end_time: AwareDatetime | None = None
+    total_test_cases: StrictInt | None = Field(default=None, ge=0)
+
+    @field_validator("run_id")
+    @classmethod
+    def canonical_run_id(cls, value: str) -> str:
+        return str(uuid.UUID(value))
+
+
+class CopilotEvaluationRead(EvidenceModel):
+    completed: StrictBool
+    reason: Reason | None = None
+    runs: list[CopilotEvaluationRun] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_completion(self) -> CopilotEvaluationRead:
+        if self.completed == (self.reason is not None) or not self.completed and self.runs:
+            raise ValueError("Copilot 평가 읽기의 완료 상태·사유·목록이 일치하지 않습니다.")
+        if len({run.run_id for run in self.runs}) != len(self.runs):
+            raise ValueError("Copilot 평가 실행 ID가 중복되었습니다.")
+        return self
+
+
+class CopilotReview(EvidenceModel):
+    agent_id: StrictStr
+    environment_id: StrictStr
+    source_url: StrictStr
+    observed_at: AwareDatetime
+    state: Literal["authoring"]
+    warning_count: StrictInt | None = Field(default=None, ge=0)
+    evaluation_run_missing: StrictBool | None = None
+    channel_configuration_missing: StrictBool | None = None
+    evidence_refs: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_source(self) -> CopilotReview:
+        from urllib.parse import quote
+
+        self.agent_id = str(uuid.UUID(self.agent_id))
+        expected = (
+            "https://copilotstudio.microsoft.com/environments/"
+            + quote(self.environment_id, safe="") + "/agents/" + self.agent_id
+        )
+        if not self.environment_id.strip() or self.source_url != expected:
+            raise ValueError("Copilot 검토 화면의 Agent·환경·주소가 일치하지 않습니다.")
+        return self
+
+
 class CopilotAgentEvidence(EvidenceModel):
     agent_id: StrictStr
     environment_id: StrictStr
@@ -55,6 +116,12 @@ class CopilotAgentEvidence(EvidenceModel):
     channels: list[StrictStr] | None = None
     is_quarantined: StrictBool | None = None
     shared_with_tenant: StrictBool | None = None
+    harness: StrictStr | None = None
+    orchestration: StrictStr | None = None
+    connector_count: StrictInt | None = Field(default=None, ge=0)
+    connector_operation_count: StrictInt | None = Field(default=None, ge=0)
+    connector_operations: list[CopilotConnectorOperation] | None = None
+    evaluation_read: CopilotEvaluationRead | None = None
     field_status: dict[str, FieldStatus] = Field(default_factory=dict)
     evidence_refs: list[str] = Field(default_factory=list)
 
@@ -689,6 +756,7 @@ class Collection(EvidenceModel):
     collected_at: AwareDatetime
     agents: list[AgentEvidence] = Field(default_factory=list)
     copilot_agents: list[CopilotAgentEvidence] = Field(default_factory=list)
+    copilot_reviews: list[CopilotReview] = Field(default_factory=list)
     report_evidence: list[ReportEvidenceDataset] = Field(default_factory=list)
     deployments: list[ModelDeployment] = Field(default_factory=list)
     evaluations: list[EvaluationRun] = Field(default_factory=list)
@@ -802,6 +870,7 @@ class Settings(BaseModel):
     manual_agents: Path | None = None
     admin_evidence_files: list[Path] = Field(default_factory=list)
     copilot_inventory_files: list[Path] = Field(default_factory=list)
+    copilot_review_files: list[Path] = Field(default_factory=list)
     report_evidence_files: list[Path] = Field(default_factory=list)
     report_cost_history: bool = False
     agent365_registry: bool = False

@@ -272,7 +272,7 @@ def normalize_result(
 
 def write_reports(
     data: Collection, findings: list[Finding], output: Path, mode: str = "live",
-    *, new_run: bool = True, customer: str = DEFAULT_CUSTOMER,
+    *, new_run: bool = True, customer: str = DEFAULT_CUSTOMER, interview_workbook: Path | None = None,
 ) -> Path:
     """Write a unique run folder, or rebuild an explicitly selected existing run."""
     output.mkdir(parents=True, exist_ok=True)
@@ -288,11 +288,31 @@ def write_reports(
     normalized = Collection.model_validate(result["collection"])
     rows = [Finding.model_validate(row) for row in result["findings"]]
     workbook = output / report_name(normalized, run_stamp)
+    if interview_workbook is None and not new_run and workbook.is_file():
+        from openpyxl import load_workbook
+
+        from easm_agent.report_integrated import is_integrated
+
+        existing_book = load_workbook(workbook, read_only=True)
+        if is_integrated(existing_book):
+            interview_workbook = workbook
+        existing_book.close()
+    if interview_workbook is not None:
+        origin = {
+            "kind": "provided_workbook",
+            "sha256": hashlib.sha256(interview_workbook.read_bytes()).hexdigest(),
+            "limit": "제공된 수동 입력을 보존. API가 확인·승인한 인터뷰·문서라는 뜻이 아님",
+        }
+        normalized.facts["manual_input_origin"] = origin
+        result["collection"]["facts"]["manual_input_origin"] = origin
     presentation = output / presentation_name(normalized, run_stamp)
     staging = output / f".report.{uuid.uuid4().hex}.pending.xlsx"
     deck_staging = output / f".report.{uuid.uuid4().hex}.pending.pptx"
     try:
-        write_workbook(normalized, rows, staging)
+        if interview_workbook is None:
+            write_workbook(normalized, rows, staging)
+        else:
+            write_workbook(normalized, rows, staging, interview_workbook=interview_workbook)
         write_presentation(staging, deck_staging, DeckContext(
             customer=customer, collected_at=normalized.collected_at,
             subscriptions=len(normalized.subscriptions), agents=len(azure_agents(normalized)),

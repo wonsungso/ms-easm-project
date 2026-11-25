@@ -40,6 +40,7 @@ from scripts.export_report_evidence import explicit_policy_targets, export_condi
 NOW = datetime(2026, 11, 19, tzinfo=UTC)
 TENANT = "11111111-1111-4111-8111-111111111111"
 ROOT = Path(__file__).parents[1]
+pytestmark = pytest.mark.usefixtures("legacy_presentation_template")
 
 
 def packet() -> dict:
@@ -127,7 +128,7 @@ def test_scoped_report_evidence_computes_matching_history_and_never_changes_exis
     assert values["identity.departed"] == 0
 
 
-@pytest.mark.parametrize("change", ["unknown_approval", "partial_population", "short_usage", "missing_month"])
+@pytest.mark.parametrize("change", ["unknown_approval", "partial_population", "short_usage"])
 def test_unknown_records_periods_and_months_are_not_zero(change: str) -> None:
     payload = packet()
     key = "approval.match"
@@ -135,13 +136,16 @@ def test_unknown_records_periods_and_months_are_not_zero(change: str) -> None:
         payload["datasets"][0]["records"][0].update(approval_found=None, approval_id=None, approved_at=None)
     elif change == "partial_population":
         payload["datasets"][0]["population_complete"] = False
-    elif change == "short_usage":
+    else:
         payload["datasets"][5]["records"][0]["coverage_start"] = "2026-11-01T00:00:00Z"
         key = "usage.inactive90"
-    else:
-        payload["datasets"][7]["records"].pop()
-        key = "cost.month.202611.total"
     assert metrics(collection(payload))[key] is None
+
+
+def test_month_with_no_cost_records_inside_the_observed_period_is_a_real_zero() -> None:
+    payload = packet()
+    payload["datasets"][7]["records"].pop()
+    assert metrics(collection(payload))["cost.month.202611.total"] == 0.0
 
 
 @pytest.mark.parametrize("change", ["bool_version", "fake_hr", "future_record", "bad_cost", "duplicate"])
@@ -180,9 +184,9 @@ def test_reports_compute_metrics_in_memory_to_restore_real_values_without_modify
     findings = evaluate(data, load_criteria(), {})
     workbook = write_reports(data, findings, tmp_path, "fixture")
     book = load_workbook(workbook)
-    assert len(book.sheetnames) == 10
+    assert len(book.sheetnames) == 18
     assert metrics_by_key(data, findings, "fixture")["approval.match"].value == 0.5
-    assert len(book["8. 수집 Raw 데이터"].tables) == 18
+    assert len(book["8a_수집 Raw 데이터"].tables) == 18
     book.close()
     deck = next(workbook.parent.glob("EASM-report-*.pptx"))
     presentation = Presentation(deck)
@@ -240,7 +244,7 @@ def test_cost_chart_preserves_observed_totals_when_allocation_is_unknown(tmp_pat
     assert shape(slide, 37548).text == "$0.00"
     assert shape(slide, 37657).text == "식별 확인 중"
     assert shape(slide, 37947).text == "식별 60%"
-    assert shape(slide, 38133).text == "청구 내역 없음"
+    assert shape(slide, 38133).text == "$0.00"
     assert shape(slide, 38008)._element.find(".//{*}spPr/{*}noFill") is not None
     assert shape(slide, 38070)._element.find(".//{*}spPr/{*}noFill") is not None
 

@@ -6,12 +6,14 @@ import argparse
 import json
 import sys
 import uuid
+from contextlib import ExitStack
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 from azure.core.exceptions import ClientAuthenticationError
-from azure.identity import AzureCliCredential
+from azure.identity import AzureCliCredential, DeviceCodeCredential
 
 from easm_agent.azure import (
     PP_INVENTORY_URL,
@@ -23,6 +25,7 @@ from easm_agent.azure import (
     redact,
 )
 from easm_agent.collect_copilot import CopilotInventoryExport, CopilotInventoryRow
+from easm_agent.models import CopilotConnectorOperation, CopilotEvaluationRead, CopilotEvaluationRun
 
 # Project only documented fields; the service reduces ownerId to a nullable boolean.
 PROJECTION = {
@@ -41,10 +44,71 @@ PROJECTION = {
     "channels": "properties.channels",
     "is_quarantined": "properties.isQuarantined",
     "shared_with_tenant": "properties.sharedWithViewers.entireTenant",
+    "harness": "properties.harness",
+    "orchestration": "properties.orchestration",
+    "connector_count": "properties.capabilitiesCounts.distinctPowerPlatformConnectors",
+    "connector_operation_count": "properties.capabilitiesCounts.distinctPowerPlatformConnectorsOperations",
+    "raw_connectors": "properties.powerPlatformConnectors",
 }
 
 
 DelegatedCredential = DelegatedReaderCredential
+
+
+def connector_operations(payload: Any) -> list[CopilotConnectorOperation] | None:
+    if payload is None:
+        return None
+    if not isinstance(payload, list) or len(payload) > 200:
+        raise ValueError("Copilot 커넥터 목록의 형식·크기 오류")
+    result = []
+    for connector in payload:
+        if not isinstance(connector, dict) or not isinstance(connector.get("operations"), list):
+            raise ValueError("Copilot 커넥터 작업 목록 형식 오류")
+        for operation in connector["operations"]:
+            if not isinstance(operation, dict) or len(result) >= 200:
+                raise ValueError("Copilot 커넥터 작업의 형식·크기 오류")
+            result.append(CopilotConnectorOperation.model_validate({
+                "connector_id": connector.get("connectorId"),
+                "operation_id": operation.get("operationId"),
+                **{field: operation.get(source) for field, source in (
+                    ("is_enabled", "isEnabled"), ("requires_end_user_consent", "requiresEndUserConsent"),
+                    ("connection_provider", "connectionProvider"), ("when_can_be_used", "whenCanBeUsed"),
+                )},
+            }))
+    return result
+
+
+def read_evaluations(http: ReaderHTTP, agent: CopilotInventoryRow) -> CopilotEvaluationRead:
+    url = (
+        "https://api.powerplatform.com/copilotstudio/environments/"
+        + quote(agent.environment_id, safe="") + "/bots/" + agent.agent_id
+        + "/api/makerevaluation/testruns?api-version=2024-10-01"
+    )
+    try:
+        payload = http.request("GET", url, PP_SCOPE)
+        rows = payload.get("value")
+        if not isinstance(rows, list) or payload.get("@odata.nextLink") or payload.get("@odata.nextlink"):
+            raise ValueError("Copilot 평가 목록 응답 또는 페이지 완전성 미확인")
+        runs = []
+        seen = set()
+        for row in rows:
+            if not isinstance(row, dict):
+                raise ValueError("Copilot 평가 실행 응답 형식 오류")
+            identifier = str(uuid.UUID(row["id"]))
+            if identifier in seen:
+                raise ValueError("Copilot 평가 실행 ID 중복")
+            seen.add(identifier)
+            runs.append(CopilotEvaluationRun.model_validate_json(json.dumps({
+                "run_id": identifier, "state": row.get("state"),
+                "end_time": row.get("endTime"), "total_test_cases": row.get("totalTestCases"),
+            })))
+        return CopilotEvaluationRead(completed=True, runs=runs)
+    except AccessError as exc:
+        return CopilotEvaluationRead(completed=False, reason=exc.reason)
+    except ClientAuthenticationError:
+        return CopilotEvaluationRead(completed=False, reason="permission_denied")
+    except (ValueError, TypeError, KeyError):
+        return CopilotEvaluationRead(completed=False, reason="error")
 
 
 def inventory_pages(http: ReaderHTTP) -> list[CopilotInventoryRow]:
@@ -90,6 +154,10 @@ def inventory_pages(http: ReaderHTTP) -> list[CopilotInventoryRow]:
                     row["agent_id"] = dataverse_id
                 if type(row.get("owner_present")) is int and row["owner_present"] in (0, 1):
                     row["owner_present"] = bool(row["owner_present"])
+                if "raw_connectors" in row:
+                    row["connector_operations"] = [
+                        item.model_dump(mode="json") for item in operations
+                    ] if (operations := connector_operations(row.pop("raw_connectors"))) is not None else None
             agent = CopilotInventoryRow.model_validate_json(json.dumps(row))
             identity = (agent.environment_id.lower(), agent.agent_id)
             if identity in seen_ids:
@@ -109,18 +177,27 @@ def inventory_pages(http: ReaderHTTP) -> list[CopilotInventoryRow]:
 
 
 def export_inventory(
-    tenant: str, credential: Credential, *, approved: bool,
+    tenant: str, credential: Credential, *, approved: bool, include_evaluations: bool = False,
+    evaluation_credential: Credential | None = None,
 ) -> CopilotInventoryExport:
     tenant = str(uuid.UUID(tenant))
     if not approved:
         raise ValueError("별도 관리자 읽기 내보내기 승인이 필요합니다.")
     delegated = DelegatedCredential(credential, tenant)
     http = ReaderHTTP(delegated, store=None)
+    evaluation_http = (
+        ReaderHTTP(DelegatedCredential(evaluation_credential, tenant), store=None)
+        if include_evaluations and evaluation_credential is not None else http
+    )
     agents = []
     reason = None
     failure_code = None
     try:
         agents = inventory_pages(http)
+        if include_evaluations:
+            for agent in agents:
+                if agent.harness == "Standard" or evaluation_credential is not None:
+                    agent.evaluation_read = read_evaluations(evaluation_http, agent)
     except AccessError as exc:
         reason = exc.reason
         failure_code = "network_error" if str(exc).startswith("network_error") else exc.reason
@@ -131,6 +208,8 @@ def export_inventory(
         reason = "error"
         failure_code = "invalid_response"
     finally:
+        if evaluation_http is not http:
+            evaluation_http.close()
         http.close()
     now = datetime.now(UTC)
     payload = {
@@ -152,17 +231,36 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--approved", action="store_true", required=True,
                         help="별도 관리자 사용자 읽기 내보내기 승인 - 진단 SP에 역할 부여 금지")
+    parser.add_argument("--include-evaluations", action="store_true",
+                        help="기존 평가 목록만 GET 조회 - 새 평가 실행 없음")
+    parser.add_argument("--evaluation-client-id", type=lambda value: str(uuid.UUID(value)),
+                        help="MakerOperations.Read가 구성된 별도 사용자 위임 읽기 앱 - 기기 코드 로그인")
     args = parser.parse_args(argv)
+    if args.evaluation_client_id and not args.include_evaluations:
+        parser.error("--evaluation-client-id에는 --include-evaluations가 필요합니다.")
     try:
         if args.output.exists():
             raise FileExistsError("기존 내보내기를 덮어쓰지 않습니다.")
-        with AzureCliCredential(tenant_id=args.tenant_id) as credential:
-            result = export_inventory(args.tenant_id, credential, approved=args.approved)
+        with ExitStack() as stack:
+            credential = stack.enter_context(AzureCliCredential(tenant_id=args.tenant_id))
+            evaluation_credential = stack.enter_context(DeviceCodeCredential(
+                tenant_id=args.tenant_id, client_id=args.evaluation_client_id,
+            )) if args.evaluation_client_id else None
+            result = export_inventory(
+                args.tenant_id, credential, approved=args.approved, include_evaluations=args.include_evaluations,
+                evaluation_credential=evaluation_credential,
+            )
         args.output.parent.mkdir(parents=True, exist_ok=True)
         with args.output.open("x", encoding="utf-8") as handle:
             handle.write(result.model_dump_json(indent=2))
-        print(f"Copilot 인벤토리 내보내기: 완료={result.completed}; 사유={result.reason}")
-        return 0 if result.completed else 2
+        failed_evaluations = sum(
+            agent.evaluation_read is not None and not agent.evaluation_read.completed for agent in result.agents
+        )
+        print(
+            f"Copilot 인벤토리 내보내기: 완료={result.completed}; 사유={result.reason}; "
+            f"별도 평가 읽기 실패={failed_evaluations}"
+        )
+        return 0 if result.completed and not failed_evaluations else 2
     except (ValueError, OSError):
         print("Copilot 내보내기 중단 - 응답 - 계정 - 토큰 원문 미출력", file=sys.stderr)
         return 1

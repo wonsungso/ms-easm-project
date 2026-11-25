@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from functools import cache
+from typing import Literal
 
 import pytest
 
@@ -17,6 +18,10 @@ from easm_agent.models import (
     AgentEvidence,
     Budget,
     Collection,
+    CopilotAgentEvidence,
+    CopilotEvaluationRead,
+    CopilotEvaluationRun,
+    CopilotReview,
     DefenderPlan,
     EntraAgentIdentity,
     EntraBlueprint,
@@ -164,6 +169,7 @@ def data() -> Collection:
             "inventory_complete": True, "agent_inventory_complete": True,
             "deployment_inventory_complete": True, "entra_blueprints_complete": True,
             "entra_agents_complete": True, "agent365_registry_complete": True,
+            "copilot_inventory_complete": True,
             "evaluation_complete_projects": [PROJECT], "foundry_project_ids": [PROJECT],
             "resource_metrics": [{"resource_id": ACCOUNT, "metrics": [{"timeseries": [{"data": [{"total": 0}]}]}]}],
         },
@@ -200,6 +206,162 @@ def data() -> Collection:
         for key in config.get("complete_subscriptions", []):
             value.facts[key] = [SID]
     return value
+
+
+def test_copilot_inventory_adds_platform_specific_checks(data: Collection) -> None:
+    data.copilot_agents = [
+        CopilotAgentEvidence(agent_id="studio", environment_id="env", platform="copilot_studio",
+                             owner_present=True, authentication="Microsoft Entra", evidence_refs=["studio-ref"]),
+        CopilotAgentEvidence(agent_id="builder", environment_id="env", platform="agent_builder",
+                             owner_present=False, authentication="None", evidence_refs=["builder-ref"]),
+    ]
+    results = grade(data)
+    for code in ("BI-SY-13", "OE-SY-19"):
+        measurement = results[code].measurement
+        assert measurement.complete
+        assert (measurement.numerator, measurement.denominator) == (2, 3)
+        assert results[code].level == "L2"
+        assert "studio-ref" in results[code].evidence_refs
+        assert [row.status for row in measurement.targets[-2:]] == ["compliant", "non_compliant"]
+
+
+def test_copilot_model_access_security_and_publishing_use_real_configuration(data: Collection) -> None:
+    data.copilot_agents = [CopilotAgentEvidence(
+        agent_id="builder", environment_id="env", platform="agent_builder",
+        model="Microsoft 365 Copilot", orchestration="Generative", harness="Copilot Chat",
+        authentication="Microsoft Entra", shared_with_tenant=False,
+        last_published_at=NOW, connector_count=0, connector_operation_count=0, connector_operations=[],
+        owner_present=True, evidence_refs=["copilot-ref"],
+    )]
+    results = grade(data)
+    for code in ("DS-SY-04", "DS-SY-05", "BI-SY-10", "BI-SY-12"):
+        result = results[code]
+        assert result.metric_value == 1
+        assert result.measurement.denominator == 2
+        assert result.measurement.targets[-1].observed["platform"] == "agent_builder"
+    for code in ("DP-SY-15", "BI-SY-09", "DS-SY-06"):
+        assert results[code].measurement.denominator == 1
+        assert results[code].measurement.targets[-1].status == "excluded"
+    data.copilot_agents[0].authentication = "None"
+    data.copilot_agents[0].last_published_at = None
+    for code in ("DS-SY-05", "BI-SY-10", "BI-SY-12"):
+        result = grade(data)[code]
+        assert result.metric_value == 0.5
+        assert result.measurement.targets[-1].status == "non_compliant"
+
+
+@pytest.mark.parametrize(("harness", "platform"), [
+    ("Standard", "copilot_studio"), ("GitHub Copilot", "copilot_studio"), ("Copilot Chat", "agent_builder"),
+])
+def test_standard_copilot_empty_completed_evaluation_read_is_known_absence(
+    data: Collection, harness: str, platform: Literal["copilot_studio", "agent_builder"],
+) -> None:
+    data.copilot_agents = [CopilotAgentEvidence(
+        agent_id="studio", environment_id="env", platform=platform, harness=harness,
+        evaluation_read=CopilotEvaluationRead(completed=True, runs=[]), evidence_refs=["evaluation-ref"],
+    )]
+    result = grade(data)["BI-SY-09"]
+    assert result.metric_value == 0.5
+    assert (result.measurement.numerator, result.measurement.denominator) == (1, 2)
+    data.copilot_agents[0].evaluation_read = CopilotEvaluationRead(completed=False, reason="permission_denied")
+    data.issues.append(Issue(collector="copilot_evaluations", target="studio", reason="permission_denied",
+                             detail="read failed"))
+    result = grade(data)["BI-SY-09"]
+    assert result.reason == "permission_denied" and result.metric_value is None
+    assert result.measurement.targets[-1].status == "unknown"
+
+
+def test_nonstandard_review_absence_is_measured_but_does_not_override_completed_run(data: Collection) -> None:
+    identifier = "22222222-2222-4222-8222-222222222222"
+    data.copilot_agents = [CopilotAgentEvidence(
+        agent_id=identifier, environment_id="env", platform="copilot_studio", harness="GitHub Copilot",
+        evidence_refs=["inventory-ref"],
+    )]
+    data.copilot_reviews = [CopilotReview(
+        agent_id=identifier, environment_id="env", state="authoring", observed_at=NOW,
+        source_url=f"https://copilotstudio.microsoft.com/environments/env/agents/{identifier}",
+        warning_count=2, evaluation_run_missing=True, channel_configuration_missing=True,
+        evidence_refs=["review-ref"],
+    )]
+    result = grade(data)["BI-SY-09"]
+    assert (result.measurement.numerator, result.measurement.denominator) == (1, 2)
+    assert result.measurement.targets[-1].status == "non_compliant"
+    assert result.measurement.targets[-1].observed["review_source"] == "official_admin_portal_read"
+    assert "review-ref" in result.evidence_refs
+    data.copilot_agents[0].evaluation_read = CopilotEvaluationRead(completed=True, runs=[])
+    result = grade(data)["BI-SY-09"]
+    assert result.measurement.targets[-1].status == "non_compliant"
+    assert "review_source" not in result.measurement.targets[-1].observed
+    assert "review-ref" not in result.evidence_refs
+    data.copilot_agents[0].evaluation_read = CopilotEvaluationRead(
+        completed=True, runs=[CopilotEvaluationRun(run_id=identifier, state="Completed", end_time=NOW)],
+    )
+    result = grade(data)["BI-SY-09"]
+    assert result.metric_value is None and result.measurement.targets[-1].status == "unknown"
+
+
+def test_copilot_missing_or_truncated_connector_fields_are_not_zero(data: Collection) -> None:
+    data.copilot_agents = [CopilotAgentEvidence(
+        agent_id="builder", environment_id="env", platform="agent_builder",
+        authentication="Microsoft Entra", shared_with_tenant=False,
+        connector_count=201, connector_operation_count=201, connector_operations=[],
+    )]
+    for code in ("DS-SY-06", "BI-SY-10"):
+        result = grade(data)[code]
+        assert result.metric_value is None
+        assert result.measurement.numerator is result.measurement.denominator is None
+        assert result.measurement.targets[-1].status == "unknown"
+
+
+def test_copilot_region_requires_exact_environment_evidence(data: Collection) -> None:
+    data.admin_evidence[0].environments[0].region = "canadaeast"
+    data.copilot_agents = [CopilotAgentEvidence(
+        agent_id="builder", environment_id="env-1", platform="agent_builder", evidence_refs=["copilot-ref"],
+    )]
+    result = grade(data)["OE-SY-22"]
+    assert result.metric_value == 1 and result.measurement.denominator == 2
+    assert result.measurement.targets[-1].observed["environment_region"] == "canadaeast"
+    assert "fixture://admin" in result.evidence_refs
+    data.copilot_agents[0].environment_id = "different-environment"
+    result = grade(data)["OE-SY-22"]
+    assert result.metric_value is None and result.measurement.targets[-1].status == "unknown"
+
+
+def test_copilot_inventory_failure_or_unknown_never_scores_as_zero(data: Collection) -> None:
+    data.copilot_agents = [
+        CopilotAgentEvidence(agent_id="studio", environment_id="env", platform="copilot_studio",
+                             owner_present=None, authentication="unrecognized"),
+    ]
+    for code in ("BI-SY-13", "OE-SY-19"):
+        finding = grade(data)[code]
+        assert finding.level == "N/A" and finding.metric_value is None
+        assert finding.measurement.targets[-1].status == "unknown"
+    data.copilot_agents = []
+    data.facts["copilot_inventory_complete"] = False
+    data.issues.append(Issue(collector="copilot_inventory", target="inventory", reason="permission_denied",
+                             detail="no access"))
+    for code in ("BI-SY-13", "OE-SY-19"):
+        finding = grade(data)[code]
+        assert finding.reason == "permission_denied" and finding.metric_value is None
+
+
+def test_saved_criteria_without_copilot_checks_keeps_original_measurements(data: Collection) -> None:
+    from copy import deepcopy
+
+    criteria = deepcopy(load_criteria())
+    for code in ("BI-SY-13", "OE-SY-19"):
+        item = criteria["items"][code]
+        item.pop("copilot_inventory_check")
+        item["collectors"].remove("copilot_inventory")
+        item["complete_flags"].remove("copilot_inventory_complete")
+    data.copilot_agents = [
+        CopilotAgentEvidence(agent_id="builder", environment_id="env", platform="agent_builder",
+                             owner_present=False, authentication="None"),
+    ]
+    results = grade(data, criteria)
+    for code in ("BI-SY-13", "OE-SY-19"):
+        assert results[code].metric_value == 1
+        assert results[code].measurement.denominator == 1
 
 
 IDENTITY_ID = "identity"
@@ -434,6 +596,7 @@ def test_real_api_field_combinations_reach_every_level_for_all23_controls(
     snapshot.admin_evidence = reads
     snapshot.facts = {
         "inventory_complete": True, "agent_inventory_complete": True, "deployment_inventory_complete": True,
+        "copilot_inventory_complete": True,
         "entra_blueprints_complete": True, "entra_agents_complete": True, "agent365_registry_complete": True,
         "foundry_project_ids": [run.project_id for run in snapshot.evaluations],
         "evaluation_complete_projects": [run.project_id for run in snapshot.evaluations],

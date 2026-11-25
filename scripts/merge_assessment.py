@@ -14,6 +14,8 @@ from pathlib import Path
 from xml.etree import ElementTree as ET
 from zipfile import ZIP_DEFLATED, ZipFile
 
+from openpyxl import load_workbook
+
 from easm_agent.models import load_criteria
 from easm_agent.proposals import DOMAINS, PRODUCTS
 from easm_agent.report_template import format_assessment_workbook
@@ -70,6 +72,21 @@ def merge_assessment(source: Path, output: Path) -> dict[str, str | int]:
     if source.resolve() == output.resolve():
         raise ValueError("원본 덮어쓰기는 허용하지 않습니다.")
     raw = source.read_bytes()
+    book = load_workbook(BytesIO(raw), read_only=True)
+    if "3_SE 판정" in book.sheetnames:
+        sheet = book["3_SE 판정"]
+        criteria = load_criteria()["items"]
+        rows = {sheet.cell(row, 1).value: row for row in range(5, 31)}
+        if rows.keys() != criteria.keys() or any(
+            [sheet.cell(rows[code], column).value for column in range(16, 21)]
+            != list(config["levels"].values()) for code, config in criteria.items()
+        ):
+            raise ValueError("통합 템플릿의 SY 26개 코드·등급 기준이 현재 criteria.yaml과 다릅니다.")
+        book.close()
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_bytes(raw)
+        return {"merged_proposals": len(criteria), "source_sha256": hashlib.sha256(raw).hexdigest()}
+    book.close()
     with ZipFile(BytesIO(raw)) as archive:
         if SOURCE_SHEET not in archive.read("xl/workbook.xml").decode("utf-8"):
             raise ValueError("질문별 평가 기준 시트가 있는 원본 평가 모델이 필요합니다.")

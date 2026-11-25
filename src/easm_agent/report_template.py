@@ -24,28 +24,28 @@ COLLECTION_METHODS = {
     "DM-SY-01": "Power Platform Admin Center → Environments → 권한",
     "DS-SY-02": "Power Platform Admin Center → Policies → Data policies",
     "DS-SY-03": "Entra → Agents → Agent identities / Blueprints",
-    "DS-SY-04": "Azure → Microsoft Foundry → Model deployments",
-    "DS-SY-05": "Azure → Foundry / App Service → Networking",
-    "DS-SY-06": "Microsoft Foundry → Agents → Tools",
+    "DS-SY-04": "Azure → Model deployments / Copilot 인벤토리",
+    "DS-SY-05": "Azure → Networking / Copilot 인증·공유",
+    "DS-SY-06": "Foundry → Tools / Copilot 커넥터 구성",
     "DS-SY-07": "Microsoft Foundry → Agents → Tools",
     "BI-SY-08": "Power Platform Admin Center → Environments",
-    "BI-SY-09": "Microsoft Foundry → Evaluation",
-    "BI-SY-10": "Azure → Defender for Cloud → Recommendations",
+    "BI-SY-09": "Foundry → Evaluation / Copilot 평가 GET·검토 화면",
+    "BI-SY-10": "Defender → Recommendations / Copilot 위험 구성",
     "BI-SY-11": "Azure → Microsoft Foundry → Content filters",
-    "BI-SY-12": "Foundry → Agent versions / App Service → Configuration",
-    "BI-SY-13": "Foundry → Agent metadata / Azure → Tags",
+    "BI-SY-12": "Azure → Agent versions·런타임 / Copilot 게시 기록",
+    "BI-SY-13": "Foundry → Agent metadata / Azure → Tags / Copilot 인벤토리",
     "BI-SY-14": "Azure → Policy → Compliance",
-    "DP-SY-15": "Entra → Agents → Blueprints / Foundry → Agents",
+    "DP-SY-15": "Entra → Agent identities·Blueprints / Copilot 인벤토리",
     "OE-SY-16": "Entra → Agents → Owners / Sponsors",
     "OE-SY-17": "Entra → Agents → Permissions",
     "OE-SY-18": "Azure → Monitor → Diagnostic settings",
-    "OE-SY-19": "Azure → Foundry / App Service → Identity / IAM",
+    "OE-SY-19": "Azure → Identity / IAM / Copilot 인벤토리",
     "OE-SY-20": "Azure → Monitor → Alerts",
     "OE-SY-21": "Azure → Monitor → Action groups",
-    "OE-SY-22": "Azure → Resource overview / Log Analytics → Retention",
+    "OE-SY-22": "Azure → 위치·보존 / Copilot 관리 환경 지역",
     "OT-SY-23": "Azure → Monitor → Metrics",
     "OT-SY-24": "Azure → Cost Management → Cost analysis",
-    "OT-SY-25": "Azure → Microsoft Defender for Cloud → Environment settings → Defender plans",
+    "OT-SY-25": "Azure → Defender for Cloud → Defender plans",
     "OT-SY-26": "Azure → Cost Management → Budgets",
 }
 _MAIN = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
@@ -64,8 +64,13 @@ def assessment_template_path() -> Path:
 def load_report_template() -> tuple[Workbook, bytes]:
     content = assessment_template_path().read_bytes()
     book = load_workbook(BytesIO(content), keep_links=False, rich_text=True)
-    if len(book.worksheets) != 5 or CRITERIA_SHEET not in book.sheetnames:
-        raise ValueError("평가 결과 템플릿에는 원본 1~5번 시트와 질문별 평가 기준이 필요합니다.")
+    from easm_agent.report_integrated import is_integrated
+
+    if is_integrated(book):
+        if len(book.worksheets) != 14:
+            raise ValueError("통합 평가 템플릿에는 원본 14개 시트만 필요합니다.")
+    elif len(book.worksheets) != 5 or CRITERIA_SHEET not in book.sheetnames:
+        raise ValueError("통합 14개 시트 또는 과거 5개 시트 평가 템플릿이 필요합니다.")
     return book, content
 
 
@@ -127,6 +132,9 @@ def format_assessment_workbook(path: Path) -> None:
     """Apply report layout and keep result-sheet scores as the scoring formulas' input."""
     content = path.read_bytes()
     book = load_workbook(BytesIO(content), read_only=True)
+    if "3_SE 판정" in book.sheetnames:
+        book.close()
+        return
     rows_by_sheet = {
         name: {
             row[1].row: str(row[1].value)

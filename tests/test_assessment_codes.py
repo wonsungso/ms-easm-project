@@ -9,7 +9,8 @@ from openpyxl import load_workbook
 from easm_agent.assessment_codes import ASSESSMENT_REVISION
 from easm_agent.models import load_criteria
 from easm_agent.report import load_result
-from easm_agent.report_template import CRITERIA_SHEET, assessment_template_path
+from easm_agent.report_integrated import GRADES
+from easm_agent.report_template import assessment_template_path
 
 
 def test_system_evidence_codes_use_one_continuous_se_sequence() -> None:
@@ -22,8 +23,8 @@ def test_system_evidence_codes_use_one_continuous_se_sequence() -> None:
         for number in range(start, end + 1)
     ]
     assert list(load_criteria()["items"]) == expected
-    sheet = load_workbook(assessment_template_path())[CRITERIA_SHEET]
-    assert [row[1].value for row in sheet if "-SY-" in str(row[1].value)] == expected
+    sheet = load_workbook(assessment_template_path())[GRADES]
+    assert [sheet.cell(row, 1).value for row in range(5, 31)] == expected
 
 
 def test_saved_result_preserves_scores_evidence_and_snapshots(tmp_path: Path) -> None:

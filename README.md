@@ -5,7 +5,7 @@ EASM(Enterprise Agent Service Management)은 **읽기 전용 API로 Agent 구성
 | 구분 | 내용 |
 | --- | --- |
 | 대상 | Microsoft Foundry(API 조회), Azure 자체 호스팅 Agent(`agent-type: langchain` 태그, `custom-config.yaml` 태그 추가 가능), Entra Agent ID, Microsoft 365 Copilot Agent Builder·Copilot Studio 인벤토리, Agent 365 패키지, Power Platform 관리자 증적 |
-| 점검 | API 등급 26개, [보고서 전용 SY 13개(27~39)](#보고서-전용-점검-항목), Copilot·Agent 365 인벤토리. 보고서 전용 SY와 인벤토리는 API 등급 분모에 합산하지 않음 |
+| 점검 | API 등급 26개, [추가 보고서 지표 13개(27~39)](#보고서-전용-점검-항목), Copilot·Agent 365 인벤토리. 모델·접근·도구 동의·보안 구성·게시·신원·소유자·인증은 플랫폼별 항목에 포함 |
 | 결과 | 실행별 `output/<실행시각-UTC>/`에 Excel·PPT·원본 JSON 저장 |
 | 안전 원칙 | 진단 앱은 리소스 변경·배포·삭제·비밀 조회를 하지 않음. 권한 설정·정리는 승인된 관리자가 별도 수행 |
 
@@ -184,14 +184,28 @@ bash setup.sh apply
 | Microsoft Foundry·Azure 자체 호스팅 Agent·Entra Agent ID | Step 3의 진단 앱 읽기 권한. 기본 범위는 접근 가능한 활성 구독이며 `setup.json`에 구독을 지정하면 해당 범위 사용 |
 | Microsoft 365 Copilot Agent Builder·Copilot Studio | 별도 `Global Reader` 또는 `AI Reader` 사용자의 위임 읽기 내보내기 필요. V1 봇 제외 |
 | Agent 365 패키지 | `CopilotPackages.Read.All` 애플리케이션 권한·관리자 동의 및 Agent 365 라이선스(E7 포함 가능) |
-| Power Platform 관리 구성 | 승인된 별도 관리자 읽기 증적. 진단 앱에 관리자 역할을 부여하지 않음 |
+| Power Platform 관리 구성(환경·역할·DLP) | 승인된 별도 관리자 읽기 증적. 진단 앱에 관리자 역할을 부여하지 않음 |
 
-Copilot 인벤토리는 프로젝트가 설치된 승인 관리자 터미널에서 내보낸 뒤 파일을 수집 환경으로 전달합니다. `customer-setup.zip`에는 이 도구가 없습니다.
+### 관리자 위임 읽기 내보내기
+
+Copilot 인벤토리·기존 평가 이력·DLP 정책은 프로젝트가 설치된 승인 관리자 터미널에서 **현재 사용자 권한의 읽기 전용 GET**으로 내보낸 뒤 JSON 파일을 수집 환경으로 전달합니다. `customer-setup.zip`에는 이 도구가 없습니다. 파일로 전달해도 공식 API 조회 원천이면 수집 방식 **A**이며, 실제 관리 화면 확인에 의존한 값만 **E**입니다. 토큰·소유자 ID·사용자 이름·프롬프트·대화는 저장하지 않습니다.
+
+내보내기 전에 대상 테넌트에 로그인합니다.
 
 ```powershell
 az login --tenant "<테넌트 ID>"
-python scripts\export_copilot_inventory.py --tenant-id "<테넌트 ID>" --output copilot-inventory.json --approved
 ```
+
+| 내보내기 | 명령 | 반영 항목 |
+| --- | --- | --- |
+| Copilot 인벤토리·기존 평가 | `python scripts\export_copilot_inventory.py --tenant-id "<테넌트 ID>" --output copilot-inventory.json --approved --include-evaluations --evaluation-client-id "<읽기 앱 Client ID>"` | DS-SY-04~06, BI-SY-09·10·12·13, DP-SY-15, OE-SY-19·22 |
+| DLP 정책 | `python scripts\export_dlp_policies.py --tenant-id "<테넌트 ID>" --output dlp-policies.json --approved` | DS-SY-02 |
+
+- **기존 평가 이력:** 공식 평가 목록 GET만 사용하며 새 평가를 실행하지 않습니다. 성공한 빈 목록은 평가 0건, 조회 실패는 `null`과 사유입니다. `--evaluation-client-id`를 생략하면 기본 로그인 자격 증명으로 Standard 하니스만 조회합니다.
+- **평가 읽기 앱:** 평가 GET에는 Power Platform API의 위임 권한 `CopilotStudio.MakerOperations.Read`가 필요합니다. Azure CLI 앱은 추가 scope 요청이 거부되므로(`AADSTS65002`) 단일 테넌트 공용 클라이언트 앱을 별도로 등록해 **이 위임 권한만** 구성하고, 현재 사용자가 기기 코드로 로그인·동의합니다. 테넌트 전체 동의·비밀·인증서는 필요하지 않으며 진단 앱 권한은 변경하지 않습니다.
+- **DLP 정책:** 공식 DLP 정책 목록 조회(`ListPoliciesV2`)로 정책의 적용 환경 범위만 읽고 커넥터 분류·사람 정보는 저장하지 않습니다. 성공한 빈 목록은 정책 0건, 접근 거부·미완료 페이지는 `null`과 사유입니다.
+- **실제 화면 증적:** 승인된 검토 화면의 관측은 `--copilot-review-file <검토증적.json>`으로 첨부합니다. 화면의 `No evaluation run`은 BI-SY-09의 평가 0건 근거가 되며, 같은 Agent의 API 결과와 상충하면 판정을 보류합니다. 경고 수·채널 없음은 준비 완료·게시 승인으로 해석하지 않습니다.
+- **수집 후 첨부:** 이미 수집한 실행에는 `easm-agent package --output-dir "<실행 폴더>" --admin-evidence-file dlp-policies.json --tenant-id "<테넌트 ID>" --reassess`로 반영합니다. Power Platform 환경·역할 내보내기는 [관리자 읽기 내보내기](docs/api-notes.md#관리자-읽기-내보내기)를 참고합니다.
 
 Agent 365는 기본 권한에 없습니다. 승인된 관리자가 `customer-setup` 폴더에서 `bash setup.sh plan --agent365-reader`로 확인하고 `bash setup.sh apply --agent365-reader`로 적용합니다.
 
@@ -212,15 +226,25 @@ easm-agent collect --setup-file .easm-agent/setup.json \
   --copilot-inventory-file copilot-inventory.json --agent365-registry --output-dir output
 ```
 
-Copilot 내보내기 또는 Agent 365를 사용하지 않으면 해당 옵션을 생략합니다. Copilot 인벤토리만 처리할 때는 `easm-agent collect --copilot-only --tenant-id "<테넌트 ID>" --copilot-inventory-file copilot-inventory.json --output-dir output`을 사용하며 Azure·Graph를 호출하지 않습니다.
+Copilot 내보내기·DLP 정책·Agent 365를 사용하지 않으면 해당 옵션을 생략합니다. DLP 등 관리자 증적 파일은 `--admin-evidence-file <파일>`로 함께 전달합니다. Copilot 인벤토리만 처리할 때는 `easm-agent collect --copilot-only --tenant-id "<테넌트 ID>" --copilot-inventory-file copilot-inventory.json --output-dir output`을 사용하며 Azure·Graph를 호출하지 않습니다.
 
 ![Codespaces 점검·수집 완료 예시](docs/imgs/21-codespaces-collection-success.png)
 
 | 실행 폴더의 파일 | 용도 |
 | --- | --- |
 | `raw-data-<타임스탬프>.json` | 수집 원본·증적·메타데이터 |
-| `report-<타임스탬프>.xlsx` | 상세 결과·인터뷰 입력 |
+| `report-<타임스탬프>.xlsx` | 통합 템플릿 14개 시트의 SY 26개 실측·인터뷰 입력과 수집 증적 4개 시트(총 18개) |
 | `EASM-report-<타임스탬프>.pptx` | 요약 보고서. 인터뷰 입력 전에는 잠정본 |
+
+기본 [PPT 템플릿](docs/assessment-report-template.pptx)은 **비즈니스 연결형 27장**입니다. 원문 설명·제언·인터뷰를 유지하고 System Evidence 26개와 이에 종속된 수준·점수만 갱신합니다. 제공된 인터뷰 점수·문서 제출·인용은 API 검증 결과가 아닙니다. 미관측 실측값은 확인 중으로 남깁니다.
+
+| Working Backwards 실행 | 명령 |
+| --- | --- |
+| 제공 Excel의 수동 입력 보존 후 수집 | `easm-agent collect --interview-workbook "<수동 입력 원본.xlsx>" --output-dir output` |
+| 저장 실측으로 재생성 - Azure 호출 없음 | `easm-agent package --output-dir "<실행 폴더>" --interview-workbook "<수동 입력 원본.xlsx>"` |
+| PPT 표시값·Excel 셀 매핑 추출 | `easm-agent report-values --workbook "<결과.xlsx>" --output "<새 매핑.json>"` |
+
+`package`에서 원본을 생략하면 기존 실행 Excel의 수동 입력을 보존합니다. PPT 숫자와 Excel 수식 캐시는 같은 계산 계약을 사용하며 근거 시트에 연결 셀을 기록합니다. 유효한 설정·템플릿과 쓰기 가능한 출력 경로에서 인증·접근 실패가 발생하면 실패 사유와 N/A 26개를 담은 Excel·PPT를 생성하고 종료 코드 2를 반환합니다. 잘못된 설정·손상 템플릿·파일 쓰기 실패는 성공으로 처리하지 않습니다.
 
 `NOT_CHECKED`는 대상 없음·프로젝트 미지정에 따른 미점검이며 수집은 계속됩니다. 권한·인증 실패는 고객 관리자에게 보완을 요청합니다.
 
@@ -233,13 +257,23 @@ Copilot 내보내기 또는 Agent 365를 사용하지 않으면 해당 옵션을
 
 ### 중요 - 인터뷰 입력 후 PPT 재생성
 
-**인터뷰 54개는 수동 평가입니다.** Excel에 인터뷰·문서 확인 결과를 입력하고 PPT를 다시 만들어야 종합 성숙도가 확정됩니다.
+**인터뷰 54개는 수동 평가입니다.** 기본 [Excel 템플릿](docs/assessment-result-template.xlsx)은 통합 14개 시트이며 System Evidence는 [API 기준](config/criteria.yaml)의 26개 항목입니다. 원본 폰트·크기와 노란 입력 셀을 유지합니다. 미확인·빈 분모는 공란과 사유를 보존합니다.
+
+| 구분 | 입력·결과 위치 |
+| --- | --- |
+| System Evidence 26개 | `2_SE 원천데이터` F열의 항목별 충족 분자·측정 분모, `3_SE 판정`의 결과·근거 |
+| 원천데이터 표시 | 단위는 `개`, `미국 달러 (USD)` 등으로 표시하며 숫자 원본은 유지. 추출 일시는 `yyyy-mm-dd hh:mm:ss KST`, 추출자는 `EASM 자동화 모듈`. 비고는 짧게 표시하고 상세 근거는 근거 시트에 보존 |
+| 인터뷰 54개 | `4_프로세스 점수` F열 응답 점수, G/H/I열 문서·시스템·개선 이력 확인, M열 근거 |
+| 문서·인용 | `5_문서 실사`, `6_인터뷰 기록`에 별도 확인 결과 입력 |
+| 수집 증적 | 뒤에 추가되는 `8_수집결과 근거`, `8a_수집 Raw 데이터`, `8b_수집이슈 Raw 데이터`, `8c_필드누락사유` 시트 |
+
+템플릿의 수동 작성 예시는 참고용입니다. **새 수집 보고서에는 예시 응답·문서 확인·인용을 복사해 평가하지 않고 입력란을 비웁니다.** API 정보 확인율은 전사 Agent 커버리지나 정책 실효성 신뢰도가 아닙니다. 조회에 성공했으나 대상이 없으면 0, 조회 실패·필수 값 미확인은 공란·`N/A`와 사유로 구분해 0이나 L1로 바꾸지 않습니다.
 
 | 순서 | 작업 | 상세 |
 | --- | --- | --- |
 | 1 | 다운로드 | 해당 실행의 Excel을 **다운로드**하여 로컬 Excel로 열기 |
-| 2 | 질문·기준 확인 | **6. 수집 결과** G열이 `인터뷰 필요`인 행의 F열 질문 확인. **4. 질문별 평가 기준** G ~ K열(Level 1~5)·L열(증적) 참고 |
-| 3 | 점수 입력 | 6번 시트 M열에 `1`~`5` 정수, N열에 근거 입력. 확인 불가·대상 아님은 빈칸 또는 `N/A` |
+| 2 | 질문·기준 확인 | **4_프로세스 점수** C열 코드·D열 문항 및 증적 상한 확인 |
+| 3 | 점수 입력 | F열에 `1`~`5` 정수, G/H/I열에 확인한 증적만 `Y`, M열에 근거 입력. 확인 불가는 빈칸 |
 | 4 | 업로드 | 저장 후 원래 실행 폴더에 **같은 이름으로 덮어쓰기** |
 | 5 | PPT 재생성 | 아래 `deck` 명령으로 Excel 답변 상태·요약과 PPT 갱신 |
 | 6 | 최종 확인 | PPT 2번 슬라이드의 인터뷰 완료 수와 3번 슬라이드의 **(잠정)** 표시 확인 |
@@ -253,10 +287,10 @@ easm-agent deck --output-dir output --customer "<고객사명>"
 **입력 규칙**
 
 - 문서 증적이 없으면 최대 2점, 시스템 증적이 없으면 최대 3점이며 인터뷰 답변만으로는 Level 3 이상을 주지 않습니다.
-- 빈칸과 `N/A`는 평균에서 제외하며 0점으로 취급하지 않습니다. System Evidence 항목(`-SY-`)의 M열은 점검 결과가 채우므로 수정하지 않습니다.
+- 빈칸과 `N/A`는 평균에서 제외하며 0점으로 취급하지 않습니다. `3_SE 판정`의 API 등급·원천 입력은 자동 반영되므로 수기 조정하지 않습니다.
 - 일부만 입력해도 PPT를 만들 수 있으며 입력하지 않은 영역은 실측 기준 잠정값입니다.
 
-**샘플 인터뷰 응답:** `interview_samples.py`의 샘플 응답을 별도 사본에 기입합니다. 6번 시트에서 값이 없는 인터뷰 행만 G~N열을 채우며 원본과 입력한 답변은 덮어쓰지 않습니다. `--raw-json`을 주면 PPT에 보고서 지표도 반영합니다.
+**샘플 인터뷰 응답:** `interview_samples.py`의 샘플을 별도 사본의 `4_프로세스 점수` F/M열에 기입합니다. 이미 작성한 행은 보존하고 문서·시스템·개선 이력을 확인한 것으로 표시하지 않습니다. `--raw-json`을 주면 PPT에 보고서 지표도 반영합니다.
 
 ```bash
 python -m easm_agent.report_interviews --workbook "<원본.xlsx>" \
@@ -272,12 +306,37 @@ python -m easm_agent.report_interviews --workbook "<원본.xlsx>" \
 
 | Excel 시트 | 확인할 내용 |
 | --- | --- |
-| 6. 수집 결과 | 상단의 등급 산정·보류·결과 없음 건수, G열 수집·인터뷰 상태 |
-| 7. 수집결과 근거 | 설정·분자·분모, 하단의 대상별 판정·직접 증적·적용 기준 출처 |
-| 8. 수집 Raw 데이터 | 원본 값. 기준 사본·해시·수집기 버전은 결과 JSON에도 보관 |
-| 9. 수집이슈 Raw 데이터 / 10. 필드누락사유 | 조회 실패·자료 부족 원인 |
+| 0_안내 · 1_진단 개요 · 1a_플랫폼 기준 | 사용 순서·색상 범례, 진단 기본 정보·라이선스 보유(Y/N)·산정 기준값, 7개 플랫폼별 Agent 수·수집 방식 집계 |
+| 2_SE 원천데이터 · 2a_월별 추이 · 2b_세부 내역 | 26개 항목의 분자·분모 원본, 월별 추이, 소유자·권한과 Copilot 게시·채널·대상별 구성 점검. 사용 이력·실제 민감 데이터 노출로 해석하지 않음 |
+| 2c_수집 매트릭스 | 항목 × 플랫폼 수집 방식과 측정 범위·미측정 사유 |
+| 3_SE 판정 · 3a_단계 신뢰도 | 26개 API 등급·충족률·판정 근거, 단계별 측정 범위·신뢰도·보정 적용 |
+| 4_프로세스 점수 · 5_문서 실사 · 6_인터뷰 기록 | 인터뷰 54개 점수·문서 확인·인용 입력 |
+| 7_보고서 산출 · 7a_보고서 산출(범위·신뢰도) | 상단 단계별 점수·보정 여부, 하단 보고서 페이지별 대응표(판정과 원천 측정값 분리), 26개 항목의 측정 범위·신뢰도 |
+| 8_수집결과 근거 · 8a_수집 Raw 데이터 | 설정·분자·분모, 대상별 판정·직접 증적·적용 기준 출처, 원본 값. 기준 사본·해시·수집기 버전은 결과 JSON에도 보관 |
+| 8b_수집이슈 Raw 데이터 · 8c_필드누락사유 | 조회 실패·자료 부족 원인 |
 
-**L5는 API 구성·기록 충족률 100%이지 조직 전체의 거버넌스 성숙도를 뜻하지 않습니다.** 검토 후 권한·인증서를 회수하고 키·데이터를 승인된 보관 기간에 따라 정리합니다.
+**수집 방식 표기(2c_수집 매트릭스)**
+
+| 표기 | 의미 |
+| --- | --- |
+| A | API 자동 조회. 승인된 위임 사용자의 API 조회 파일 포함 |
+| E | Export. 실제 관리 화면 확인·수동 내보내기 증적 |
+| △ | 운영자 확인. 담당자 확인 참고치이며 판정에서 제외 |
+| X | 측정 불가. 측정 범위 안이나 조회 실패 |
+| 해당 없음 | 해당 플랫폼이 항목의 측정 범위 밖. 측정 불가와 별도로 집계 |
+
+**시트 탭 색과 셀 색**
+
+| 구분 | 색 |
+| --- | --- |
+| 시트 탭 | 0~1a 연두 · 2~3a 초록(System Evidence) · 4~6 연한 파랑(인터뷰) · 7~7a 파랑(종합) |
+| 머리글 | 회색 채우기 · 검정 굵게 |
+| 입력·참조 값 열 | 노란 채우기 · 파란 글자. 같은 열은 빈 셀·참조 수식도 같은 색 |
+| 계산 열 | 흰 바탕 · 검정 글자 |
+| 판정·보정·신뢰도 | 연회색 채우기, 판정 단계는 조건부 서식 |
+| 합계 행 | 연파랑 채우기 · 굵게 |
+
+**L5는 API 구성·기록 충족률 100%이지 조직 전체의 거버넌스 성숙도를 뜻하지 않습니다.** 검토 후 권한·인증서를 회수하고 키·데이터를 승인된 보관 기간에 따라 정리합니다. 보고서를 재생성해도 관측 시각은 새 실시간 조회로 바꾸지 않습니다.
 
 ### 종료 후 정리
 
@@ -311,40 +370,42 @@ bash setup.sh cleanup-apply  # 진단 앱·SP·해당 역할 할당 삭제, 미�
 | 90% 이상~100% 미만 | L4 |
 | 100% | L5 |
 
-수집 방법은 평가표의 참고 메뉴이며 실제 API 계산 범위와 다를 수 있습니다. Power Platform 3개는 [별도 관리자 읽기 증적](docs/api-notes.md#관리자-읽기-내보내기)이 필요합니다.
+수집 방법은 평가표의 참고 메뉴이며 실제 API 계산 범위와 다를 수 있습니다. 플랫폼별 수집 방식(A·E·△·X)은 Excel `2c_수집 매트릭스`에 표시합니다. Power Platform 3개는 [별도 관리자 읽기 증적](docs/api-notes.md#관리자-읽기-내보내기)이 필요합니다.
 
 | 코드 | 영역 | 점검 내용 | 수집 방법 | 수집 |
 | --- | --- | --- | --- | --- |
 | [DM-SY-01](docs/checklist.md#dm-sy-01-copilot-studio-제작-권한-보유자-수-및-환경-현황) | 1. Demand | 환경별 역할 할당 기록 | Power Platform Admin Center → Environments → 권한 | ✅ |
 | [DS-SY-02](docs/checklist.md#ds-sy-02-커넥터-분류차단-정책데이터-정책-적용-현황) | 2. Design | 데이터 정책 환경 적용 범위 | Power Platform Admin Center → Policies → Data policies | ✅ |
 | [DS-SY-03](docs/checklist.md#ds-sy-03-agent-id의-blueprint-연결) | 2. Design | Agent ID의 Blueprint 연결 | Entra → Agents → Agent identities / Blueprints | ✅ |
-| [DS-SY-04](docs/checklist.md#ds-sy-04-모델-배포-버전업데이트-구성) | 2. Design | 모델 배포 버전·업데이트 구성 | Azure → Microsoft Foundry → Model deployments | ✅ |
-| [DS-SY-05](docs/checklist.md#ds-sy-05-ai-리소스-인바운드-경계-구성) | 2. Design | AI 리소스 인바운드 경계 구성 | Azure → Foundry / App Service → Networking | ✅ |
-| [DS-SY-06](docs/checklist.md#ds-sy-06-mcp-도구-필수-승인-모드) | 2. Design | MCP 도구 필수 승인 모드 | Microsoft Foundry → Agents → Tools | ✅ |
+| [DS-SY-04](docs/checklist.md#ds-sy-04-플랫폼별-모델오케스트레이션-구성) | 2. Design | 플랫폼별 모델·오케스트레이션 구성 | Azure → Model deployments / Copilot 인벤토리 | ✅ |
+| [DS-SY-05](docs/checklist.md#ds-sy-05-플랫폼별-접근-범위-구성) | 2. Design | 플랫폼별 접근 범위 구성 | Azure → Networking / Copilot 인증·공유 | ✅ |
+| [DS-SY-06](docs/checklist.md#ds-sy-06-도구-승인사용자-동의-구성) | 2. Design | 도구 승인·사용자 동의 구성 | Foundry → Tools / Copilot 커넥터 구성 | ✅ |
 | [DS-SY-07](docs/checklist.md#ds-sy-07-외부-도구-https-연결-구성) | 2. Design | 외부 도구 HTTPS 연결 구성 | Microsoft Foundry → Agents → Tools | ✅ |
 | [BI-SY-08](docs/checklist.md#bi-sy-08-환경-분리-및-관리형-환경-적용-여부) | 3. Build | 관리형 환경 보호 수준 | Power Platform Admin Center → Environments | ✅ |
-| [BI-SY-09](docs/checklist.md#bi-sy-09-foundry-프로젝트-평가-실행-이력) | 3. Build | Foundry 프로젝트 평가 실행 이력 | Microsoft Foundry → Evaluation | ✅ |
-| [BI-SY-10](docs/checklist.md#bi-sy-10-ai-리소스-보안-권고-상태) | 3. Build | AI 리소스 보안 권고 상태 | Azure → Defender for Cloud → Recommendations | ✅ |
+| [BI-SY-09](docs/checklist.md#bi-sy-09-플랫폼별-완료-평가-실행-기록) | 3. Build | 플랫폼별 완료 평가 실행 기록 | Foundry → Evaluation / Copilot 평가 GET·검토 화면 | ✅ |
+| [BI-SY-10](docs/checklist.md#bi-sy-10-플랫폼별-보안-점검-상태) | 3. Build | 플랫폼별 보안 점검 상태 | Defender → Recommendations / Copilot 위험 구성 | ✅ |
 | [BI-SY-11](docs/checklist.md#bi-sy-11-콘텐츠-필터-정책-연결) | 3. Build | 콘텐츠 필터 정책 연결 | Azure → Microsoft Foundry → Content filters | ✅ |
-| [BI-SY-12](docs/checklist.md#bi-sy-12-agent-버전호스트-런타임-식별) | 3. Build | Agent 버전·호스트 런타임 식별 | Foundry → Agent versions / App Service → Configuration | ✅ |
-| [BI-SY-13](docs/checklist.md#bi-sy-13-agent-책임환경비용-메타데이터) | 3. Build | Agent 책임·환경·비용 메타데이터 | Foundry → Agent metadata / Azure → Tags | ✅ |
+| [BI-SY-12](docs/checklist.md#bi-sy-12-플랫폼별-agent-버전게시-기록) | 3. Build | 플랫폼별 Agent 버전·게시 기록 | Azure → Agent versions·런타임 / Copilot 게시 기록 | ✅ |
+| [BI-SY-13](docs/checklist.md#bi-sy-13-플랫폼별-agent-책임자산-메타데이터) | 3. Build | 플랫폼별 Agent 책임·자산 메타데이터 | Foundry → Agent metadata / Azure → Tags / Copilot 인벤토리 | ✅ |
 | [BI-SY-14](docs/checklist.md#bi-sy-14-ai-리소스-정책-평가-준수) | 3. Build | AI 리소스 정책 평가 준수 | Azure → Policy → Compliance | ✅ |
-| [DP-SY-15](docs/checklist.md#dp-sy-15-azure-agent의-entra-blueprint-귀속) | 4. Deploy | Azure Agent의 Entra Blueprint 귀속 | Entra → Agents → Blueprints / Foundry → Agents | ✅ |
+| [DP-SY-15](docs/checklist.md#dp-sy-15-플랫폼별-agent-id청사진-연결) | 4. Deploy | 플랫폼별 Agent ID·청사진 연결 | Entra → Agent identities·Blueprints / Copilot 인벤토리 | ✅ |
 | [OE-SY-16](docs/checklist.md#oe-sy-16-agent-id-소유자스폰서-연결) | 5. Operate | Agent ID 소유자·스폰서 연결 | Entra → Agents → Owners / Sponsors | ✅ |
 | [OE-SY-17](docs/checklist.md#oe-sy-17-agent-id-앱-역할-읽기-범위) | 5. Operate | Agent ID 앱 역할 읽기 범위 | Entra → Agents → Permissions | ✅ |
 | [OE-SY-18](docs/checklist.md#oe-sy-18-agent-리소스-실행-로그-연결) | 5. Operate | Agent 리소스 실행 로그 연결 | Azure → Monitor → Diagnostic settings | ✅ |
-| [OE-SY-19](docs/checklist.md#oe-sy-19-관리-id키-인증직접-arm-역할-구성) | 5. Operate | 관리 ID·키 인증·직접 ARM 역할 구성 | Azure → Foundry / App Service → Identity / IAM | ✅ |
+| [OE-SY-19](docs/checklist.md#oe-sy-19-플랫폼별-인증권한-구성) | 5. Operate | 플랫폼별 인증·권한 구성 | Azure → Identity / IAM / Copilot 인벤토리 | ✅ |
 | [OE-SY-20](docs/checklist.md#oe-sy-20-ai-리소스-활성-경보-범위) | 5. Operate | AI 리소스 활성 경보 범위 | Azure → Monitor → Alerts | ✅ |
 | [OE-SY-21](docs/checklist.md#oe-sy-21-ai-경보의-작업-그룹수신자-연결) | 5. Operate | AI 경보의 작업 그룹·수신자 연결 | Azure → Monitor → Action groups | ✅ |
-| [OE-SY-22](docs/checklist.md#oe-sy-22-리소스-지역workspace-보존-구성) | 5. Operate | 리소스 지역·workspace 보존 구성 | Azure → Resource overview / Log Analytics → Retention | ✅ |
+| [OE-SY-22](docs/checklist.md#oe-sy-22-플랫폼별-지역보존-구성-정보) | 5. Operate | 플랫폼별 지역·보존 구성 정보 | Azure → 위치·보존 / Copilot 관리 환경 지역 | ✅ |
 | [OT-SY-23](docs/checklist.md#ot-sy-23-ai-리소스-사용량-관측-범위) | 6. Optimize | AI 리소스 사용량 관측 범위 | Azure → Monitor → Metrics | ✅ |
 | [OT-SY-24](docs/checklist.md#ot-sy-24-ai-비용의-단일-agent-귀속) | 6. Optimize | AI 비용의 단일 Agent 귀속 | Azure → Cost Management → Cost analysis | ✅ |
-| [OT-SY-25](docs/checklist.md#ot-sy-25-ai-민감-데이터-노출-점검-구성) | 6. Optimize | AI 민감 데이터 노출 점검 | Azure → Microsoft Defender for Cloud → Environment settings → Defender plans | ✅ |
+| [OT-SY-25](docs/checklist.md#ot-sy-25-ai-민감-데이터-노출-점검-구성) | 6. Optimize | AI 민감 데이터 노출 점검 | Azure → Defender for Cloud → Defender plans | ✅ |
 | [OT-SY-26](docs/checklist.md#ot-sy-26-구독-예산실제예측-경보-구성) | 6. Optimize | 구독 예산·실제·예측 경보 구성 | Azure → Cost Management → Budgets | ✅ |
 
 ## 보고서 전용 점검 항목
 
 원본 보고서의 추가 지표 13개(코드 27~39)입니다. **위 26개 API 등급·점수에 합산하지 않고** 보고서 보조 근거로만 쓰며, 명칭·지표·한계는 [criteria.yaml](config/criteria.yaml)의 `report_items`가 기준입니다. 값이 없으면 0·L1이 아니라 `null`과 사유로 남고 PPT에는 '확인 중' 또는 수집된 유사 지표로 표시합니다. 원천 계약은 [원본 PPT의 추가 증적](docs/api-notes.md#원본-ppt의-추가-증적과-한계)을 따릅니다.
+
+DP-SY-35·DS-SY-36·OE-SY-37의 Copilot 관측값은 각각 BI-SY-12·OE-SY-19·BI-SY-13의 플랫폼별 구성 요소로도 사용합니다. 별도 27~39 코드 점수를 합산하는 것은 아닙니다. 플랫폼별 조건·단위·지원 하니스는 [API 계약](docs/api-notes.md#copilot-인벤토리-읽기-계약-2026-11-19-문서-확인)에 명시합니다.
 
 | 코드 | 영역 | 점검 내용 | 원천 | 수집 방식 |
 | --- | --- | --- | --- | --- |

@@ -115,7 +115,6 @@ EMPTY = "수집된 데이터 없음 - 미수행 또는 0건으로 확정하지 �
 ORIGINAL = "원본 JSON"
 FONT_SIZE = 10
 HEADER_FILL = "D9D9D9"
-EVIDENCE_FILL = "EAF3FB"
 _SIDE = Side(style="thin", color="000000")
 _OUTER = Side(style="medium", color="000000")
 BORDER = Border(left=_SIDE, right=_SIDE, top=_SIDE, bottom=_SIDE)
@@ -130,6 +129,14 @@ COLUMN_WIDTHS = {
 CENTERED = {"SY코드", "코드", "진단 영역", "확인상태", "수집 상태", "지표", "판정", "수동검토상태"}
 DETAILS_TITLE = "수집결과 근거"
 RAW_TITLE = "수집 Raw 데이터"
+# Integrated-template appendix sheets keep the "8, 8a, 8b, 8c" family numbering used by
+# sibling sheets (e.g. "2, 2a, 2b, 2c") instead of a sequential "15./16./17./18." position count.
+FIXED_SHEET_NAMES = {
+    DETAILS_TITLE: "8_수집결과 근거",
+    RAW_TITLE: "8a_수집 Raw 데이터",
+    "수집이슈 Raw 데이터": "8b_수집이슈 Raw 데이터",
+    "필드누락사유": "8c_필드누락사유",
+}
 
 
 class ReviewLayout(TypedDict):
@@ -273,10 +280,13 @@ def _cell(sheet: Worksheet, row: int, column: int, value: Any) -> None:
 
 def _table(
     book: Workbook, title: str, headers: list[str], rows: Iterable[dict[str, Any]],
-    *, sheet: Worksheet | None = None, start_row: int = 1,
+    *, sheet: Worksheet | None = None, start_row: int = 1, integrated: bool = False,
 ) -> Worksheet:
     if sheet is None:
-        sheet = book.create_sheet(f"{len(book.worksheets) + 1}. {title}")
+        name = FIXED_SHEET_NAMES[title] if integrated and title in FIXED_SHEET_NAMES else (
+            f"{len(book.worksheets) + 1}. {title}"
+        )
+        sheet = book.create_sheet(name)
     layout = REVIEW_LAYOUTS.get(title)
     if sheet.freeze_panes is None:
         sheet.freeze_panes = f"A{start_row + 1}"
@@ -307,9 +317,7 @@ def _table(
         for column, header in enumerate(headers, 1):
             _cell(sheet, row_number, column, safe.get(header))
             cell = sheet.cell(row_number, column)
-            cell.fill = PatternFill() if layout else PatternFill(
-                "solid", fgColor=EVIDENCE_FILL if (row_number - start_row) % 2 else "FFFFFF",
-            )
+            cell.fill = PatternFill() if layout else PatternFill("solid", fgColor="FFFFFF")
             if layout:
                 cell.alignment = Alignment(
                     horizontal="center" if column <= 2 else "left", vertical="center", wrap_text=True,
@@ -349,6 +357,10 @@ def _table(
 
 
 def collection_summary(data: Collection, finding: Finding) -> tuple[str, str | None]:
+    from easm_agent.report_integrated import criteria_for
+
+    if data.copilot_agents and criteria_for(data)["items"].get(finding.se_code, {}).get("copilot_inventory_check"):
+        return ("증적 확인" if finding.metric_value is not None else "일부 수집"), finding.rationale
     agents = azure_agents(data)
     proposal = next((item for item in data.proposals if item.code == finding.se_code), None)
     if proposal is not None:
@@ -467,8 +479,10 @@ def _raw_rows(models: Iterable[BaseModel]) -> Iterable[dict[str, Any]]:
 
 def _raw_sheet(
     book: Workbook, sections: Iterable[tuple[str, type[BaseModel], Sequence[BaseModel]]],
+    *, integrated: bool = False,
 ) -> None:
-    sheet = book.create_sheet(f"{len(book.worksheets) + 1}. {RAW_TITLE}")
+    name = FIXED_SHEET_NAMES[RAW_TITLE] if integrated else f"{len(book.worksheets) + 1}. {RAW_TITLE}"
+    sheet = book.create_sheet(name)
     sheet.freeze_panes = "A3"
     row = 1
     for title, model, records in sections:
@@ -578,6 +592,12 @@ def _scope_summary(
 def refresh_interview_summary(path: Path, data: Collection, findings: list[Finding]) -> None:
     """Refresh completion labels without rewriting workbook scores, styles or formula caches."""
     book = load_workbook(path, rich_text=True)
+    from easm_agent.report_integrated import is_integrated, refresh_integrated_summary
+
+    if is_integrated(book):
+        book.close()
+        refresh_integrated_summary(path, data)
+        return
     sheet = book[RESULT_SHEET]
     updates = {}
     for row in range(5, sheet.max_row + 1):
@@ -716,19 +736,44 @@ def _result_sheet(
     return rows
 
 
-def write_workbook(data: Collection, findings: list[Finding], path: Path) -> None:
+def write_workbook(
+    data: Collection, findings: list[Finding], path: Path, *, interview_workbook: Path | None = None,
+) -> None:
     """Extend the assessment template with a masked collected-evidence snapshot."""
     data, findings = with_evidence_only_findings(data, findings)
     book, template = load_report_template()
+    from easm_agent.report_integrated import (
+        GRADES,
+        copy_manual_inputs,
+        is_integrated,
+        populate_integrated,
+        save_integrated_package,
+    )
+
+    integrated = is_integrated(book)
+    if interview_workbook is not None:
+        if not integrated:
+            raise ValueError("수동 입력 원본 지정은 통합 14개 시트 템플릿에서 지원합니다.")
+        copy_manual_inputs(book, interview_workbook)
     resources = {
         code: resource_names(data, code)
         for code in {finding.se_code for finding in findings} | {proposal.code for proposal in data.proposals}
     }
-    result_rows = _result_sheet(book, data, findings, resources)
+    from easm_agent.report_integrated import criteria_for
+
+    copilot_codes = {
+        code for code, definition in criteria_for(data)["items"].items()
+        if definition.get("copilot_inventory_check")
+    }
+    result_rows = populate_integrated(book, data, findings) if integrated else _result_sheet(
+        book, data, findings, resources,
+    )
     details = [
         {
             "SY 코드": item.code, "진단 영역": item.area or DOMAINS.get(item.code, ("",))[0],
-            "점검 항목": item.title, "조회 상태": item.status,
+            "점검 항목": item.title + (
+                " (Azure 세부 점검)" if item.code in copilot_codes else ""
+            ), "조회 상태": item.status,
             "조회 제한 사유": readable(item.reason) if item.reason else "해당 없음",
             "수집 구성 요약": readable(item.observation), "구성 값·건수": item.metrics, "검증 한계": item.limit,
             "증적 ID": item.evidence_refs,
@@ -750,7 +795,7 @@ def write_workbook(data: Collection, findings: list[Finding], path: Path) -> Non
                 "metric_value": finding.metric_value, "assessment_basis": finding.assessment_basis,
                 "configuration_value": finding.configuration_value,
             },
-            "검증 한계": readable(finding.scope) + ". 등급별 승인·기간·집행 검증은 6번 판정 근거 확인",
+            "검증 한계": readable(finding.scope) + ". 등급별 승인·기간·집행 검증은 판정 시트 근거 확인",
             "증적 ID": finding.evidence_refs,
         })
     details.sort(key=lambda item: result_rows.get(item["SY 코드"], float("inf")))
@@ -797,12 +842,12 @@ def write_workbook(data: Collection, findings: list[Finding], path: Path) -> Non
         "SY 코드", "진단 영역", "점검 항목", "조회 상태", "조회 제한 사유",
         "수집 구성 요약", "구성 값·건수", "검증 한계", "증적 ID",
         "Agent 365 교차검증", "교차검증 범위·결과", "교차검증 증적",
-    ], details, start_row=3)
+    ], details, start_row=3, integrated=integrated)
     for row, item in enumerate(details, 4):
         code = item["SY 코드"]
         if code not in result_rows:
             continue
-        cell = book[RESULT_SHEET].cell(result_rows[code], 11)
+        cell = book[GRADES if integrated else RESULT_SHEET].cell(result_rows[code], 12 if integrated else 11)
         cell.value = "수집결과"
         font = copy(cell.font)
         font.color = "FF0563C1"
@@ -812,12 +857,15 @@ def write_workbook(data: Collection, findings: list[Finding], path: Path) -> Non
             ref=cell.coordinate, location=f"'{proposals_sheet.title}'!A{row}",
             display="수집결과", tooltip=f"{code} 수집결과 근거로 이동",
         )
-    _cell(proposals_sheet, 1, 1, "수집된 설정·값·건수와 검증 한계. 하단에 리소스 목록·대상별 판정·기준 출처 포함. 다음조치는 6. 수집 결과의 L열 확인")
+    _cell(proposals_sheet, 1, 1, (
+        "수집된 설정·값·건수와 검증 한계. 하단에 리소스 목록·대상별 판정·기준 출처 포함. "
+        + ("다음조치는 3_SE 판정 M열 확인" if integrated else "다음조치는 6. 수집 결과의 L열 확인")
+    ))
     proposals_sheet.merge_cells("A1:L1")
     proposals_sheet.row_dimensions[1].height = 30
     proposals_sheet.print_title_rows = "1:3"
     explanations = (
-        "6. 수집 결과와 연결되는 System Evidence 항목 코드",
+        "판정 시트와 연결되는 System Evidence 항목 코드",
         "항목이 속한 진단 영역", "조회한 Azure 구성 점검 항목의 이름",
         "실제 조회 상태. 등급이나 개선 필요 여부를 뜻하지 않음",
         "권한·기능·대상 없음 등 조회를 제한한 사유",
@@ -863,12 +911,14 @@ def write_workbook(data: Collection, findings: list[Finding], path: Path) -> Non
             )
         ]),
     ]
-    _raw_sheet(book, sections)
+    _raw_sheet(book, sections, integrated=integrated)
     issue_title = "수집이슈 Raw 데이터"
-    _table(book, issue_title, [*Issue.model_fields, ORIGINAL], _raw_rows(data.issues))
+    _table(
+        book, issue_title, [*Issue.model_fields, ORIGINAL], _raw_rows(data.issues), integrated=integrated,
+    )
     _table(book, "필드누락사유", [
         "agent_id", "subscription_id", "필드명", "field", "reason", "설명", ORIGINAL,
-    ], _missing_rows(data))
+    ], _missing_rows(data), integrated=integrated)
     resource_rows = []
     for code in sorted(resources, key=lambda value: (result_rows.get(value, float("inf")), value)):
         names = resources[code]
@@ -963,6 +1013,33 @@ def write_workbook(data: Collection, findings: list[Finding], path: Path) -> Non
         ) if not metric.key.startswith("report.") and ".month." not in metric.key
     ), sheet=proposals_sheet, start_row=header)
     _fit_audit_rows(proposals_sheet, header + 1, proposals_sheet.max_row, 9)
+    if integrated:
+        from easm_agent.report_values import build_report_values, configure_calculation_formulas
+
+        configure_calculation_formulas(book)
+        contract = build_report_values(book)
+        header = proposals_sheet.max_row + 4
+        _cell(proposals_sheet, header - 1, 1, "Working Backwards - PPT 표시값 → Excel 셀 → 제공 수동 입력 / 저장 API 측정값")
+        proposals_sheet.merge_cells(start_row=header - 1, end_row=header - 1, start_column=1, end_column=12)
+        _table(book, DETAILS_TITLE, ["슬라이드", "도형 ID", "PPT 표시값", "Excel 시트", "Excel 셀", "계산식"], (
+            {"슬라이드": binding.page + 1, "도형 ID": binding.shape,
+             "PPT 표시값": contract.display(binding), "Excel 시트": binding.sheet,
+             "Excel 셀": binding.cell, "계산식": str(book[binding.sheet][binding.cell].value)}
+            for binding in contract.bindings
+        ), sheet=proposals_sheet, start_row=header)
+    if integrated:
+        from easm_agent.report_integrated import GUIDE
+
+        guide_index = book.index(book[GUIDE])
+        book.active = guide_index
+        for view in book.views:
+            view.activeTab, view.firstSheet = guide_index, 0
+        for sheet in book:
+            for view in sheet.views.sheetView:
+                view.tabSelected = sheet.title == GUIDE
     book.save(path)
-    preserve_template_parts(path, template)
-    format_assessment_workbook(path)
+    if integrated:
+        save_integrated_package(path, template)
+    else:
+        preserve_template_parts(path, template)
+        format_assessment_workbook(path)

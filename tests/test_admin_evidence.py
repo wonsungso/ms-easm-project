@@ -12,7 +12,7 @@ import pytest
 from openpyxl import load_workbook
 from pydantic import ValidationError
 
-from easm_agent.azure import EvidenceStore
+from easm_agent.azure import BAP_DLP_URL, EvidenceStore
 from easm_agent.cli import main
 from easm_agent.collect_admin_evidence import (
     DATAVERSE_ROLES_COMMAND,
@@ -23,6 +23,7 @@ from easm_agent.models import AdminEvidenceExport, Collection, Finding
 from easm_agent.report import load_result, write_reports
 from easm_agent.report_excel import write_workbook
 from scripts.export_admin_environments import export_environments
+from scripts.export_dlp_policies import export_policies
 
 NOW = datetime(2026, 11, 9, tzinfo=UTC)
 TENANT = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
@@ -95,12 +96,12 @@ def test_admin_receipt_records_provenance_and_scores_power_platform_environments
     path = tmp_path / "report.xlsx"
     write_workbook(data, list(rows.values()), path)
     book = load_workbook(path)
-    sheet = book["6. 수집 결과"]
-    sheet_rows = {sheet.cell(row, 2).value: row for row in range(5, 90)}
+    sheet = book["3_SE 판정"]
+    sheet_rows = {sheet.cell(row, 1).value: row for row in range(5, 31)}
     for code in ("DM-SY-01", "DS-SY-02", "BI-SY-08"):
-        assert sheet.cell(sheet_rows[code], 7).value == "수집됨"
-        assert sheet.cell(sheet_rows[code], 13).value == 2
-    assert len(book["8. 수집 Raw 데이터"].tables) == 18
+        assert sheet.cell(sheet_rows[code], 23).value == "Y"
+        assert sheet.cell(sheet_rows[code], 21).value == 2
+    assert len(book["8a_수집 Raw 데이터"].tables) == 18
 
 
 @pytest.mark.parametrize("change", ["tenant", "unverified", "command", "duplicate", "count", "future", "role_sum", "policy_count"])
@@ -364,11 +365,13 @@ def test_package_reassess_grades_defender_protection_from_saved_collection(tmp_p
     assert row["level"] == "L5" and row["metric_value"] == 1
     assert after["collection"]["assessment_provenance"]["origin"] == "saved_snapshot_reassessment"
     assert after["collection"]["assessment_provenance"]["source_result_data_sha256"]
-    sheet = load_workbook(next(workbook.parent.glob("report-*.xlsx")))["6. 수집 결과"]
-    rows = {sheet.cell(row, 2).value: row for row in range(5, 90)}
-    assert sheet.cell(rows["OT-SY-25"], 7).value == "수집됨"
-    assert "민감 데이터 검색 활성 1개 구독" in sheet.cell(rows["OT-SY-25"], 10).value
-    assert sheet.cell(rows["OT-SY-25"], 13).value == 5
+    book = load_workbook(next(workbook.parent.glob("report-*.xlsx")))
+    sheet = book["3_SE 판정"]
+    rows = {sheet.cell(row, 1).value: row for row in range(5, 31)}
+    assert sheet.cell(rows["OT-SY-25"], 23).value == "Y"
+    assert sheet.cell(rows["OT-SY-25"], 21).value == 5
+    assert any("민감 데이터 검색 활성 1개 구독" in str(cell.value)
+               for row in book["8_수집결과 근거"] for cell in row)
 
 
 def token(tenant: str = TENANT, app: bool = False) -> str:
@@ -377,6 +380,47 @@ def token(tenant: str = TENANT, app: bool = False) -> str:
         claims["scp"] = "user_impersonation"
     part = base64.urlsafe_b64encode(json.dumps(claims).encode()).decode().rstrip("=")
     return "header." + part + ".signature"
+
+
+@pytest.mark.parametrize("case", ["empty", "pages", "denied", "foreign", "loop"])
+def test_dlp_api_export_reads_only_minimized_scopes_and_fails_closed(tmp_path: Path, case: str) -> None:
+    claims = {"tid": TENANT, "oid": OTHER, "scp": "user_impersonation", "idtyp": "user"}
+    encoded = base64.urlsafe_b64encode(json.dumps(claims).encode()).decode().rstrip("=")
+    credential = Mock()
+    credential.get_token.return_value.token = "header." + encoded + ".signature"
+    first = {"value": []}
+    if case == "pages":
+        first = {"value": [{
+            "name": "policy", "environmentType": "OnlyEnvironments", "environments": [{"name": "env"}],
+            "createdBy": {"email": "private@example.invalid"},
+            "connectorGroups": [{"name": "private connector details"}],
+        }], "nextLink": BAP_DLP_URL + "&$skiptoken=next"}
+    elif case in ("foreign", "loop"):
+        first["nextLink"] = "https://example.invalid/policies" if case == "foreign" else BAP_DLP_URL
+    session = Mock()
+    session.request.side_effect = [
+        Mock(status_code=403 if case == "denied" else 200, headers={}, json=Mock(return_value=first)),
+        Mock(status_code=200, headers={}, json=Mock(return_value={"value": []})),
+    ]
+    with patch("easm_agent.azure.requests.Session", return_value=session):
+        result = export_policies(TENANT, credential)
+    read = result.reads[0]
+    assert read.command == BAP_DLP_URL
+    assert all(call.args[0] == "GET" for call in session.request.call_args_list)
+    assert "private@example.invalid" not in result.model_dump_json()
+    assert "private connector details" not in result.model_dump_json()
+    if case in ("empty", "pages"):
+        assert read.completed and read.object_count == (1 if case == "pages" else 0)
+        path = tmp_path / "dlp.json"
+        path.write_text(result.model_dump_json(), encoding="utf-8")
+        observed = read_admin_evidence(path, TENANT, datetime.now(UTC), EvidenceStore(tmp_path / "evidence"))
+        assert observed.admin_evidence[0].completed
+        if case == "pages":
+            assert read.policies[0].environment_ids == ["env"] and session.request.call_count == 2
+    else:
+        assert not read.completed and read.object_count is None and not read.policies
+        assert read.reason == ("permission_denied" if case == "denied" else "error")
+        assert session.request.call_count == 1
 
 
 def test_environment_export_uses_only_get_and_minimizes_real_api_fields() -> None:

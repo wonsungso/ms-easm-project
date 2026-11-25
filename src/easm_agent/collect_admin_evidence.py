@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import quote
 
-from easm_agent.azure import EvidenceStore
+from easm_agent.azure import BAP_DLP_URL, EvidenceStore
 from easm_agent.models import AdminEvidenceExport, AdminReadResult, Collection
 
 ENVIRONMENTS_URL = "https://api.powerplatform.com/environmentmanagement/environments?api-version=2024-10-01"
@@ -71,7 +71,10 @@ def read_admin_evidence(
         if export.source_type == "official_admin_portal_read":
             validate_portal_read(read)
         else:
-            if read.command != COMMANDS[read.source] or read.portal_pages:
+            allowed = (COMMANDS[read.source],) + (
+                (BAP_DLP_URL,) if read.source == "powerplatform.dlp_policies" else ()
+            )
+            if read.command not in allowed or read.portal_pages:
                 raise ValueError("허용된 공식 읽기 명령과 내보내기 원천이 다릅니다.")
         if read.observed_at > export.exported_at:
             raise ValueError("내보내기 시각보다 미래의 관측 자료입니다.")

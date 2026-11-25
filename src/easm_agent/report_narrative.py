@@ -71,29 +71,29 @@ NOTE_PREFIXES = {
 }
 OPS_BARS = ("OE-SY-18", "OE-SY-20", "OE-SY-21", "OE-SY-22", "OT-SY-26", "OT-SY-24")
 OPS_NAMES = {"OE-SY-18": "기록 저장", "OE-SY-20": "이상 알림", "OE-SY-21": "알림 담당",
-             "OE-SY-22": "기록 보관", "OT-SY-26": "예산 알림", "OT-SY-24": "비용 구분"}
-OPS_ROW_NAMES = {"OE-SY-18": "실행 기록 저장", "OE-SY-22": "기록 보관 설정", "OT-SY-24": "Agent별 비용 구분",
+             "OE-SY-22": "지역·보존 정보", "OT-SY-26": "예산 알림", "OT-SY-24": "비용 구분"}
+OPS_ROW_NAMES = {"OE-SY-18": "실행 기록 저장", "OE-SY-22": "지역·보존 정보", "OT-SY-24": "Agent별 비용 구분",
                  "OT-SY-26": "예산 초과 알림"}
 IDENTITY_BARS = ("DP-SY-15", "OE-SY-16", "DS-SY-03", "OE-SY-17", "OE-SY-19")
 IDENTITY_NAMES = {
     "DP-SY-15": "에이전트 청사진 연결\n(DP-SY-15)", "OE-SY-16": "소유자·스폰서 지정\n(OE-SY-16)",
     "DS-SY-03": "ID 청사진 연결\n(DS-SY-03)", "OE-SY-17": "과도한 권한 없음\n(OE-SY-17)",
-    "OE-SY-19": "안전한 권한 운영\n(OE-SY-19)",
+    "OE-SY-19": "플랫폼별 인증·권한 구성\n(OE-SY-19)",
 }
 IDENTITY_TITLE = {
     "DP-SY-15": "청사진에 연결되지 않은 에이전트가 있다", "OE-SY-16": "담당자 공백이 있다",
     "DS-SY-03": "청사진에 연결되지 않은 에이전트 ID가 있다", "OE-SY-17": "과도한 권한이 열려 있다",
-    "OE-SY-19": "개별 권한 방식이 남아 있다", "CA": "ID는 있으나 접속 조건 제한이 없다",
+    "OE-SY-19": "플랫폼별 인증·권한 구성을 검토해야 한다", "CA": "ID는 있으나 접속 조건 제한이 없다",
 }
 IDENTITY_ACTION = {
     "DP-SY-15": "미연결 에이전트의 청사진 연결 검토", "OE-SY-16": "스폰서 미지정 ID 보완",
     "DS-SY-03": "에이전트 ID를 청사진에 연결", "OE-SY-17": "불필요한 권한 회수",
-    "OE-SY-19": "서비스 전용 ID로 전환", "CA": "접속 조건 제한 규칙 적용 결정",
+    "OE-SY-19": "플랫폼별 인증·권한 구성 검토", "CA": "접속 조건 제한 규칙 적용 결정",
 }
 RECOMMEND = {
     "DP-SY-15": "미연결 에이전트 청사진 연결 검토", "OE-SY-16": "스폰서 미지정 ID 보완",
     "DS-SY-03": "에이전트 ID 연결 정리", "OE-SY-17": "과도한 권한 회수",
-    "OE-SY-19": "서비스 전용 ID 전환", "CA": "접속 조건 제한 규칙 적용",
+    "OE-SY-19": "플랫폼별 인증·권한 구성 검토", "CA": "접속 조건 제한 규칙 적용",
 }
 RISK_SHORT = {
     "DS-SY-02": "정보 유출 가능성", "BI-SY-08": "관리자 통제 약함", "DM-SY-01": "제작 권한 적정성 미확인",
@@ -103,13 +103,13 @@ RISK_SHORT = {
 }
 TOPIC = {
     "DM-SY-01": "역할 할당 확인 환경", "DS-SY-02": "업무 데이터 유출 방지", "DS-SY-03": "에이전트 ID 청사진 연결",
-    "DS-SY-04": "모델 업그레이드 설정", "DS-SY-05": "외부 접속 제한", "DS-SY-06": "도구 연결 승인",
-    "DS-SY-07": "암호화 연결", "BI-SY-08": "관리자 보호 설정", "BI-SY-09": "프로젝트 평가 실행",
-    "BI-SY-10": "보안 권고 조치", "BI-SY-11": "응답 안전 필터", "BI-SY-12": "버전 식별",
-    "BI-SY-13": "담당자 정보", "BI-SY-14": "회사 규칙 준수", "DP-SY-15": "Azure 에이전트 청사진 연결",
+    "DS-SY-04": "모델 구성", "DS-SY-05": "접근 범위 구성", "DS-SY-06": "도구 승인·동의",
+    "DS-SY-07": "암호화 연결", "BI-SY-08": "관리자 보호 설정", "BI-SY-09": "완료 평가 기록",
+    "BI-SY-10": "보안 구성 점검", "BI-SY-11": "응답 안전 필터", "BI-SY-12": "버전·게시 기록",
+    "BI-SY-13": "담당자 정보", "BI-SY-14": "회사 규칙 준수", "DP-SY-15": "에이전트 청사진 연결",
     "OE-SY-16": "담당자 지정", "OE-SY-17": "권한 범위", "OE-SY-18": "실행 기록 저장",
-    "OE-SY-19": "안전한 권한 운영", "OE-SY-20": "이상 알림", "OE-SY-21": "알림 담당 지정",
-    "OE-SY-22": "기록 보관", "OT-SY-23": "사용량 확인", "OT-SY-24": "비용 구분",
+    "OE-SY-19": "인증·권한 구성", "OE-SY-20": "이상 알림", "OE-SY-21": "알림 담당 지정",
+    "OE-SY-22": "지역·보존 정보", "OT-SY-23": "사용량 확인", "OT-SY-24": "비용 구분",
     "OT-SY-25": "보안 점검 서비스", "OT-SY-26": "예산 알림",
 }
 SECURITY_POOL = ("BI-SY-10", "BI-SY-11", "BI-SY-14", "DS-SY-05", "OT-SY-25")
@@ -391,7 +391,11 @@ def overview(d: DeckData) -> dict[int, str]:
     )
     if registry is not None:
         spread = f"{registry:.0%}\nRegistry - 공식 등록부 일치율"
-    responsibility = d.percent("OE-SY-16") or d.percent("BI-SY-13")
+    responsibility = d.percent("OE-SY-16")
+    responsibility_label = "소유자 · 스폰서 지정 비율"
+    if responsibility is None:
+        responsibility = d.percent("BI-SY-13")
+        responsibility_label = "플랫폼별 필수 자산 정보 확인 비율"
     first, second, third = insights(d)
     note = [f"1) 측정 {len(d.scored)}개 항목 기준"
             + (f" ({len(d.pending)}개 항목은 확인 중)" if d.pending else "")]
@@ -404,8 +408,7 @@ def overview(d: DeckData) -> dict[int, str]:
         23810: f"{d.overall_label}\n종합 수준 ({'잠정, ' if d.provisional else ''}목표 L3.0)",
         23817: f"{d.passed} / {len(d.scored)}\nL3 충족 항목 수¹⁾",
         23825: spread,
-        23834: (f"{responsibility}\n소유자 · 스폰서 지정 비율" if responsibility
-                else "확인 중\n소유자 · 스폰서 지정 비율"),
+        23834: f"{responsibility or '확인 중'}\n{responsibility_label}",
         23868: gap_box(d),
         23930: first,
         23967: second,
@@ -744,7 +747,7 @@ def identity_rows(d: DeckData) -> list[list[str]]:
 
     left = [gap("OE-SY-16", "소유자 · 스폰서 미지정"), gap("DP-SY-15", "청사진 미연결 에이전트"),
             gap("DS-SY-03", "청사진 미연결 ID")]
-    right = [gap("OE-SY-17", "쓰기 · 전체 제어 권한"), gap("OE-SY-19", "개별 권한 · 비밀 키 사용")]
+    right = [gap("OE-SY-17", "쓰기 · 전체 제어 권한"), gap("OE-SY-19", "플랫폼별 인증 · 권한 구성")]
     if d.conditional_access:
         applied, total = d.conditional_access
         right.append(("접속 조건 제한 없음", f"{total - applied} / {total}"))
@@ -941,7 +944,7 @@ def ops_rows(d: DeckData) -> list[list[str]]:
         if d.currency(code) and d.percent(code):
             result += f"({d.percent(code)})"
         if code == "OE-SY-22" and retention:
-            result = f"{d.fact(code)} (최소 {retention}일)"
+            result = f"{d.fact(code)} (Azure workspace 최소 {retention}일)"
         rows.append([label, result, target, d.level(code)])
     return rows
 

@@ -9,6 +9,8 @@ __pycache__/
 *.egg-info/
 evidence/
 output/
+/copilot-inventory.json
+/dlp-policies.json
 .env
 *.pem
 *.pfx

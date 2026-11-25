@@ -47,7 +47,7 @@ def test_every_proposal_maps_to_one_lifecycle_domain() -> None:
                for primary, secondary, _ in DOMAINS.values())
     findings = evaluate_proposals(Collection(collected_at=NOW), TAGS)
     assert {item.code: item.area for item in findings} == {code: v[0] for code, v in DOMAINS.items()}
-    assert all("Level은 6. 수집 결과" in item.limit for item in findings)
+    assert all("Level은 판정 시트" in item.limit for item in findings)
     assert {item.status for item in findings} <= {"수집됨", "일부 수집", "수집 불가"}
 
 

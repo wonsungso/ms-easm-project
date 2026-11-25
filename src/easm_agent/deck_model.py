@@ -165,6 +165,46 @@ def compute_scores(items: list[Item]) -> tuple[dict[str, AreaScore], float | Non
 
 def read_assessment(path: Path) -> Assessment:
     book = load_workbook(path, rich_text=False)
+    from easm_agent.report_integrated import GRADES, PROCESS, is_integrated
+
+    if is_integrated(book):
+        from easm_agent.report_values import build_report_values
+
+        contract = build_report_values(book)
+        items = []
+        for row in range(5, 59):
+            sheet = book[PROCESS]
+            code = _text(sheet.cell(row, 3).value)
+            if not re.fullmatch(r"[A-Z]{2}-(?:PR|PE|DA|TE)-\d+", code):
+                raise ValueError(f"통합 템플릿의 수동 평가 코드가 올바르지 않습니다: {code}")
+            response = _score(sheet.cell(row, 6).value)
+            items.append(Item(
+                code=code, area=code[:2], kind=code[3:5], row=row,
+                text=_text(sheet.cell(row, 4).value), levels=[""] * 5,
+                evidence="문서·시스템·개선 이력", score=_score(contract.cells[PROCESS, f"K{row}"]),
+                status="답변 완료" if response else "인터뷰 필요",
+                detail=_text(sheet.cell(row, 13).value), memo=_text(sheet.cell(row, 13).value),
+            ))
+        sheet = book[GRADES]
+        for row in range(5, 31):
+            code = _text(sheet.cell(row, 1).value)
+            if not re.fullmatch(r"[A-Z]{2}-SY-\d+", code):
+                raise ValueError(f"통합 템플릿의 System Evidence 코드가 올바르지 않습니다: {code}")
+            score = _score(sheet.cell(row, 21).value)
+            value = sheet.cell(row, 22).value
+            items.append(Item(
+                code=code, area=code[:2], kind="SY", row=row,
+                text=_text(sheet.cell(row, 4).value),
+                levels=[_text(sheet.cell(row, column).value) for column in range(16, 21)],
+                evidence=_text(sheet.cell(row, 5).value), score=score,
+                status="판정 보류" if score is None else "수집됨",
+                detail=_text(sheet.cell(row, 13).value),
+                memo=_text(sheet.cell(row, 25).value),
+                metric=f"{value:.2%}" if type(value) in (float, int) else "",
+            ))
+        summary = _text(book["0_안내"]["A2"].value)
+        book.close()
+        return Assessment(items, contract.areas, contract.overall, contract.overall_status, summary, list(LEVEL_NAMES))
     criteria, result = book[CRITERIA_SHEET], book[RESULT_SHEET]
     items: list[Item] = []
     for row in range(5, criteria.max_row + 1):

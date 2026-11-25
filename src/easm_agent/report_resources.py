@@ -41,6 +41,20 @@ def resource_names(data: Collection, code: str) -> list[ResourceName]:
         add(category, identifier, row.agent_name, row.subscription_id)
 
     agents = [row for row in data.agents if row.platform in AZURE_AGENT_PLATFORMS]
+    from easm_agent.report_integrated import criteria_for
+
+    check = criteria_for(data)["items"].get(code, {}).get("copilot_inventory_check")
+    if check:
+        for row in data.copilot_agents:
+            if check == "blueprint" and row.platform == "agent_builder":
+                continue
+            if check == "evaluation" and row.harness is not None and row.harness != "Standard":
+                continue
+            add({
+                "copilot_studio": "Copilot Studio Agent",
+                "agent_builder": "Agent Builder Agent",
+                "unclassified_copilot": "출처 미분류 Copilot Agent",
+            }[row.platform], row.agent_id, row.display_name)
     if code in ("DM-SY-01", "DS-SY-02", "BI-SY-08"):
         for read in data.admin_evidence:
             if read.source == "powerplatform.environments" and read.completed:

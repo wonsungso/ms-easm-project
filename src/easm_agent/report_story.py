@@ -324,6 +324,8 @@ class DeckData:
     def pending_note(self, code: str) -> str:
         metric = self.metrics.get("se." + code)
         reason = metric.reason if metric and metric.reason else ""
+        if code == "BI-SY-10" and self.collection and self.collection.copilot_agents:
+            return "플랫폼별 보안 구성 증적 확인 후 판정"
         if code == "BI-SY-10" and reason in ("", "feature_unavailable", "not_found"):
             state = self.advisory_state()
             if state and state[1]:
@@ -338,6 +340,8 @@ class DeckData:
         """Short plain reason shown after '확인 중' in footnotes."""
         metric = self.metrics.get("se." + code)
         reason = metric.reason if metric and metric.reason else ""
+        if code == "BI-SY-10" and self.collection and self.collection.copilot_agents:
+            return "플랫폼별 보안 구성 증적 미확인"
         if code == "BI-SY-10" and reason in ("", "feature_unavailable", "not_found"):
             return "Defender 보안 권고 반영 대기"
         return PENDING_REASON_PLAIN.get(reason, "조회 범위 확인")

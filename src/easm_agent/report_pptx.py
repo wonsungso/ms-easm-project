@@ -1,4 +1,4 @@
-"""Populate the approved 12-slide report without rebuilding its Office package.
+"""Populate the approved report without rebuilding its Office package.
 
 The template's slide masters, layouts, theme, media and shape geometry stay byte-identical; only
 text, table cells and bar sizes are replaced with the story computed in report_narrative.
@@ -83,6 +83,15 @@ def context_from_workbook(
     collection: Collection | None = None,
 ) -> DeckContext:
     context = DeckContext(customer=customer, metrics=metrics, collection=collection)
+    if collection is not None:
+        context.collected_at = collection.collected_at
+        return context
+    if workbook.is_file():
+        from easm_agent.report_biz_pptx import workbook_collected_at
+
+        context.collected_at = workbook_collected_at(workbook)
+        if context.collected_at is not None:
+            return context
     stamp = re.search(r"(\d{8}T\d{6})\d*Z", workbook.name)
     if stamp:
         context.collected_at = datetime.strptime(stamp[1], "%Y%m%dT%H%M%S")
@@ -656,15 +665,15 @@ def registry_panel(data: DeckData) -> dict[str, object]:
         }
     pair = data.counts("DP-SY-15")
     if pair is None:
-        return {"registry": False, "top": "Azure에서 확인된 에이전트", "bottom": "청사진에 연결된 에이전트",
+        return {"registry": False, "top": "신원 연결 평가 대상 에이전트", "bottom": "청사진에 연결된 에이전트",
                 "top_value": PENDING_TEXT, "bottom_value": PENDING_TEXT, "total": None, "matched": None,
                 "missing_label": "미연결", "bullets": data.pending_note("DP-SY-15")}
     owners = data.fraction("BI-SY-13")
     lines = [f"· 에이전트 {pair[1]:g}개 중 {pair[0]:g}개가 청사진에 연결 (기준 {data.l3_min('DP-SY-15'):.0%} 이상)"]
     if owners and data.score("BI-SY-13") is not None:
-        lines.append(f"· 담당자 · 환경 · 비용 정보 기록 {owners}")
+        lines.append(f"· 플랫폼별 필수 자산 정보 확인 {owners}")
     return {
-        "registry": False, "top": "Azure에서 확인된 에이전트", "bottom": "청사진에 연결된 에이전트",
+        "registry": False, "top": "신원 연결 평가 대상 에이전트", "bottom": "청사진에 연결된 에이전트",
         "top_value": f"{pair[1]:g}개", "bottom_value": f"{pair[0]:g}개", "total": pair[1], "matched": pair[0],
         "missing_label": "미연결", "bullets": "\n".join(lines),
     }
@@ -959,33 +968,39 @@ def sanitize(slide_element: etree._Element) -> None:
 
 def write_presentation(workbook: Path, output: Path, context: DeckContext | None = None) -> None:
     context = context or context_from_workbook(workbook)
+    from easm_agent.report_biz_pptx import populate_minimal_deck, workbook_metrics
+
     data = DeckData(
-        read_assessment(workbook), context.metrics, context.collection, context.customer, context.collected_at,
+        read_assessment(workbook), context.metrics if context.metrics is not None else workbook_metrics(workbook),
+        context.collection, context.customer, context.collected_at,
     )
     source = presentation_template_path().read_bytes()
     presentation = Presentation(BytesIO(source))
-    if len(presentation.slides) != 12:
-        raise ValueError("보고서 생성기는 승인된 12장 원본 템플릿을 사용합니다.")
     slides = list(presentation.slides)
-    build_cover(slides[0], data)
-    build_summary(slides[1], data)
-    build_overview(slides[2], data)
-    build_method(slides[3], data)
-    build_scores(slides[4], data)
-    build_matrix(slides[5], data)
-    build_creation(slides[6], data)
-    build_identity(slides[7], data)
-    build_security(slides[8], data)
-    build_operations(slides[9], data)
-    build_plan(slides[10], data)
-    build_next(slides[11], data)
+    if len(slides) == 27:
+        populate_minimal_deck(slides, data, workbook)
+    elif len(slides) == 12:
+        build_cover(slides[0], data)
+        build_summary(slides[1], data)
+        build_overview(slides[2], data)
+        build_method(slides[3], data)
+        build_scores(slides[4], data)
+        build_matrix(slides[5], data)
+        build_creation(slides[6], data)
+        build_identity(slides[7], data)
+        build_security(slides[8], data)
+        build_operations(slides[9], data)
+        build_plan(slides[10], data)
+        build_next(slides[11], data)
+    else:
+        raise ValueError("보고서 생성기는 승인된 27장 또는 과거 12장 템플릿을 사용합니다.")
     changed = {}
     for page, slide in enumerate(slides):
         headline = next((
             target.text for target in slide.shapes
             if target.has_text_frame and target.shape_id in story.HEADLINE_IDS.get(page, ())
         ), "")
-        if slide.has_notes_slide:
+        if slide.has_notes_slide and len(slides) != 27:
             frame = slide.notes_slide.notes_text_frame
             if frame is not None:
                 replace_text(frame, notes_text(data, page, headline))

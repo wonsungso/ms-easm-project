@@ -14,12 +14,14 @@ from easm_agent.azure import (
     PP_SCOPE,
     EvidenceStore,
     ReaderHTTP,
+    trusted_url,
 )
 from easm_agent.collect import collect, merge
 from easm_agent.collect_copilot import (
     CopilotInventoryExport,
     load_copilot_export,
     read_copilot_inventory,
+    read_copilot_reviews,
 )
 from easm_agent.models import Collection, Settings
 from scripts.export_copilot_inventory import PROJECTION, export_inventory, inventory_pages
@@ -110,6 +112,96 @@ def test_ingestion_keeps_saas_separate_and_minimizes_evidence(tmp_path: Path) ->
     assert "ownerId" not in saved and "createdBy" not in saved
 
 
+def test_connector_projection_discards_people_and_connection_identifiers() -> None:
+    value = row()
+    value["raw_connectors"] = [{
+        "connectorId": "shared_example", "operations": [{
+            "operationId": "Read", "isEnabled": True, "requiresEndUserConsent": True,
+            "connectionProvider": "User", "whenCanBeUsed": "Conditional",
+            "createdBy": OWNER, "connectionIdSharedByMaker": OTHER,
+        }],
+    }]
+    result, _ = export_with_responses([response(page([value]))])
+    assert result.completed
+    operation = result.agents[0].connector_operations[0]
+    assert operation.requires_end_user_consent is True and operation.connection_provider == "User"
+    assert OWNER not in result.model_dump_json() and OTHER not in result.model_dump_json()
+
+
+def test_standard_evaluation_reads_are_optional_minimized_and_read_only() -> None:
+    value = row(STUDIO, "Copilot Studio")
+    value["harness"] = "Standard"
+    session = Mock()
+    session.request.side_effect = [
+        response(page([value])),
+        response({"value": [{
+            "id": STUDIO, "state": "Completed", "endTime": NOW.isoformat(), "totalTestCases": 3,
+            "ownerId": OWNER, "name": "private case name", "testCasesResults": [{"query": "private prompt"}],
+        }]}),
+    ]
+    with patch("easm_agent.azure.requests.Session", return_value=session):
+        result = export_inventory(TENANT, credential(), approved=True, include_evaluations=True)
+    read = result.agents[0].evaluation_read
+    assert read.completed and read.runs[0].state == "Completed"
+    rendered = result.model_dump_json()
+    assert OWNER not in rendered and "private prompt" not in rendered and "private case name" not in rendered
+    assert [call.args[0] for call in session.request.call_args_list] == ["POST", "GET"]
+    url = session.request.call_args_list[1].args[1]
+    trusted_url(url, PP_SCOPE)
+    with pytest.raises(ValueError):
+        trusted_url(url.replace("/testruns?", "/testsets/run?"), PP_SCOPE)
+
+
+def test_evaluation_failure_does_not_erase_successful_inventory(tmp_path: Path) -> None:
+    value = row(STUDIO, "Copilot Studio")
+    value["harness"] = "Standard"
+    session = Mock()
+    session.request.side_effect = [response(page([value])), response({}, 403)]
+    with patch("easm_agent.azure.requests.Session", return_value=session):
+        result = export_inventory(TENANT, credential(), approved=True, include_evaluations=True)
+    assert result.completed
+    assert result.agents[0].evaluation_read.reason == "permission_denied"
+    data = read_copilot_inventory(
+        write_packet(tmp_path, result.model_dump(mode="json")), TENANT, datetime.now(UTC),
+        EvidenceStore(tmp_path / "evidence"),
+    )
+    assert data.facts["copilot_inventory_complete"] is True
+    assert data.issues[0].collector == "copilot_evaluations" and data.issues[0].reason == "permission_denied"
+
+
+@pytest.mark.parametrize("evaluation_tenant", [TENANT, OTHER])
+def test_dedicated_evaluation_reader_is_separate_and_tenant_checked(evaluation_tenant: str) -> None:
+    agent = row(STUDIO, "Copilot Studio")
+    agent["harness"] = "GitHub Copilot"
+    inventory_session, evaluation_session = Mock(), Mock()
+    inventory_session.request.return_value = response(page([agent]))
+    evaluation_session.request.return_value = response({"value": []})
+    inventory_credential = credential()
+    evaluation_credential = credential({
+        "tid": evaluation_tenant, "oid": OWNER, "scp": "CopilotStudio.MakerOperations.Read", "idtyp": "user",
+    })
+    with patch("easm_agent.azure.requests.Session", side_effect=[inventory_session, evaluation_session]):
+        result = export_inventory(
+            TENANT, inventory_credential, approved=True, include_evaluations=True,
+            evaluation_credential=evaluation_credential,
+        )
+    assert result.completed
+    read = result.agents[0].evaluation_read
+    assert read.completed == (evaluation_tenant == TENANT)
+    assert read.runs == []
+    if evaluation_tenant == TENANT:
+        assert evaluation_session.request.call_args.args[0] == "GET"
+        assert evaluation_session.request.call_args.kwargs["headers"]["Authorization"] == (
+            "Bearer " + evaluation_credential.get_token.return_value.token
+        )
+    else:
+        assert read.reason == "permission_denied"
+        evaluation_session.request.assert_not_called()
+    assert inventory_session.request.call_count == 1
+    inventory_session.close.assert_called_once()
+    evaluation_session.close.assert_called_once()
+
+
 def test_unknown_origin_preserves_raw_value_without_classification(tmp_path: Path) -> None:
     value = packet()
     value["agents"][0]["created_in"] = "AgentBuilder"
@@ -119,6 +211,76 @@ def test_unknown_origin_preserves_raw_value_without_classification(tmp_path: Pat
     assert data.copilot_agents[0].platform == "unclassified_copilot"
     assert data.copilot_agents[0].created_in == "AgentBuilder"
     assert data.copilot_agents[0].field_status["platform"].reason == "feature_unavailable"
+
+
+def review_packet() -> dict:
+    environment = "Default-" + TENANT
+    return {
+        "schema_version": 1, "source_type": "official_admin_portal_read", "approved": True,
+        "tenant_id": TENANT, "tenant_verified": True, "exported_at": NOW.isoformat(),
+        "reviews": [{
+            "agent_id": STUDIO, "environment_id": environment,
+            "source_url": f"https://copilotstudio.microsoft.com/environments/{environment}/agents/{STUDIO}",
+            "observed_at": NOW.isoformat(), "state": "authoring", "warning_count": 2,
+            "evaluation_run_missing": True, "channel_configuration_missing": True,
+        }],
+    }
+
+
+def test_review_export_keeps_explicit_absence_and_removes_supplied_refs(tmp_path: Path) -> None:
+    payload = review_packet()
+    payload["reviews"][0]["evidence_refs"] = ["https://example.invalid/unverified"]
+    path = tmp_path / "review.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    data = read_copilot_reviews(path, TENANT, NOW, EvidenceStore(tmp_path / "evidence", NOW))
+    review = data.copilot_reviews[0]
+    assert review.warning_count == 2 and review.evaluation_run_missing is True
+    assert review.evidence_refs != payload["reviews"][0]["evidence_refs"]
+    assert Path(review.evidence_refs[0]).is_file()
+    with pytest.raises(ValueError, match="중복"):
+        merge(data, data.model_copy(deep=True))
+
+
+@pytest.mark.parametrize("case", ["tenant", "approval", "future", "stale", "url", "duplicate", "version"])
+def test_review_export_rejects_unverified_scope_and_time(tmp_path: Path, case: str) -> None:
+    payload = review_packet()
+    if case == "tenant":
+        payload["tenant_id"] = OTHER
+    elif case == "approval":
+        payload["approved"] = False
+    elif case in ("future", "stale"):
+        payload["reviews"][0]["observed_at"] = (
+            NOW + timedelta(hours=1) if case == "future" else NOW - timedelta(days=2)
+        ).isoformat()
+    elif case == "url":
+        payload["reviews"][0]["source_url"] = "https://example.invalid"
+    elif case == "duplicate":
+        payload["reviews"].append(payload["reviews"][0].copy())
+    else:
+        payload["schema_version"] = True
+    path = tmp_path / "review.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError):
+        read_copilot_reviews(path, TENANT, NOW, EvidenceStore(tmp_path / "evidence", NOW))
+
+
+def test_cli_attaches_review_export_without_azure_authentication(tmp_path: Path) -> None:
+    from easm_agent.cli import main
+
+    review = tmp_path / "review.json"
+    review.write_text(json.dumps(review_packet()), encoding="utf-8")
+    inventory = write_packet(tmp_path)
+    with patch("easm_agent.cli.DefaultAzureCredential", side_effect=AssertionError("No Azure auth")), patch(
+        "easm_agent.cli.write_reports",
+    ) as write:
+        config = tmp_path / "settings.json"
+        config.write_text(json.dumps({"evidence_dir": str(tmp_path / "evidence")}), encoding="utf-8")
+        assert main([
+            "collect", "--copilot-only", "--tenant-id", TENANT,
+            "--copilot-inventory-file", str(inventory), "--copilot-review-file", str(review),
+            "--config", str(config),
+        ]) == 0
+    assert len(write.call_args.args[0].copilot_reviews) == 1
 
 
 @pytest.mark.parametrize("origin", [

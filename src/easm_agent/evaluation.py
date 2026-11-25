@@ -60,7 +60,8 @@ def evaluate(
     data.assessment_provenance = assessment_provenance(criteria, conventions, provenance_origin)
     for code, config in criteria["items"].items():
         measurement: Measurement = observed[code]
-        issues = [row for row in data.issues if row.collector in config.get("collectors", [])]
+        issues = [row for row in data.issues
+                  if row.collector == "collection_startup" or row.collector in config.get("collectors", [])]
         incomplete = readiness(data, config)
         reason = None
         ratio = measurement.ratio

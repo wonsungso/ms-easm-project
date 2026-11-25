@@ -308,7 +308,7 @@ def evaluate_proposals(data: Collection, tags: dict[str, Any]) -> list[ProposalF
         refs = sorted({ref for item in observations(data, code) for ref in item.evidence_refs})
         findings.append(ProposalFinding(
             code=code, title=title, area=DOMAINS[code][0], status=status, metrics=metrics, observation=summary,
-            limit=LIMITS[code] + ". Level은 6. 수집 결과에서 증적 포함 기준으로 판정", reason=reason,
+            limit=LIMITS[code] + ". Level은 판정 시트에서 증적 포함 기준으로 판정", reason=reason,
             evidence_refs=refs,
         ))
     return findings

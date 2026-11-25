@@ -32,32 +32,32 @@ Excel 6번 상단에서 범위·보류 항목을, 7번에서 계산값·대상�
 
 ![DS-SY-03 확인 화면](portal/imgs/DS-SY-03.png)
 
-## DS-SY-04 모델 배포 버전·업데이트 구성
+## DS-SY-04 플랫폼별 모델·오케스트레이션 구성
 
 - **영역·제품:** Design / Microsoft Foundry
 - **구현:** ✅ 구현
-- **점검 내용:** 모델명·버전·형식과 기준에서 인식하는 업데이트 옵션을 확인합니다. 조직의 모델 승인·지원 종료 대응 여부는 평가하지 않습니다.
-- **비율 평가 기준:** (모델명·버전·형식과 업데이트 옵션이 모두 확인된 모델 배포 수 / 조회한 전체 모델 배포 수) × 100.
+- **점검 내용:** Azure는 모델 배포 이름·버전·형식·업데이트 옵션을, Copilot은 모델 선택 레이블·오케스트레이션을 확인합니다. 실제 기반 모델 버전과 조직의 모델 승인은 추론하지 않습니다.
+- **비율 평가 기준:** (플랫폼별 모델 구성 정보를 확인한 대상 수 / Azure 모델 배포 및 Copilot Agent 수) × 100.
 - **Azure Portal 기준(참고):** Azure Portal > Microsoft Foundry > (계정) > Go to Foundry portal > 모델 + 엔드포인트(배포 목록·업데이트 옵션)
 
 ![DS-SY-04 확인 화면](portal/imgs/DS-SY-04.png)
 
-## DS-SY-05 AI 리소스 인바운드 경계 구성
+## DS-SY-05 플랫폼별 접근 범위 구성
 
 - **영역·제품:** Design / AI 계정·자체 Agent 호스트
 - **구현:** ✅ 구현
-- **점검 내용:** AI 계정은 공용 접근 비활성·승인된 프라이빗 엔드포인트 연결을, 자체 호스트는 공용 접근 차단 또는 기본 거부 접근 제한을 확인합니다. 전체 주소 허용·VNet 통합·HTTPS만으로는 충족하지 않으며 실제 차단 시험은 아닙니다.
-- **비율 평가 기준:** (위 네트워크 접근 제한 조건을 충족한 리소스 수 / 점검 대상 AI 계정·자체 Agent 호스트 수) × 100.
+- **점검 내용:** Azure는 기존 인바운드 경계를, Copilot은 인증 사용·전체 테넌트 공유 제한을 확인합니다. Copilot 공유 설정을 네트워크 격리·공개 채널 차단·공유 승인으로 해석하지 않습니다.
+- **비율 평가 기준:** (플랫폼별 접근 범위 조건을 충족한 대상 수 / Azure AI 계정·호스트 및 Copilot Agent 수) × 100.
 - **Azure Portal 기준(참고):** Azure Portal > Microsoft Foundry > (계정) > Resource Management > Networking, App Service > (앱) > Networking
 
 ![DS-SY-05 확인 화면](portal/imgs/DS-SY-05.png)
 
-## DS-SY-06 MCP 도구 필수 승인 모드
+## DS-SY-06 도구 승인·사용자 동의 구성
 
 - **영역·제품:** Design / Microsoft Foundry Agent 도구
 - **구현:** ✅ 구현
-- **점검 내용:** 최신 Agent 버전의 MCP 도구가 `require_approval=always`인지 확인합니다. 승인 없음·일부 호출 승인은 미충족입니다. 함수·내장 도구는 제외하며 런타임 승인 우회는 시험하지 않습니다.
-- **비율 평가 기준:** (항상 승인을 요구하는 MCP 도구 설정 수 / 최신 Agent 버전에서 조회한 전체 MCP 도구 설정 수) × 100.
+- **점검 내용:** Azure MCP의 `require_approval=always`와 활성 Copilot 커넥터의 `requiresEndUserConsent=true`를 확인합니다. 사용자 동의는 실행별 사람 승인과 다릅니다. 비활성·함수·내장 도구는 제외합니다.
+- **비율 평가 기준:** (플랫폼별 승인·동의 조건 충족 도구 수 / MCP 도구 및 활성 Copilot 커넥터 작업 수) × 100. 건수 불일치·잘린 목록은 보류합니다.
 - **Azure Portal 기준(참고):** Azure Portal > Microsoft Foundry > (계정) > Go to Foundry portal > (프로젝트) > Agents > (Agent) > Tools
 
 ![DS-SY-06 확인 화면](portal/imgs/DS-SY-06.png)
@@ -80,22 +80,22 @@ Excel 6번 상단에서 범위·보류 항목을, 7번에서 계산값·대상�
 - **비율 평가 기준:** (보호 수준이 `Standard`인 환경 수 / 관리자에게 보이는 환경 수) × 100. 보호 수준을 확인하지 못한 환경이 있으면 점수를 보류합니다.
 - **Azure Portal 기준(참고):** 해당 없음 - Power Platform 관리 센터 > 환경 > 관리형 환경
 
-## BI-SY-09 Foundry 프로젝트 평가 실행 이력
+## BI-SY-09 플랫폼별 완료 평가 실행 기록
 
 - **영역·제품:** Build / Microsoft Foundry
 - **구현:** ✅ 구현
-- **점검 내용:** 프로젝트별 완료·성공 상태의 평가 이력을 확인합니다. 프로젝트 읽기 권한이 필요하며 품질 통과·배포 전 평가·자동 평가 운영을 뜻하지 않습니다.
-- **비율 평가 기준:** (완료·성공 상태의 평가 실행 기록이 있는 프로젝트 수 / 발견한 전체 Foundry 프로젝트 수) × 100.
+- **점검 내용:** Foundry 완료 평가, Standard Copilot GET의 `Completed`·종료 시각 또는 승인된 실제 검토 화면의 `No evaluation run`을 확인합니다. 다른 하니스는 실제 화면의 평가 없음만 반영하며 새 평가를 실행하지 않습니다.
+- **비율 평가 기준:** (완료 평가를 보유한 대상 수 / Foundry 프로젝트 및 평가 기록 확인 Copilot Agent 수) × 100. 작성 화면은 게시 버전 평가·품질 통과·배포 전 평가 증명이 아닙니다.
 - **Azure Portal 기준(참고):** Azure Portal > Microsoft Foundry > (계정) > Go to Foundry portal > Build > Evaluations
 
 ![BI-SY-09 확인 화면](portal/imgs/BI-SY-09.png)
 
-## BI-SY-10 AI 리소스 보안 권고 상태
+## BI-SY-10 플랫폼별 보안 점검 상태
 
 - **영역·제품:** Build / Microsoft Defender for Cloud
 - **구현:** ✅ 구현
-- **점검 내용:** AI 리소스에 적용 가능한 권고의 `Healthy` 비율을 확인하며 적용 제외 권고는 분모에서 뺍니다. 권고 없음·상태 미확인은 보류합니다. 구독 보안 점수·조치 기한은 평가하지 않습니다.
-- **비율 평가 기준:** (정상 상태인 보안 권고 수 / AI 리소스에 적용되는 전체 보안 권고 수) × 100.
+- **점검 내용:** Azure 보안 권고의 `Healthy`와 Copilot 인증·공유·커넥터 자격 증명의 명시적 위험 구성을 확인합니다. API 구성으로 준비 상태 화면이나 스캔 성공을 추론하지 않습니다.
+- **비율 평가 기준:** (플랫폼별 보안 구성 조건 충족 대상 수 / 적용 가능한 Azure 보안 권고 및 Copilot Agent 수) × 100. Azure 권고 없음은 준수가 아닙니다.
 - **Azure Portal 기준(참고):** Azure Portal > Microsoft Defender for Cloud > Recommendations(AI 리소스 필터), Security posture(보안 점수)
 
 ![BI-SY-10 확인 화면](portal/imgs/BI-SY-10.png)
@@ -110,22 +110,22 @@ Excel 6번 상단에서 범위·보류 항목을, 7번에서 계산값·대상�
 
 ![BI-SY-11 확인 화면](portal/imgs/BI-SY-11.png)
 
-## BI-SY-12 Agent 버전·호스트 런타임 식별
+## BI-SY-12 플랫폼별 Agent 버전·게시 기록
 
 - **영역·제품:** Build / Foundry·App Service·컨테이너
 - **구현:** ✅ 구현
-- **점검 내용:** Foundry Agent 버전, App Service의 버전 지정 런타임, 컨테이너 이미지 SHA256을 확인합니다. `latest` 같은 가변 지정은 미충족이며 소스 출처·배포 승인·복구 기록은 평가하지 않습니다.
-- **비율 평가 기준:** (버전 또는 고유한 실행 이미지 식별 조건을 충족한 Agent·호스트 수 / 점검 대상 Foundry Agent 수와 자체 Agent 호스트 수의 합계) × 100.
+- **점검 내용:** Azure의 버전·런타임·이미지 SHA256과 Copilot의 게시 시각 보유를 확인합니다. 게시 시각은 버전 고정·승인·롤백 기록이 아니며 초안의 미게시를 안전성 실패로 해석하지 않습니다.
+- **비율 평가 기준:** (플랫폼별 버전·게시 기록 보유 대상 수 / Foundry Agent·자체 호스트 및 Copilot Agent 수) × 100.
 - **Azure Portal 기준(참고):** Azure Portal > Microsoft Foundry > (계정) > Go to Foundry portal > 모델 + 엔드포인트(버전 업데이트 정책), App Service > (앱) > Settings > Configuration > Stack settings
 
 ![BI-SY-12 확인 화면](portal/imgs/BI-SY-12.png)
 
-## BI-SY-13 Agent 책임·환경·비용 메타데이터
+## BI-SY-13 플랫폼별 Agent 책임·자산 메타데이터
 
-- **영역·제품:** Build / Azure 태그·Agent 메타데이터
+- **영역·제품:** Build / Azure 태그·Agent 메타데이터·Copilot 인벤토리
 - **구현:** ✅ 구현
-- **점검 내용:** Agent별 소유자·스폰서·환경·비용센터를 태그 또는 Foundry 메타데이터에서 확인합니다. 기본 키는 `owner`·`sponsor`·`env`·`cost-center`이며 승인·재직·자산 대장 일치는 평가하지 않습니다.
-- **비율 평가 기준:** (소유자·스폰서·환경·비용센터 정보가 모두 있는 Azure Agent 수 / 조회한 전체 Azure Agent 수) × 100.
+- **점검 내용:** Azure Agent는 소유자·스폰서·환경·비용센터를 확인하고 Copilot Agent는 인벤토리의 소유자 존재 여부만 확인합니다. 승인·재직·Copilot 비용 정보는 추론하지 않습니다.
+- **비율 평가 기준:** (플랫폼별 필수 정보를 확인한 Agent 수 / Azure와 Copilot Agent 수) × 100. 조건은 플랫폼별로 다릅니다.
 - **Azure Portal 기준(참고):** Azure Portal > Microsoft Foundry 또는 App Service > (리소스) > Tags
 
 ![BI-SY-13 확인 화면](portal/imgs/BI-SY-13.png)
@@ -140,12 +140,12 @@ Excel 6번 상단에서 범위·보류 항목을, 7번에서 계산값·대상�
 
 ![BI-SY-14 확인 화면](portal/imgs/BI-SY-14.png)
 
-## DP-SY-15 Azure Agent의 Entra Blueprint 귀속
+## DP-SY-15 플랫폼별 Agent ID·청사진 연결
 
 - **영역·제품:** Deploy / Microsoft Entra Agent ID
 - **구현:** ✅ 구현 - 현재 API 기준 완료, 연결 충족률과 구현 여부는 별개
-- **점검 내용:** Foundry Agent의 구독 ID·계정명·프로젝트명·Agent 이름을 청사진 태그와 정확히 대조하고 실제 Agent ID의 청사진 연결도 확인합니다. 두 Entra 목록의 전체 조회가 필요하며 호스트 관리 ID만으로는 인정하지 않습니다.
-- **비율 평가 기준:** (위 이름·구독 정보와 실제 Agent ID 연결이 모두 확인된 Azure Agent 수 / 조회한 전체 Azure Agent 수) × 100. 전체 Agent 365 등록 패키지 수로 나누는 방식은 아닙니다.
+- **점검 내용:** Azure Agent·청사진 태그의 정확 대조와 Copilot Studio ID의 실제 Graph Agent ID·청사진 연결을 확인합니다. Agent Builder는 공식 신원 필드 미적용으로 제외합니다.
+- **비율 평가 기준:** (실제 청사진 연결 확인 Agent 수 / Azure 및 Copilot Studio Agent 수) × 100. 호스트 관리 ID·패키지 목록으로 대신 인정하지 않습니다.
 - **Azure Portal 기준(참고):** Microsoft Entra ID > Agent ID.
 
 ![DP-SY-15 확인 화면](portal/imgs/DP-SY-15.png)
@@ -180,12 +180,12 @@ Excel 6번 상단에서 범위·보류 항목을, 7번에서 계산값·대상�
 
 ![OE-SY-18 확인 화면](portal/imgs/OE-SY-18.png)
 
-## OE-SY-19 관리 ID·키 인증·직접 ARM 역할 구성
+## OE-SY-19 플랫폼별 인증·권한 구성
 
-- **영역·제품:** Operate / Azure Resource Graph·RBAC
+- **영역·제품:** Operate / Azure Resource Graph·RBAC·Copilot 인벤토리
 - **구현:** ✅ 구현
-- **점검 내용:** 관리 ID 연결·동일 구독의 광범위 직접 역할 부재를 확인하고 AI 계정은 키 인증 비활성도 요구합니다. 타 구독·상속·데이터 평면 역할과 실제 인증 사용은 제외합니다.
-- **비율 평가 기준:** (관리 ID 연결·광범위 직접 역할 없음 조건을 충족하고, AI 계정이면 키 인증도 꺼져 있는 리소스 수 / 점검 대상 AI 계정·자체 Agent 호스트 수) × 100.
+- **점검 내용:** Azure는 관리 ID·직접 역할·키 인증을 확인하고 Copilot은 인벤토리의 인증 방식을 확인합니다. 실제 인증 사용과 정책 승인은 제외합니다.
+- **비율 평가 기준:** (플랫폼별 구성 조건을 충족한 대상 수 / Azure AI 계정·호스트 및 Copilot Agent 수) × 100. 플랫폼별 조건과 대상 단위는 다릅니다.
 - **Azure Portal 기준(참고):** Azure Portal > Microsoft Foundry > (계정) > Resource Management > Identity, Access control (IAM) > Role assignments, Keys and Endpoint
 
 ![OE-SY-19 확인 화면](portal/imgs/OE-SY-19.png)
@@ -210,12 +210,12 @@ Excel 6번 상단에서 범위·보류 항목을, 7번에서 계산값·대상�
 
 ![OE-SY-21 확인 화면](portal/imgs/OE-SY-21.png)
 
-## OE-SY-22 리소스 지역·workspace 보존 구성
+## OE-SY-22 플랫폼별 지역·보존 구성 정보
 
 - **영역·제품:** Operate / Azure 리소스·Log Analytics
 - **구현:** ✅ 구현 - 현재 API 기준 완료, 보존 기준 충족률과 구현 여부는 별개
-- **점검 내용:** 배포 지역과 활성 로그 연결 작업 영역의 보존기간을 확인합니다. 기본 90일이며 여러 연결 중 최솟값을 사용합니다. 실제 모델 처리 지역·테이블별 보존·법적 삭제는 평가하지 않습니다.
-- **비율 평가 기준:** (배포 지역이 확인되고 활성 로그 연결의 보존기간이 모두 기준 이상인 리소스 수 / 점검 대상 AI 계정·자체 Agent 호스트 수) × 100.
+- **점검 내용:** Azure는 기존 지역·보존 조건을, Copilot은 정확한 environmentId로 연결한 관리 환경의 지역만 확인합니다. Copilot 실제 모델·M365 데이터 처리 지역과 로그 보존 준수를 추론하지 않습니다.
+- **비율 평가 기준:** (플랫폼별 지역·보존 정보 조건 충족 대상 수 / Azure AI 계정·호스트 및 Copilot Agent 수) × 100.
 - **Azure Portal 기준(참고):** Azure Portal > Microsoft Foundry > (계정) > Overview(Location), Log Analytics workspaces > (workspace) > Tables(보존 기간)
 
 ![OE-SY-22 확인 화면](portal/imgs/OE-SY-22.png)

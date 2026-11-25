@@ -377,7 +377,9 @@ def supplemental_metrics(data: Collection, criteria: dict) -> list[EvidenceMetri
             for start in bins:
                 month = start.strftime("%Y%m")
                 rows = grouped[month]
-                add("cost.month." + month + ".total", sum(record.amount for record in rows) if rows else None, currency)
+                # period_start <= bins[0] was already verified above, so every month in `bins` is
+                # within the observed window - an empty `rows` means a real, confirmed $0, not unknown.
+                add("cost.month." + month + ".total", sum(record.amount for record in rows), currency)
                 add("cost.month." + month + ".attributed", sum(
                     record.attributed_amount for record in rows if record.attributed_amount is not None
                 )

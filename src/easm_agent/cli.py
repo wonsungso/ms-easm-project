@@ -17,12 +17,13 @@ from azure.identity import DefaultAzureCredential
 from easm_agent.azure import AccessError, EvidenceStore
 from easm_agent.collect import collect, merge
 from easm_agent.collect_admin_evidence import read_admin_evidence
-from easm_agent.collect_copilot import read_copilot_inventory
+from easm_agent.collect_copilot import read_copilot_inventory, read_copilot_reviews
 from easm_agent.collect_entra import EntraCollector
 from easm_agent.evaluation import evaluate
 from easm_agent.models import (
     Collection,
     Finding,
+    Issue,
     load_conventions,
     load_criteria,
     load_settings,
@@ -54,6 +55,7 @@ def main(argv: list[str] | None = None) -> int:
     command.add_argument("--manual-agents", type=Path)
     command.add_argument("--admin-evidence-file", action="append", type=Path, default=[])
     command.add_argument("--copilot-inventory-file", action="append", type=Path, default=[])
+    command.add_argument("--copilot-review-file", action="append", type=Path, default=[])
     command.add_argument("--report-evidence-file", action="append", type=Path, default=[])
     command.add_argument("--report-cost-history", action="store_true", help="현재 Azure AI 리소스의 과거 비용 읽기 - 과거 Agent 귀속은 추론하지 않음")
     command.add_argument(
@@ -68,12 +70,14 @@ def main(argv: list[str] | None = None) -> int:
     command.add_argument("--fixture", type=Path)
     command.add_argument("--dry-run", action="store_true")
     command.add_argument("--customer", default=DEFAULT_CUSTOMER, help="PPT 표지의 고객사명")
+    command.add_argument("--interview-workbook", type=Path, help="보존할 인터뷰·문서·인용이 입력된 원본 통합 Excel")
     package = subparsers.add_parser("package", help="raw-data-<타임스탬프>.json을 읽어 Excel·PPT 보고서 재생성")
     package.add_argument("--output-dir", type=Path, default=Path("output"))
     package.add_argument("--customer", default=DEFAULT_CUSTOMER, help="PPT 표지의 고객사명")
     package.add_argument("--mode", choices=["live", "fixture"])
     package.add_argument("--admin-evidence-file", action="append", type=Path, default=[])
     package.add_argument("--copilot-inventory-file", action="append", type=Path, default=[])
+    package.add_argument("--copilot-review-file", action="append", type=Path, default=[])
     package.add_argument("--report-evidence-file", action="append", type=Path, default=[])
     package.add_argument("--tenant-id")
     package.add_argument(
@@ -83,6 +87,10 @@ def main(argv: list[str] | None = None) -> int:
     package.add_argument("--config", type=Path, default=Path("config") / "custom-config.yaml",
                          help="재평가에 사용할 고객별 선택 설정 파일")
     package.add_argument("--criteria", type=Path, help="재평가 기준 YAML 경로 - 기본값 config/criteria.yaml")
+    package.add_argument("--interview-workbook", type=Path, help="수동 입력 원본 - 생략하면 기존 실행 Excel 입력 보존")
+    values = subparsers.add_parser("report-values", help="PPT 표시값과 역산 Excel 셀 매핑을 JSON으로 추출 - Azure 호출 없음")
+    values.add_argument("--workbook", type=Path, required=True)
+    values.add_argument("--output", type=Path)
     deck = subparsers.add_parser(
         "deck", help="인터뷰 점수를 기입한 Excel 보고서에서 PPT 보고서(EASM-report-<타임스탬프>.pptx) 생성",
     )
@@ -94,6 +102,28 @@ def main(argv: list[str] | None = None) -> int:
     logging.getLogger("azure.identity").setLevel(logging.ERROR)
     scratch = contextlib.ExitStack()
     try:
+        if args.command == "report-values":
+            from openpyxl import load_workbook
+
+            from easm_agent.report_integrated import is_integrated
+            from easm_agent.report_values import build_report_values
+
+            book = load_workbook(args.workbook)
+            try:
+                if not is_integrated(book):
+                    raise ValueError("SY 26개 통합 결과 Excel이 필요합니다.")
+                payload = build_report_values(book).export()
+            finally:
+                book.close()
+            rendered = json.dumps(payload, ensure_ascii=False, indent=2)
+            if args.output:
+                args.output.parent.mkdir(parents=True, exist_ok=True)
+                with args.output.open("x", encoding="utf-8") as target:
+                    target.write(rendered)
+                print(f"PPT 표시값·Excel 매핑: {args.output}")
+            else:
+                print(rendered)
+            return 0
         if args.command == "deck":
             source = latest_raw(args.output_dir)
             if source is None:
@@ -157,9 +187,9 @@ def main(argv: list[str] | None = None) -> int:
                     seen_sources.update(sources)
                     data.admin_evidence = [read for read in data.admin_evidence if read.source not in sources]
                     data.admin_evidence.extend(incoming.admin_evidence)
-            if args.report_evidence_file and not args.reassess:
+            if (args.report_evidence_file or args.copilot_review_file) and not args.reassess:
                 raise ValueError("추가 보고서 증적 첨부에는 --reassess로 현재 기준 출처를 기록해야 합니다.")
-            if args.copilot_inventory_file or args.report_evidence_file:
+            if args.copilot_inventory_file or args.report_evidence_file or args.copilot_review_file:
                 if mode != "live" or not args.tenant_id:
                     raise ValueError("Copilot 첨부에는 live 결과와 명시적 단일 --tenant-id가 필요합니다.")
                 tenant = str(uuid.UUID(args.tenant_id))
@@ -186,6 +216,8 @@ def main(argv: list[str] | None = None) -> int:
                 data.facts["evidence_directory"] = str(directory.resolve())
                 for path in args.copilot_inventory_file:
                     merge(data, read_copilot_inventory(path, tenant, datetime.now(UTC), store))
+                for path in args.copilot_review_file:
+                    merge(data, read_copilot_reviews(path, tenant, datetime.now(UTC), store))
                 for path in args.report_evidence_file:
                     merge(data, read_report_evidence(path, tenant, datetime.now(UTC), store))
                 data.evidence_sources.extend(store.sources())
@@ -206,13 +238,16 @@ def main(argv: list[str] | None = None) -> int:
                     provenance_origin="saved_snapshot_reassessment",
                 )
                 data.assessment_provenance.source_result_data_sha256 = result.get("manifest", {}).get("data_sha256")
-            write_reports(data, findings, source.parent, mode, new_run=False, customer=args.customer)
+            write_reports(data, findings, source.parent, mode, new_run=False, customer=args.customer,
+                          interview_workbook=args.interview_workbook)
             return 0
         settings = load_settings(args.config)
         if args.admin_evidence_file:
             settings.admin_evidence_files = args.admin_evidence_file
         if args.copilot_inventory_file:
             settings.copilot_inventory_files = args.copilot_inventory_file
+        if args.copilot_review_file:
+            settings.copilot_review_files = args.copilot_review_file
         if args.report_evidence_file:
             settings.report_evidence_files = args.report_evidence_file
         if args.report_cost_history:
@@ -229,6 +264,8 @@ def main(argv: list[str] | None = None) -> int:
             raise ValueError("--copilot-only와 --fixture는 함께 사용할 수 없습니다.")
         if args.fixture and settings.copilot_inventory_files:
             raise ValueError("실제 Copilot 인벤토리는 fixture 수집에 혼합하지 않습니다.")
+        if args.fixture and settings.copilot_review_files:
+            raise ValueError("실제 Copilot 검토 화면 증적은 fixture 수집에 혼합하지 않습니다.")
         if args.fixture and settings.admin_evidence_files:
             raise ValueError("실제 관리자 증적은 fixture 수집에 혼합하지 않습니다.")
         if args.config != Path("config") / "custom-config.yaml" and not args.config.is_file():
@@ -284,6 +321,8 @@ def main(argv: list[str] | None = None) -> int:
             data = Collection(collected_at=instant, facts={"copilot_only": True})
             for path in settings.copilot_inventory_files:
                 merge(data, read_copilot_inventory(path, settings.tenant_id, instant, store))
+            for path in settings.copilot_review_files:
+                merge(data, read_copilot_reviews(path, settings.tenant_id, instant, store))
             for path in settings.report_evidence_files:
                 merge(data, read_report_evidence(path, settings.tenant_id, instant, store))
             data.facts["evidence_directory"] = str(store.path.resolve())
@@ -293,8 +332,21 @@ def main(argv: list[str] | None = None) -> int:
             for agent in data.agents:
                 agent.mark_unknowns()
         else:
-            with DefaultAzureCredential() as credential:
-                data = collect(settings, credential)
+            try:
+                with DefaultAzureCredential() as credential:
+                    data = collect(settings, credential)
+            except (AccessError, ClientAuthenticationError) as exc:
+                reason = exc.reason if isinstance(exc, AccessError) else "permission_denied"
+                data = Collection(
+                    collected_at=datetime.now(UTC), subscriptions=settings.subscriptions,
+                    facts={"collection_startup_failed": True, "inventory_complete": False},
+                    issues=[Issue(
+                        collector="collection_startup", target="API collection startup",
+                        reason=reason,
+                        detail="진단 앱 수집 시작 실패: " + type(exc).__name__ + ". 인증·권한·범위 확인 필요. 원문·비밀값 미출력",
+                    )],
+                )
+                print("API 수집 시작 실패 - 값을 만들지 않고 판정 보류 Excel·PPT를 생성합니다.", file=sys.stderr)
             data.facts["subscription_scope"] = (
                 "explicit_subscription_list" if settings.subscriptions else "all_accessible_active_in_tenant"
             )
@@ -305,8 +357,9 @@ def main(argv: list[str] | None = None) -> int:
             load_conventions(settings), settings.policy_facts, settings.interview_levels,
         )
         workbook = write_reports(data, findings, args.output_dir, "fixture" if args.fixture else "live",
-                                 customer=args.customer)
-        print(f"수집 완료: 구독={len(data.subscriptions)}, Agent/후보={len(data.agents)}, "
+                                 customer=args.customer, interview_workbook=args.interview_workbook)
+        status = "수집 실패 - 판정 보류 보고서 생성" if data.facts.get("collection_startup_failed") else "수집 완료"
+        print(f"{status}: 구독={len(data.subscriptions)}, Agent/후보={len(data.agents)}, "
               f"Copilot={len(data.copilot_agents)}, 이슈={len(data.issues)}, 결과={workbook.parent}")
         return 2 if data.issues else 0
     except (ValueError, KeyError, TypeError, OSError, AccessError, ClientAuthenticationError) as exc:

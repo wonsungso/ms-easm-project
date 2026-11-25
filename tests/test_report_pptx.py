@@ -76,6 +76,7 @@ FORBIDDEN = re.compile(
     r"N/A|feature_unavailable|not_found|permission_denied|license_missing|Excel|Backdata|증적 색인|"
     r"가상|예시|실제 고객|실측 별도|API 증적 별도|사유 코드"
 )
+pytestmark = pytest.mark.usefixtures("legacy_report_template", "legacy_presentation_template")
 
 
 def item(code: str, score: int | None) -> Item:
@@ -264,8 +265,8 @@ def test_lower_interview_final_is_a_separate_branch_not_a_changed_api_average(
     assert [row.score for row in items if row.is_system] == system_scores
 
 
-def test_packaged_template_is_the_approved_twelve_slide_layout() -> None:
-    assert presentation_template_path().name == TEMPLATE_NAME
+def test_legacy_fixture_preserves_the_approved_twelve_slide_layout() -> None:
+    assert presentation_template_path().name == "legacy-" + TEMPLATE_NAME
     deck = Presentation(presentation_template_path())
     assert len(deck.slides) == 12
     assert (deck.slide_width, deck.slide_height) == (9904413, 6858000)
@@ -584,9 +585,9 @@ def test_labels_follow_what_each_indicator_really_measures(measures: dict) -> No
     assert not MISLEADING.search(text)
     assert data.fact("DM-SY-01") == ("역할 할당 확인 환경 확인 중" if measures.get("DM-SY-01") is None
                                      else "역할 할당이 확인된 환경 3곳 중 3곳")
-    assert data.label("BI-SY-09") == "프로젝트 평가 실행 이력"
+    assert data.label("BI-SY-09") == "플랫폼별 완료 평가 기록"
     assert "에이전트 ID 청사진에 연결되지 않음" in data.long_fact("DP-SY-15") or measures["DP-SY-15"] == (3, 3)
-    assert "모델 업그레이드 설정" in data.fact("DS-SY-04")
+    assert "모델 구성" in data.fact("DS-SY-04")
 
 
 def test_agent_365_monthly_figures_are_packages_including_store_apps_not_agents() -> None:
