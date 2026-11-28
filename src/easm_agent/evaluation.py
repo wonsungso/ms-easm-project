@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
+from easm_agent.agent365_grading import REGISTRY_CHECKS, REGISTRY_PROFILES
 from easm_agent.api_grading import PROFILE, Measurement, measurements
 from easm_agent.models import AssessmentMeasurement, Collection, Finding
 from easm_agent.provenance import assessment_provenance
@@ -32,7 +33,20 @@ def readiness(data: Collection, config: dict[str, Any]) -> str | None:
         if data.facts.get(key) is not True:
             return f"API 목록 수집 완료 확인 없음: {key}"
     for key in config.get("complete_subscriptions", []):
-        if set(data.subscriptions) - set(data.facts.get(key, [])):
+        collector = key.removesuffix("_complete_subscriptions")
+        excluded = {
+            row["subscription_id"] for row in data.facts.get("signal_scope_exclusions", [])
+            if row["collector"] == collector and row["status"] == "excluded"
+            and data.facts.get("inventory_complete") is True
+            and row["subscription_id"] in data.completed_subscriptions
+            and not any(
+                resource.get("subscriptionId") == row["subscription_id"]
+                and str(resource.get("type", "")).lower() == "microsoft.cognitiveservices/accounts"
+                and str(resource.get("kind", "")).lower() in ("aiservices", "openai")
+                for resource in data.resources
+            )
+        }
+        if set(data.subscriptions) - excluded - set(data.facts.get(key, [])):
             return f"일부 구독의 API 목록 수집 미완료: {key}"
     if config.get("requires") not in ("entra", "tenant"):
         if not data.facts.get("inventory_complete"):
@@ -48,15 +62,22 @@ def evaluate(
     interviews: dict[str, float] | None = None,
     *, provenance_origin: Literal["evaluation", "saved_snapshot_reassessment"] = "evaluation",
 ) -> list[Finding]:
-    if criteria.get("grading_profile") != PROFILE:
-        raise ValueError(f"지원되지 않는 등급 기준입니다. grading_profile={PROFILE} 기준을 사용하세요.")
+    profile = criteria.get("grading_profile")
+    if profile not in (PROFILE, *REGISTRY_PROFILES):
+        raise ValueError("지원되지 않는 등급 기준입니다. config/criteria.yaml의 grading_profile을 확인하세요.")
+    if profile in REGISTRY_PROFILES and any(
+        criteria["items"].get(code, {}).get("registry_check") != check for code, check in REGISTRY_CHECKS.items()
+    ):
+        raise ValueError("공통 등록부 항목의 구성·메타데이터 정의가 일치하지 않습니다.")
+    if profile == PROFILE and any(item.get("registry_check") for item in criteria["items"].values()):
+        raise ValueError("공통 등록부 항목의 grading_profile이 올바르지 않습니다.")
     if policy_facts:
         raise ValueError("policy_facts는 API 구성 등급의 입력으로 사용할 수 없습니다. API 조회값을 사용하세요.")
     observed = measurements(data, criteria, conventions)
     if observed.keys() != criteria["items"].keys():
         raise ValueError("구현 API 지표와 criteria.yaml의 항목이 일치하지 않습니다.")
     findings = []
-    data.facts["grading_profile"] = PROFILE
+    data.facts["grading_profile"] = profile
     data.assessment_provenance = assessment_provenance(criteria, conventions, provenance_origin)
     for code, config in criteria["items"].items():
         measurement: Measurement = observed[code]

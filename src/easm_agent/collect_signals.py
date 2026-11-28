@@ -44,6 +44,20 @@ class SignalCollector:
                 ("secure_score", self.secure_score), ("policies", self.policies), ("budgets", self.budgets),
                 ("defender_plans", self.defender_plans),
             ]:
+                if name in ("cost", "security") and not self.ai_ids(sid) and (
+                    self.base.facts.get("inventory_complete") is True
+                    and sid in self.base.completed_subscriptions
+                ):
+                    refs = [
+                        ref for row in self.base.facts.get("inventory_scope_evidence", [])
+                        if row["subscription_id"] == sid and row["complete"]
+                        for ref in row["evidence_refs"]
+                    ]
+                    result.facts.setdefault("signal_scope_exclusions", []).append({
+                        "collector": name, "subscription_id": sid, "status": "excluded",
+                        "reason": "완료된 Azure 인벤토리에 해당 AI 리소스가 없음", "evidence_refs": refs,
+                    })
+                    continue
                 try:
                     operation(sid, result)
                     result.facts.setdefault(name + "_complete_subscriptions", []).append(sid)
@@ -72,22 +86,12 @@ class SignalCollector:
             and row["type"].lower() == "microsoft.cognitiveservices/accounts"
             and row.get("kind", "").lower() in ("aiservices", "openai")
         }
-        ids.update(
-            rid.lower() for agent in self.base.agents
-            if agent.subscription_id == sid and agent.platform in HOSTED_AGENT_PLATFORMS
-            for rid in agent.cost_resource_ids
-        )
-        ids.update(
-            row["id"].lower() for row in self.base.resources
-            if row["subscriptionId"] == sid
-            and (row.get("tags") or {}).get("agent-type") == "shared-observability"
-        )
         return ids
 
     def costs(self, sid: str, result: Collection, *, start: datetime | None = None) -> None:
         ids = sorted(self.ai_ids(sid))
         if not ids:
-            raise AccessError("not_found", "비용 분모에 포함할 Azure AI/자체 Agent 리소스가 없음")
+            raise AccessError("not_found", "비용 분모에 포함할 Azure AI 리소스가 없음")
         previous_count = len(result.costs)
         body = {
             "type": "Usage", "timeframe": "Custom",
@@ -143,8 +147,6 @@ class SignalCollector:
             if row["subscriptionId"] == sid and row["type"].lower() == "microsoft.cognitiveservices/accounts"
             and row.get("kind", "").lower() in ("aiservices", "openai")
         }
-        targets.update(agent.resource_id for agent in self.base.agents
-                       if agent.subscription_id == sid and agent.platform in HOSTED_AGENT_PLATFORMS and agent.resource_id)
         workspaces: dict[str, tuple[str, int | None]] = {}
         for rid in sorted(targets):
             try:

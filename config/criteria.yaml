@@ -1,6 +1,6 @@
 # API 구성 충족률 기준입니다. levels 문장과 rules 조건을 함께 변경하세요.
-source: API 구성·기록 기반 평가 2026-11-09 - docs/api-notes.md
-grading_profile: api_configuration_v1
+source: Agent 365 및 API 구성·기록 기반 평가 - docs/api-notes.md
+grading_profile: agent365_registry
 interview_gap: 1.5
 inactivity_days: 90
 cost_window_days: 30
@@ -64,7 +64,7 @@ report_items:
   OE-SY-37:
     title: Copilot 인벤토리 소유자 존재
     metric: copilot.owner_presence
-    limit: ownerId 존재 관측만 확인. BI-SY-13의 Copilot 부분 지표이며 재직·스폰서 지정·업무 책임 승인은 추론하지 않음
+    limit: Copilot 인벤토리의 보조 관측이며 OE-SY-16의 Agent 365 등록부 소유자 평가와 범위가 다름. 서로 대체하지 않음
   DP-SY-38:
     title: 카탈로그 패키지의 게시 요청 승인 상태
     metric: catalog.publish_request_approval
@@ -77,19 +77,45 @@ report_items:
 report_groups:
   T1:
     label: 설정·정책
-    codes: [DM-SY-01, DS-SY-02, DS-SY-04, DS-SY-05, DS-SY-06, DS-SY-07, BI-SY-08, BI-SY-11, BI-SY-12, BI-SY-14, OE-SY-19]
+    codes:
+    - DS-SY-02
+    - DS-SY-04
+    - DS-SY-05
+    - DS-SY-06
+    - DS-SY-07
+    - BI-SY-08
+    - BI-SY-11
+    - BI-SY-12
+    - BI-SY-14
+    - OE-SY-19
   T2:
     label: 자산 메타데이터
-    codes: [BI-SY-13]
+    codes:
+    - DM-SY-01
+    - DS-SY-03
+    - BI-SY-13
   T3:
     label: 신원·권한
-    codes: [DS-SY-03, DP-SY-15, OE-SY-16, OE-SY-17]
+    codes:
+    - DP-SY-15
+    - OE-SY-16
+    - OE-SY-17
   T4:
     label: 품질·보안
-    codes: [BI-SY-09, BI-SY-10, OT-SY-25]
+    codes:
+    - BI-SY-09
+    - BI-SY-10
+    - OT-SY-25
   T5:
     label: 관측·비용
-    codes: [OE-SY-18, OE-SY-20, OE-SY-21, OE-SY-22, OT-SY-23, OT-SY-24, OT-SY-26]
+    codes:
+    - OE-SY-18
+    - OE-SY-20
+    - OE-SY-21
+    - OE-SY-22
+    - OT-SY-23
+    - OT-SY-24
+    - OT-SY-26
 workspace_retention_target_days: 90
 version_upgrade_options:
 - NoAutoUpgrade
@@ -100,50 +126,92 @@ overprivileged_permission_patterns:
 - '*.Write.All'
 - '*FullControl*'
 model_policy_definition_ids: []
+registry_platforms:
+  Copilot Studio: copilot_studio
+  Microsoft 365 Copilot Agent Builder: agent_builder
+  Foundry: foundry
+  AmazonBedrock: AmazonBedrock
+  SnowflakeAI: SnowflakeAI
+registry_agent_element_types:
+- agentmetadatas
+- declarativecopilots
+- customenginecopilots
+- declarativeagent
+- customengineagent
+- bots
+- bot
+registry_package_types:
+- microsoft
+- external
+- shared
+- custom
+- lob
+registry_allow_statuses:
+- allowedForAll
+- allowedForSome
+- allowedForNone
+registry_acquire_statuses:
+- acquiredForAll
+- acquiredForSome
+- acquiredForNone
+registry_published_statuses:
+- Published
+- Unpublished
+- Draft
+registry_audience_fields:
+- allowedUsersAndGroups
+- acquireUsersAndGroups
+- sharedWithUsersAndGroups
+registry_levels: &registry_levels
+  L1: 현재 항목의 필수 구성·기록을 충족한 등록 패키지 비율 0%
+  L2: 현재 항목의 필수 구성·기록을 충족한 등록 패키지 비율 0% 초과~80% 미만
+  L3: 현재 항목의 필수 구성·기록을 충족한 등록 패키지 비율 80% 이상~90% 미만
+  L4: 현재 항목의 필수 구성·기록을 충족한 등록 패키지 비율 90% 이상~100% 미만
+  L5: 현재 항목의 필수 구성·기록을 충족한 등록 패키지 비율 100%
+registry_rules: &coverage_rules
+  - level: L5
+    when:
+      coverage:
+        eq: 1
+  - level: L4
+    when:
+      coverage:
+        gte: 0.9
+        lt: 1
+  - level: L3
+    when:
+      coverage:
+        gte: 0.8
+        lt: 0.9
+  - level: L2
+    when:
+      coverage:
+        gt: 0
+        lt: 0.8
+  - level: L1
+    when:
+      coverage:
+        eq: 0
+
 items:
   DM-SY-01:
-    title: Power Platform 환경의 역할 할당 현황
+    title: Agent 관리 인벤토리 등록·기본정보 완전성
+    short_title: 등록 인벤토리
     scope: partial
-    metric: environment_role_ratio
-    numerator: 역할 할당이 1건 이상 확인된 환경 수
-    denominator: 관리자에게 보이는 Power Platform 환경 수
-    evidence: 환경 목록 API와 Get-AdminPowerAppEnvironmentRoleAssignment 또는 승인된 관리 센터 화면의 환경별 역할 할당 건수(별도 관리자 읽기 증적)
-    limit: 역할 할당 건수가 고유 Maker 사용자 수나 권한의 적정성을 뜻하지 않으며 비 Dataverse 환경의 관리자 접근 범위로 한정됨
-    product: Power Platform 관리 센터
+    metric: registry_inventory_ratio
+    registry_check: inventory
+    numerator: 등록 ID·플랫폼·생성 시각이 확인된 Agent 패키지 수
+    denominator: Agent 365에서 플랫폼이 식별된 Agent 패키지 수
+    evidence: Agent 365 catalog의 id·platform·createdDateTime
+    limit: 등록부 관리 범위이며 원본 플랫폼 전체 Agent 수·실행 성공을 뜻하지 않음
+    product: Microsoft Agent 365
     requires: tenant
-    collectors: []
-    complete_flags: []
-    complete_subscriptions: []
-    levels:
-      L1: 역할 할당이 확인된 환경 비율 0%
-      L2: 역할 할당이 확인된 환경 비율 0% 초과~80% 미만
-      L3: 역할 할당이 확인된 환경 비율 80% 이상~90% 미만
-      L4: 역할 할당이 확인된 환경 비율 90% 이상~100% 미만
-      L5: 역할 할당이 확인된 환경 비율 100%
-    rules: &coverage_rules
-    - level: L5
-      when:
-        coverage:
-          eq: 1
-    - level: L4
-      when:
-        coverage:
-          gte: 0.9
-          lt: 1
-    - level: L3
-      when:
-        coverage:
-          gte: 0.8
-          lt: 0.9
-    - level: L2
-      when:
-        coverage:
-          gt: 0
-          lt: 0.8
-    - level: L1
-      when:
-        coverage:
-          eq: 0
+    collectors:
+    - agent365_registry
+    complete_flags:
+    - agent365_registry_complete
+    levels: *registry_levels
+    rules: *coverage_rules
   DS-SY-02:
     title: 데이터 정책(DLP) 적용 환경
     scope: partial
@@ -165,60 +233,32 @@ items:
       L5: 데이터 정책이 적용되는 환경 비율 100%
     rules: *coverage_rules
   DS-SY-03:
-    title: Agent ID의 Blueprint 연결
-    scope: in_scope
-    metric: blueprint_link_ratio
-    numerator: Blueprint 연결이 확인된 Agent ID 수
-    denominator: Graph Agent ID 수
-    evidence: applications/microsoft.graph.agentIdentityBlueprint와 servicePrincipals/microsoft.graph.agentIdentity의
-      agentIdentityBlueprintId 대조
-    limit: Blueprint 조직 표준 승인이나 업무 유형 분류를 의미하지 않음
+    title: Agent 등록 출처·플랫폼 유형 식별
+    short_title: 등록 출처·플랫폼
+    scope: partial
+    metric: registry_provenance_ratio
+    registry_check: provenance
+    numerator: 플랫폼·패키지 유형과 적용 가능한 연결 공급자·원본 저장소가 확인된 패키지 수
+    denominator: Agent 365에서 플랫폼이 식별된 Agent 패키지 수
+    evidence: catalog platform·type 및 이기종 연결 정의의 등록 유형·공급자·원본 저장소
+    limit: 등록 출처 기록이며 Entra 청사진·공급자 신뢰성·정책 승인의 증거가 아님
+    product: Microsoft Agent 365
+    requires: tenant
     collectors:
-    - entra_agents
-    - entra_blueprints
+    - agent365_registry
     complete_flags:
-    - entra_agents_complete
-    - entra_blueprints_complete
-    complete_subscriptions: []
-    levels:
-      L1: Blueprint 연결 비율 0%
-      L2: Blueprint 연결 비율 0% 초과~80% 미만
-      L3: Blueprint 연결 비율 80% 이상~90% 미만
-      L4: Blueprint 연결 비율 90% 이상~100% 미만
-      L5: Blueprint 연결 비율 100%
-    rules:
-    - level: L5
-      when:
-        coverage:
-          eq: 1
-    - level: L4
-      when:
-        coverage:
-          gte: 0.9
-          lt: 1
-    - level: L3
-      when:
-        coverage:
-          gte: 0.8
-          lt: 0.9
-    - level: L2
-      when:
-        coverage:
-          gt: 0
-          lt: 0.8
-    - level: L1
-      when:
-        coverage:
-          eq: 0
-    requires: entra
+    - agent365_registry_complete
+    levels: *registry_levels
+    rules: *coverage_rules
   DS-SY-04:
     title: 플랫폼별 모델·오케스트레이션 구성
     scope: partial
     metric: deployment_configuration_ratio
     numerator: 플랫폼별 모델 구성 정보가 확인된 대상 수
-    denominator: Azure 모델 배포 및 Copilot Agent 수
-    evidence: Azure 모델 배포의 이름·버전·형식·업데이트 옵션과 Copilot 인벤토리 model·orchestration
-    limit: Copilot은 모델 선택 레이블·오케스트레이션만 확인. 실제 기반 모델 버전·허용 모델 승인·퇴역 대응을 뜻하지 않음
+    denominator: Azure 모델 배포·Copilot Agent 및 Bedrock 등록 패키지 수
+    evidence: Azure 모델 배포 구성·Copilot model/orchestration·Agent 365 Bedrock 정의 SourceIds.mac.modelInfo
+    limit: Copilot은 모델 레이블·오케스트레이션, Bedrock은 Agent 365 정의의 mac.modelInfo만 확인. 실제 모델 버전·정책 승인·퇴역 대응 아님
+    connected_inventory_check: source_model_record
     copilot_inventory_check: model
     collectors:
     - model_deployments
@@ -258,13 +298,14 @@ items:
         coverage:
           eq: 0
   DS-SY-05:
+    connected_inventory_check: access_record
     title: 플랫폼별 접근 범위 구성
     scope: partial
     metric: network_boundary_ratio
     numerator: 플랫폼별 접근 범위 조건을 충족한 대상 수
-    denominator: AI 계정·자체 Agent 호스트 및 Copilot Agent 수
-    evidence: Azure 비공개 인바운드·접근 제한과 Copilot authentication·sharedWithViewers.entireTenant
-    limit: Copilot은 인증 사용·전체 테넌트 공유 제한만 확인하며 네트워크 격리·공개 채널 차단·공유 승인을 뜻하지 않음
+    denominator: AI 계정·Copilot Agent 및 외부 동기화 패키지 수
+    evidence: Azure 비공개 인바운드·접근 제한, Copilot authentication·sharedWithViewers.entireTenant, 외부 Agent 365 availableTo·isBlocked의 명시적 구성 기록
+    limit: 외부 플랫폼은 Agent 365 접근·차단 구성 기록의 유효 값 보유만 평가하며 원본 IAM 인증·최소 권한·격리·공유 승인을 뜻하지 않음. Copilot은 인증 사용·전체 테넌트 공유 제한만 확인. 플랫폼별 서로 다른 통제·단위를 원천에 표시
     copilot_inventory_check: access
     collectors:
     - proposal_DS-SY-05
@@ -349,24 +390,25 @@ items:
           eq: 0
     agent_denominator: true
   DS-SY-07:
-    title: 외부 도구 HTTPS 연결 구성
+    title: 외부 도구·Agent HTTPS 연결 구성
     scope: partial
     metric: https_endpoint_ratio
-    numerator: 유효한 HTTPS로 확인된 외부 도구 URL 수
-    denominator: 명시적 외부 도구 URL 수
-    evidence: Agent 도구 server_url·url의 scheme·hostname·userinfo 존재 여부. 경로·인증값은 저장하지 않음
+    numerator: 유효한 HTTPS·인증정보 없음이 확인된 외부 도구·Agent URL 수
+    denominator: 명시적 외부 도구 URL 및 Snowflake Agent endpoint 수
+    evidence: 도구 server_url·url 또는 Agent 365 정의의 AgentEndpoints.EndpointUrl. 경로·인증값·URL 원문 미저장
     limit: 엔드포인트 업무 승인·상대 서버 신뢰·인증 성공을 뜻하지 않음
+    connected_inventory_check: agent_endpoint_https
     collectors:
     - foundry_agents
     - foundry_projects
     complete_flags: []
     complete_subscriptions: []
     levels:
-      L1: 유효 HTTPS 외부 도구 URL 비율 0%
-      L2: 유효 HTTPS 외부 도구 URL 비율 0% 초과~80% 미만
-      L3: 유효 HTTPS 외부 도구 URL 비율 80% 이상~90% 미만
-      L4: 유효 HTTPS 외부 도구 URL 비율 90% 이상~100% 미만
-      L5: 유효 HTTPS 외부 도구 URL 비율 100%
+      L1: 유효 HTTPS 외부 도구·Agent URL 비율 0%
+      L2: 유효 HTTPS 외부 도구·Agent URL 비율 0% 초과~80% 미만
+      L3: 유효 HTTPS 외부 도구·Agent URL 비율 80% 이상~90% 미만
+      L4: 유효 HTTPS 외부 도구·Agent URL 비율 90% 이상~100% 미만
+      L5: 유효 HTTPS 외부 도구·Agent URL 비율 100%
     rules:
     - level: L5
       when:
@@ -393,24 +435,22 @@ items:
           eq: 0
     agent_denominator: true
   BI-SY-08:
-    title: 관리형 환경 적용
+    title: Agent 등록·게시·배포 상태 기록
+    short_title: 등록·게시·배포 상태
     scope: partial
-    metric: managed_environment_ratio
-    numerator: 관리형(Managed)으로 확인된 환경 수
-    denominator: 관리자에게 보이는 Power Platform 환경 수
-    evidence: 환경 목록 API의 protectionLevel(Standard는 관리형 환경으로 해석, Basic은 비관리형으로 관측)
-    limit: 환경 유형·보호 수준의 원본 값만 확인하며 개발·테스트·운영 분리나 배포 경로 통제는 확인하지 않음
-    product: Power Platform 관리 센터
+    metric: registry_lifecycle_ratio
+    registry_check: lifecycle
+    numerator: 적용 가능한 원본 게시 상태 또는 등록부 배포 상태가 명시된 패키지 수
+    denominator: Agent 365에서 플랫폼이 식별된 Agent 패키지 수
+    evidence: 이기종 PublishedStatus 또는 MS 패키지 deployedTo
+    limit: Published·Draft·미배포 등 상태 기록의 완전성. 원본 관리형 환경·배포 승인·실행 성공과 다름
+    product: Microsoft Agent 365
     requires: tenant
-    collectors: []
-    complete_flags: []
-    complete_subscriptions: []
-    levels:
-      L1: 관리형 환경 비율 0%
-      L2: 관리형 환경 비율 0% 초과~80% 미만
-      L3: 관리형 환경 비율 80% 이상~90% 미만
-      L4: 관리형 환경 비율 90% 이상~100% 미만
-      L5: 관리형 환경 비율 100%
+    collectors:
+    - agent365_registry
+    complete_flags:
+    - agent365_registry_complete
+    levels: *registry_levels
     rules: *coverage_rules
   BI-SY-09:
     title: 플랫폼별 완료 평가 실행 기록
@@ -459,50 +499,23 @@ items:
         coverage:
           eq: 0
   BI-SY-10:
-    title: 플랫폼별 보안 점검 상태
+    title: Agent 관리자 사용 차단 상태 기록
+    short_title: 관리자 차단 상태
     scope: partial
-    metric: healthy_recommendation_ratio
-    numerator: 플랫폼별 보안 구성 점검을 충족한 대상 수
-    denominator: 적용 가능한 AI 보안 권고 및 Copilot Agent 수
-    evidence: Azure 보안 권고 status.code와 Copilot 인증·전체 테넌트 공유·커넥터 자격 증명 구성
-    limit: Copilot은 문서에 명시된 위험 구성 3종을 직접 확인하며 Agent status 화면의 준비 상태·보안 스캔 성공으로 추론하지 않음. Azure 권고 없음은 준수 아님
-    copilot_inventory_check: security
+    metric: registry_block_record_ratio
+    registry_check: block
+    numerator: 관리자 사용 차단 여부가 명시된 패키지 수
+    denominator: Agent 365에서 플랫폼이 식별된 Agent 패키지 수
+    evidence: catalog isBlocked
+    limit: true·false 상태 기록만 확인. 보안 평가·취약점·네이티브 플랫폼 접근 차단의 실효성은 별도
+    product: Microsoft Agent 365
+    requires: tenant
     collectors:
-    - security
-    - copilot_inventory
-    complete_flags: [copilot_inventory_complete]
-    complete_subscriptions:
-    - security_complete_subscriptions
-    levels:
-      L1: 플랫폼별 보안 구성 점검 충족 비율 0%
-      L2: 플랫폼별 보안 구성 점검 충족 비율 0% 초과~80% 미만
-      L3: 플랫폼별 보안 구성 점검 충족 비율 80% 이상~90% 미만
-      L4: 플랫폼별 보안 구성 점검 충족 비율 90% 이상~100% 미만
-      L5: 플랫폼별 보안 구성 점검 충족 비율 100%
-    rules:
-    - level: L5
-      when:
-        coverage:
-          eq: 1
-    - level: L4
-      when:
-        coverage:
-          gte: 0.9
-          lt: 1
-    - level: L3
-      when:
-        coverage:
-          gte: 0.8
-          lt: 0.9
-    - level: L2
-      when:
-        coverage:
-          gt: 0
-          lt: 0.8
-    - level: L1
-      when:
-        coverage:
-          eq: 0
+    - agent365_registry
+    complete_flags:
+    - agent365_registry_complete
+    levels: *registry_levels
+    rules: *coverage_rules
   BI-SY-11:
     title: 콘텐츠 필터 정책 연결
     scope: partial
@@ -549,13 +562,14 @@ items:
         coverage:
           eq: 0
   BI-SY-12:
+    connected_inventory_check: version_record
     title: 플랫폼별 Agent 버전·게시 기록
     scope: partial
     metric: runtime_version_ratio
     numerator: 플랫폼별 버전·게시 기록을 보유한 대상 수
-    denominator: Foundry Agent·자체 호스트 및 Copilot Agent 수
-    evidence: Azure Agent version·호스트 런타임·이미지 다이제스트 및 Copilot lastPublishedAt
-    limit: Copilot 초안의 게시 기록 없음은 관측된 부재이며 안전성 실패 아님. 게시 시각은 버전 고정·승인·롤백 기록을 뜻하지 않음
+    denominator: Foundry Agent·Copilot Agent 및 외부 동기화 패키지 수
+    evidence: Foundry Agent version, Copilot lastPublishedAt, 외부 Agent 365 패키지 version
+    limit: 외부 패키지 version은 등록부 기록이며 원본 Agent의 코드·모델 버전·운영 배포·평가와 대사하지 않음. Copilot 초안의 게시 기록 없음은 관측된 부재. 게시 시각은 버전 고정·승인·롤백을 뜻하지 않음
     copilot_inventory_check: publishing
     collectors:
     - proposal_DS-SY-05
@@ -596,102 +610,50 @@ items:
           eq: 0
     agent_denominator: true
   BI-SY-13:
-    title: 플랫폼별 Agent 책임·자산 메타데이터
+    title: Agent 설명·실행 지침 메타데이터 기록
+    short_title: 설명·실행 지침
     scope: partial
-    metric: asset_metadata_ratio
-    numerator: 플랫폼별 필수 메타데이터가 확인된 Agent 수
-    denominator: Azure 및 Copilot 인벤토리 Agent 수
-    evidence: Azure Agent의 owner·sponsor·env·cost-center와 Copilot 인벤토리의 owner 존재 여부
-    limit: Azure는 4개 필드, Copilot은 소유자 존재만 확인하므로 플랫폼별 충족 조건이 다름. 업무 승인·인사 상태·Copilot 스폰서·비용 정보를 추론하지 않음
-    copilot_inventory_check: owner
+    metric: registry_description_ratio
+    registry_check: metadata
+    numerator: 설명 또는 적용 가능한 원본 실행 지침이 비어 있지 않은 패키지 수
+    denominator: Agent 365에서 플랫폼이 식별된 Agent 패키지 수
+    evidence: MS shortDescription 존재 여부 또는 이기종 Instructions 존재 여부만 선별 저장
+    limit: 원문·사람 정보는 저장하지 않으며 지침 품질·안전성·승인 여부는 평가하지 않음. 소유자는 OE-SY-16에서만 평가
+    product: Microsoft Agent 365
+    requires: tenant
     collectors:
-    - foundry_agents
-    - foundry_projects
-    - copilot_inventory
-    complete_flags: [copilot_inventory_complete]
-    complete_subscriptions: []
-    levels:
-      L1: 플랫폼별 필수 메타데이터 확인 비율 0%
-      L2: 플랫폼별 필수 메타데이터 확인 비율 0% 초과~80% 미만
-      L3: 플랫폼별 필수 메타데이터 확인 비율 80% 이상~90% 미만
-      L4: 플랫폼별 필수 메타데이터 확인 비율 90% 이상~100% 미만
-      L5: 플랫폼별 필수 메타데이터 확인 비율 100%
-    rules:
-    - level: L5
-      when:
-        coverage:
-          eq: 1
-    - level: L4
-      when:
-        coverage:
-          gte: 0.9
-          lt: 1
-    - level: L3
-      when:
-        coverage:
-          gte: 0.8
-          lt: 0.9
-    - level: L2
-      when:
-        coverage:
-          gt: 0
-          lt: 0.8
-    - level: L1
-      when:
-        coverage:
-          eq: 0
-    agent_denominator: true
+    - agent365_registry
+    complete_flags:
+    - agent365_registry_complete
+    levels: *registry_levels
+    rules: *coverage_rules
   BI-SY-14:
-    title: AI 리소스 정책 평가 준수
+    title: Agent 조직 배포 범위 구성 기록
+    short_title: 조직 배포 범위
     scope: partial
-    metric: policy_compliance_ratio
-    numerator: 모든 평가가 Compliant로 확인된 리소스 수
-    denominator: 정책 평가가 있는 AI 관련 리소스 수
-    evidence: PolicyResources policyStates의 resourceId·complianceState. 리소스별 모든 평가를 대조
-    limit: Exempt·Unknown·평가 없음은 Compliant로 간주하지 않음
+    metric: registry_distribution_ratio
+    registry_check: distribution
+    numerator: 배포 범위와 일부 배포 시 대상 기록이 일관된 패키지 수
+    denominator: Agent 365에서 플랫폼이 식별된 Agent 패키지 수
+    evidence: catalog deployedTo·acquireUsersAndGroups 건수
+    limit: acquiredForNone도 명시된 구성. Azure Policy 준수·원본 AWS 또는 Snowflake 배포·사용량으로 해석하지 않음
+    product: Microsoft Agent 365
+    requires: tenant
     collectors:
-    - proposal_BI-SY-14
-    complete_flags: []
-    complete_subscriptions:
-    - proposal_policy_subscriptions
-    levels:
-      L1: 모든 평가가 Compliant 비율 0%
-      L2: 모든 평가가 Compliant 비율 0% 초과~80% 미만
-      L3: 모든 평가가 Compliant 비율 80% 이상~90% 미만
-      L4: 모든 평가가 Compliant 비율 90% 이상~100% 미만
-      L5: 모든 평가가 Compliant 비율 100%
-    rules:
-    - level: L5
-      when:
-        coverage:
-          eq: 1
-    - level: L4
-      when:
-        coverage:
-          gte: 0.9
-          lt: 1
-    - level: L3
-      when:
-        coverage:
-          gte: 0.8
-          lt: 0.9
-    - level: L2
-      when:
-        coverage:
-          gt: 0
-          lt: 0.8
-    - level: L1
-      when:
-        coverage:
-          eq: 0
+    - agent365_registry
+    complete_flags:
+    - agent365_registry_complete
+    levels: *registry_levels
+    rules: *coverage_rules
   DP-SY-15:
-    title: 플랫폼별 Agent ID·청사진 연결
+    title: 플랫폼별 Agent ID·청사진·원본 연결
     scope: partial
     metric: agent_identity_link_ratio
-    numerator: Entra Blueprint 귀속이 확인된 Agent 수
-    denominator: Azure 및 Copilot Studio Agent 수
-    evidence: Azure Agent·청사진 태그의 정확 대조와 Copilot entraAgentId의 실제 Graph Agent ID·청사진 연결
-    limit: Agent Builder는 공식 신원 필드 미적용으로 제외. LangChain 관리 ID를 Agent ID로 대신 간주하지 않음
+    numerator: 플랫폼별 청사진 또는 원본 Agent 연결 기록이 확인된 대상 수
+    denominator: Azure·Copilot Studio Agent 및 외부 등록 패키지 수
+    evidence: Azure·Copilot의 실제 청사진 연결 또는 Agent 365 정의의 SourceAgentId·SourceIds.ConnectionId 연결 기록
+    limit: 외부 원본 연결은 Entra Agent ID·청사진·실행 인증 연결을 뜻하지 않음. Agent Builder 신원 필드 미적용은 제외
+    connected_inventory_check: source_identity_record
     copilot_inventory_check: blueprint
     collectors:
     - entra_blueprints
@@ -704,11 +666,11 @@ items:
     - copilot_inventory_complete
     complete_subscriptions: []
     levels:
-      L1: Agent와 Blueprint 귀속 비율 0%
-      L2: Agent와 Blueprint 귀속 비율 0% 초과~80% 미만
-      L3: Agent와 Blueprint 귀속 비율 80% 이상~90% 미만
-      L4: Agent와 Blueprint 귀속 비율 90% 이상~100% 미만
-      L5: Agent와 Blueprint 귀속 비율 100%
+      L1: 플랫폼별 Agent 연결 기록 확인 비율 0%
+      L2: 플랫폼별 Agent 연결 기록 확인 비율 0% 초과~80% 미만
+      L3: 플랫폼별 Agent 연결 기록 확인 비율 80% 이상~90% 미만
+      L4: 플랫폼별 Agent 연결 기록 확인 비율 90% 이상~100% 미만
+      L5: 플랫폼별 Agent 연결 기록 확인 비율 100%
     rules:
     - level: L5
       when:
@@ -735,143 +697,66 @@ items:
           eq: 0
     agent_denominator: true
   OE-SY-16:
-    title: Agent ID 소유자·스폰서 연결
-    scope: in_scope
-    metric: ownership_ratio
-    numerator: 소유자·스폰서가 모두 연결된 Agent ID 수
-    denominator: Graph Agent ID 수
-    evidence: agentIdentity/owners·sponsors의 실제 개체 수
-    limit: 퇴사자 판정이나 인사 대사 결과를 뜻하지 않음
-    collectors:
-    - entra_agents
-    complete_flags:
-    - entra_agents_complete
-    complete_subscriptions: []
-    levels:
-      L1: 소유자·스폰서 모두 연결 비율 0%
-      L2: 소유자·스폰서 모두 연결 비율 0% 초과~80% 미만
-      L3: 소유자·스폰서 모두 연결 비율 80% 이상~90% 미만
-      L4: 소유자·스폰서 모두 연결 비율 90% 이상~100% 미만
-      L5: 소유자·스폰서 모두 연결 비율 100%
-    rules:
-    - level: L5
-      when:
-        coverage:
-          eq: 1
-    - level: L4
-      when:
-        coverage:
-          gte: 0.9
-          lt: 1
-    - level: L3
-      when:
-        coverage:
-          gte: 0.8
-          lt: 0.9
-    - level: L2
-      when:
-        coverage:
-          gt: 0
-          lt: 0.8
-    - level: L1
-      when:
-        coverage:
-          eq: 0
-    requires: entra
-  OE-SY-17:
-    title: Agent ID 앱 역할 읽기 범위
-    scope: in_scope
-    metric: nonprivileged_role_ratio
-    numerator: 쓰기·전체제어 패턴 앱 역할이 없는 Agent ID 수
-    denominator: Graph Agent ID 수
-    evidence: appRoleAssignments와 대상 servicePrincipal.appRoles.value를 해석해 criteria 패턴 대조
-    limit: ARM·위임 권한·앱 내부 권한은 포함하지 않음
-    collectors:
-    - entra_agents
-    complete_flags:
-    - entra_agents_complete
-    complete_subscriptions: []
-    levels:
-      L1: 쓰기·전체제어 패턴 앱 역할 없음 비율 0%
-      L2: 쓰기·전체제어 패턴 앱 역할 없음 비율 0% 초과~80% 미만
-      L3: 쓰기·전체제어 패턴 앱 역할 없음 비율 80% 이상~90% 미만
-      L4: 쓰기·전체제어 패턴 앱 역할 없음 비율 90% 이상~100% 미만
-      L5: 쓰기·전체제어 패턴 앱 역할 없음 비율 100%
-    rules:
-    - level: L5
-      when:
-        coverage:
-          eq: 1
-    - level: L4
-      when:
-        coverage:
-          gte: 0.9
-          lt: 1
-    - level: L3
-      when:
-        coverage:
-          gte: 0.8
-          lt: 0.9
-    - level: L2
-      when:
-        coverage:
-          gt: 0
-          lt: 0.8
-    - level: L1
-      when:
-        coverage:
-          eq: 0
-    requires: entra
-  OE-SY-18:
-    title: Agent 리소스 실행 로그 연결
+    title: Agent 책임 주체 지정 기록
+    short_title: 등록부 소유자
     scope: partial
-    metric: diagnostic_connection_ratio
-    numerator: 활성 로그·Log Analytics가 연결된 계정·호스트 수
-    denominator: AI 계정·자체 Agent 호스트 수
-    evidence: diagnosticSettings의 logs.enabled 및 workspaceId
-    limit: 구독 공통 Activity Log 제외. 이벤트 유입·테이블 유효 보존기간을 뜻하지 않음
+    metric: registry_owner_ratio
+    registry_check: owner
+    numerator: 소유자가 1개 이상 기록된 패키지 수
+    denominator: Agent 365에서 플랫폼이 식별된 Agent 패키지 수
+    evidence: catalog owners 건수
+    limit: 명시적 소유자 0개는 미충족. 필드 미확인은 null. 재직·스폰서 지정·업무 책임 승인은 추론하지 않음
+    product: Microsoft Agent 365
+    requires: tenant
     collectors:
-    - logs
-    complete_flags: []
-    complete_subscriptions:
-    - logs_complete_subscriptions
-    levels:
-      L1: 활성 로그·Log Analytics 연결 비율 0%
-      L2: 활성 로그·Log Analytics 연결 비율 0% 초과~80% 미만
-      L3: 활성 로그·Log Analytics 연결 비율 80% 이상~90% 미만
-      L4: 활성 로그·Log Analytics 연결 비율 90% 이상~100% 미만
-      L5: 활성 로그·Log Analytics 연결 비율 100%
-    rules:
-    - level: L5
-      when:
-        coverage:
-          eq: 1
-    - level: L4
-      when:
-        coverage:
-          gte: 0.9
-          lt: 1
-    - level: L3
-      when:
-        coverage:
-          gte: 0.8
-          lt: 0.9
-    - level: L2
-      when:
-        coverage:
-          gt: 0
-          lt: 0.8
-    - level: L1
-      when:
-        coverage:
-          eq: 0
+    - agent365_registry
+    complete_flags:
+    - agent365_registry_complete
+    levels: *registry_levels
+    rules: *coverage_rules
+  OE-SY-17:
+    title: Agent 허용·배포·공유 대상 구분
+    short_title: 허용·배포·공유 대상
+    scope: partial
+    metric: registry_audience_ratio
+    registry_check: audience
+    numerator: 허용·배포·공유 대상 건수와 사용자·그룹 구분이 확인된 패키지 수
+    denominator: Agent 365에서 플랫폼이 식별된 Agent 패키지 수
+    evidence: allowedUsersAndGroups·acquireUsersAndGroups·sharedWithUsersAndGroups의 최소화된 건수
+    limit: 명시적 빈 목록과 미조회는 구분. 원본 IAM·Snowflake 역할·최소 권한 적정성으로 해석하지 않음
+    product: Microsoft Agent 365
+    requires: tenant
+    collectors:
+    - agent365_registry
+    complete_flags:
+    - agent365_registry_complete
+    levels: *registry_levels
+    rules: *coverage_rules
+  OE-SY-18:
+    title: Agent 중앙 등록부 변경 이력 추적
+    short_title: 등록부 변경 이력
+    scope: partial
+    metric: registry_change_history_ratio
+    registry_check: changes
+    numerator: 동일 테넌트의 완료된 두 API 스냅샷 사이에서 비교된 패키지 수
+    denominator: Agent 365에서 플랫폼이 식별된 Agent 패키지 수
+    evidence: 이전·현재 API 목록 증적과 등록·변경·목록 제외 비교 기록
+    limit: 등록부 변경 이력이며 실행 로그·동기화 작업 감사 로그가 아님. 목록 제외는 원본 삭제 증거가 아님
+    product: Microsoft Agent 365
+    requires: tenant
+    collectors:
+    - agent365_registry
+    complete_flags:
+    - agent365_registry_complete
+    levels: *registry_levels
+    rules: *coverage_rules
   OE-SY-19:
     title: 플랫폼별 인증·권한 구성
     scope: partial
     metric: identity_configuration_ratio
     numerator: 플랫폼별 인증·권한 구성이 확인된 대상 수
-    denominator: AI 계정·자체 Agent 호스트 및 Copilot 인벤토리 Agent 수
-    evidence: Azure identity.principalId·type, 동일 구독 roleAssignments, disableLocalAuth 및 Copilot 인벤토리 authentication
+    denominator: AI 계정 및 Copilot 인벤토리 Agent 수
+    evidence: Azure 관리 ID(identity.principalId·type), 동일 구독 roleAssignments, disableLocalAuth 및 Copilot 인벤토리 authentication
     limit: Azure와 Copilot의 확인 조건과 대상 단위가 다름. 타 구독·상속·데이터 평면 역할, 실제 인증 사용·로그인 성공은 포함하지 않음
     copilot_inventory_check: authentication
     collectors:
@@ -914,8 +799,8 @@ items:
     title: AI 리소스 활성 경보 범위
     scope: partial
     metric: alert_target_ratio
-    numerator: 활성 경보 범위에 포함된 계정·호스트 수
-    denominator: AI 계정·자체 Agent 호스트 수
+    numerator: 활성 경보 범위에 포함된 AI 계정 수
+    denominator: AI 계정 수
     evidence: metricAlerts·scheduledQueryRules·activityLogAlerts의 enabled와 scopes를 실제 AI 리소스 ID에 대조
     limit: 경보 발생·SLO 충족·trace 유입을 뜻하지 않음
     collectors:
@@ -1001,9 +886,10 @@ items:
     scope: partial
     metric: location_retention_ratio
     numerator: 플랫폼별 지역·보존 정보 조건을 충족한 대상 수
-    denominator: AI 계정·자체 Agent 호스트 및 Copilot Agent 수
-    evidence: Azure 리소스 지역·workspace 보존과 Copilot environmentId에 정확 연결한 관리자 환경 API azureRegion
-    limit: Copilot은 관리 환경 지역만 확인하며 실제 모델·M365 데이터 처리 지역·로그 보존 준수를 뜻하지 않음. Azure 테이블별 유효 보존·법적 삭제 아님
+    denominator: AI 계정·Copilot Agent 및 Bedrock 등록 패키지 수
+    evidence: Azure 지역·workspace 보존·Copilot 관리자 환경 azureRegion·Agent 365 Bedrock 정의 SourceIds.mac.region
+    limit: Copilot은 관리 환경 지역, Bedrock은 Agent 365 정의의 mac.region만 확인. 실제 모델 처리 지역·로그 보존 준수·법적 삭제 아님
+    connected_inventory_check: source_region_record
     copilot_inventory_check: region
     collectors:
     - logs
@@ -1042,55 +928,30 @@ items:
         coverage:
           eq: 0
   OT-SY-23:
-    title: AI 리소스 사용량 관측 범위
+    title: Agent 등록정보 생성·갱신 시각 관리
+    short_title: 생성·갱신 시각
     scope: partial
-    metric: metric_observation_ratio
-    numerator: 조회 기간 수치 메트릭 표본이 확인된 계정·호스트 수
-    denominator: AI 계정·자체 Agent 호스트 수
-    evidence: metricDefinitions와 metrics의 timeseries.data 내 숫자 표본, 기본 30일
-    limit: 0 표본도 관측됨. Agent별 사용자 수·90일 미사용 여부를 뜻하지 않음
+    metric: registry_timestamp_ratio
+    registry_check: timestamps
+    numerator: 생성·최종 수정 시각이 순서에 맞고 API 관측 시각 이내인 패키지 수
+    denominator: Agent 365에서 플랫폼이 식별된 Agent 패키지 수
+    evidence: catalog createdDateTime·lastModifiedDateTime 및 Agent 365 수집 시각
+    limit: 메타데이터 시각의 기록·일관성만 확인. 실제 사용량·마지막 실행·휴면·정기 동기화를 추론하지 않음
+    product: Microsoft Agent 365
+    requires: tenant
     collectors:
-    - metrics
-    complete_flags: []
-    complete_subscriptions:
-    - metrics_complete_subscriptions
-    levels:
-      L1: 조회 기간 수치 메트릭 표본 존재 비율 0%
-      L2: 조회 기간 수치 메트릭 표본 존재 비율 0% 초과~80% 미만
-      L3: 조회 기간 수치 메트릭 표본 존재 비율 80% 이상~90% 미만
-      L4: 조회 기간 수치 메트릭 표본 존재 비율 90% 이상~100% 미만
-      L5: 조회 기간 수치 메트릭 표본 존재 비율 100%
-    rules:
-    - level: L5
-      when:
-        coverage:
-          eq: 1
-    - level: L4
-      when:
-        coverage:
-          gte: 0.9
-          lt: 1
-    - level: L3
-      when:
-        coverage:
-          gte: 0.8
-          lt: 0.9
-    - level: L2
-      when:
-        coverage:
-          gt: 0
-          lt: 0.8
-    - level: L1
-      when:
-        coverage:
-          eq: 0
+    - agent365_registry
+    complete_flags:
+    - agent365_registry_complete
+    levels: *registry_levels
+    rules: *coverage_rules
   OT-SY-24:
     title: AI 비용의 단일 Agent 귀속
     scope: partial
     metric: cost_attribution_ratio
     numerator: 단일 Agent에 귀속 확인된 비용 금액
     denominator: 동일 통화의 양수 AI 비용 금액
-    evidence: Cost Management Daily query의 ResourceId·UsageDate·Cost·Currency와 Agent/모델/호스트/플랜 ID 대조
+    evidence: Cost Management Daily query의 ResourceId·UsageDate·Cost·Currency와 Agent/모델 ID 대조
     limit: 공유 모델 비용은 중복 배분하지 않으며 통화 혼재·음수 조정·분모 0은 산출하지 않음
     collectors:
     - cost

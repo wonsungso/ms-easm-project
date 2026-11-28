@@ -616,7 +616,7 @@
         "captured_on": "2026-11-06",
         "source": "사용자가 제공한 실제 진단 앱 등록 개요 화면",
         "capture_element": "portal_blade",
-        "action": "Step 5 진단 앱 Delete 클릭 위치 안내",
+        "action": "Step 6 진단 앱 Delete 클릭 위치 안내",
         "size_px": [
           728,
           493
@@ -669,36 +669,6 @@
         "settings_modified": false,
         "consent_or_license_modified": false,
         "verification_limit": "등록부 UI의 실제 표시 확인. 진단 SP의 공개 Agent 365 API 호출 성공을 입증하지 않음"
-      }
-    ]
-  },
-  "chatbots": {
-    "directory": "../demo",
-    "method": "Playwright screenshots of actual Entra sign-in and deployed Azure chatbot",
-    "highlight_color": "#d40000",
-    "synthetic_conversations_only": true,
-    "account_identifiers_masked": true,
-    "images": [
-      {
-        "file": "imgs/01-entra-consent.png",
-        "highlight_count": 1,
-        "account_masked": true,
-        "application_registration_name_masked": true,
-        "flow": "Actual single-tenant Entra basic sign-in consent; no secret generated"
-      },
-      {
-        "file": "imgs/02-langchain-chat.png",
-        "highlight_count": 3,
-        "actual_response": true,
-        "input_tokens": 64,
-        "output_tokens": 88
-      },
-      {
-        "file": "imgs/03-foundry-chat.png",
-        "highlight_count": 3,
-        "actual_response": true,
-        "input_tokens": 72,
-        "output_tokens": 59
       }
     ]
   }

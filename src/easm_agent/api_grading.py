@@ -343,10 +343,6 @@ def targets(data: Collection) -> set[str]:
         if str(row.get("type", "")).lower() == "microsoft.cognitiveservices/accounts"
         and str(row.get("kind", "")).lower() in ("aiservices", "openai")
     }
-    found.update(
-        agent.resource_id.lower() for agent in data.agents
-        if agent.platform in HOSTED_AGENT_PLATFORMS and agent.resource_id
-    )
     return found
 
 
@@ -365,6 +361,7 @@ def from_observations(
 def measurements(
     data: Collection, criteria: dict[str, Any], tags: dict[str, Any],
 ) -> dict[str, Measurement]:
+    data.exclude_host_candidates()
     result: dict[str, Measurement] = {}
     agents = [agent for agent in data.agents if agent.platform in AZURE_AGENT_PLATFORMS]
     identities, blueprints = data.entra_agent_identities, data.entra_blueprints
@@ -420,7 +417,7 @@ def measurements(
                 None if private is None or restricted is None else False
             )
         boundary.append(state)
-    result["DS-SY-05"] = from_observations(network, boundary, "대상 AI 계정·호스트 중 확인된 인바운드 경계 설정 비율", data)
+    result["DS-SY-05"] = from_observations(network, boundary, "대상 AI 계정 중 확인된 인바운드 경계 설정 비율", data)
     tool_rows = observations(data, "DS-SY-06")
     modes = [mode for row in tool_rows for mode in row.values.get("mcp_approval_modes", [])]
     result["DS-SY-06"] = measured(
@@ -499,7 +496,7 @@ def measurements(
         else:
             pinned.append(None)
     result["BI-SY-12"] = measured(
-        pinned, "Foundry 버전과 자체 호스트 런타임 버전·컨테이너 다이제스트 고정 비율",
+        pinned, "Foundry Agent 버전 식별 비율",
         decisions=[
             decision(agent.agent_id, agent_refs(data, agent), version=agent.agent_version)
             for agent in agents if agent.platform == "foundry"
@@ -571,7 +568,7 @@ def measurements(
     result["OE-SY-18"] = measured([
         any(setting.enabled and bool(setting.workspace_id) for setting in by_resource[rid])
         if rid in by_resource else None for rid in sorted(targets(data))
-    ], "대상 AI 계정·호스트 중 활성 로그와 Log Analytics workspace 연결이 있는 비율", decisions=[
+    ], "대상 AI 계정 중 활성 로그와 Log Analytics workspace 연결이 있는 비율", decisions=[
         decision(rid, endpoint_refs(data, [rid + "/providers/Microsoft.Insights/diagnosticSettings"],
                                     row_refs(by_resource.get(rid, []))),
                  log_settings=[{"enabled": setting.enabled, "workspace_id": setting.workspace_id}
@@ -600,7 +597,7 @@ def measurements(
     monitor_refs = sorted(set(row_refs(monitor) + data.facts.get("monitoring_evidence_refs", [])))
     result["OE-SY-20"] = measured(
         [rid in covered for rid in sorted(targets(data))],
-        "대상 AI 계정·호스트 중 활성 경보의 실제 범위에 포함된 비율", monitor_refs, decisions=[
+        "대상 AI 계정 중 활성 경보의 실제 범위에 포함된 비율", monitor_refs, decisions=[
             decision(rid, monitor_refs,
                      active_alert_ids=[row.subject for row in alerts if row.values.get("enabled") is True
                                        and rid in {value.lower() for value in row.values.get("target_ids", [])}])
@@ -653,7 +650,7 @@ def measurements(
                 for key, value in point.items() if key != "timeStamp") if row is not None else None,
         )
     result["OT-SY-23"] = measured(
-        samples, "대상 AI 계정·호스트 중 조회 기간에 수치 메트릭 표본이 있는 비율; 0 표본도 관측으로 포함",
+        samples, "대상 AI 계정 중 조회 기간에 수치 메트릭 표본이 있는 비율; 0 표본도 관측으로 포함",
         decisions=[
             decision(rid, [metrics[rid]["evidence_ref"]] if metrics.get(rid, {}).get("evidence_ref") else [],
                      numeric_sample_present=sample)
@@ -706,6 +703,37 @@ def measurements(
         check = definition.get("copilot_inventory_check")
         if check is not None:
             result[code] = add_copilot_inventory_checks(result[code], data, check, criteria)
+    from easm_agent.agent365_grading import connected_targets, registry_targets
+
+    for code, definition in criteria["items"].items():
+        if definition.get("registry_check"):
+            entries = registry_targets(data, code, criteria)
+            included = [entry for entry in entries if entry.status != "excluded"]
+            unavailable = (
+                "Agent 365 목록 수집 미완료" if data.facts.get("agent365_registry_complete") is not True else
+                "플랫폼이 식별된 등록 Agent 대상 없음" if not included else
+                "공통 등록부 항목의 필수 필드·비교 근거 미확인" if any(
+                    entry.status == "unknown" for entry in included) else None
+            )
+            result[code] = Measurement(
+                total=len(included), compliant=sum(entry.status == "compliant" for entry in included),
+                detail=definition["title"] + " - Agent 365 등록부의 구성·기록 충족률",
+                unavailable=unavailable, decisions=entries, refs=row_refs(entries),
+            )
+            continue
+        entries = connected_targets(data, code, definition.get("connected_inventory_check"))
+        measurement = result[code]
+        measurement.decisions.extend(entries)
+        included = [entry for entry in entries if entry.status != "excluded"]
+        measurement.total += len(included)
+        measurement.compliant += sum(entry.status == "compliant" for entry in included)
+        measurement.refs = sorted(set(measurement.refs + row_refs(entries)))
+        if included:
+            measurement.detail += "; Agent 365 등록 패키지 구성·기록 분기 - 원본 플랫폼 통제 실효성 아님"
+            if measurement.unavailable == "대상 없음":
+                measurement.unavailable = None
+            if any(entry.status == "unknown" for entry in included):
+                measurement.unavailable = "Agent 365 분기의 필수 필드 미확인"
     return result
 
 
@@ -749,6 +777,8 @@ def exposure_measurement(data: Collection) -> Measurement:
 
 
 def cost_measurement(data: Collection, agents: list[Any]) -> Measurement:
+    data.exclude_host_candidates()
+    agents = [agent for agent in agents if agent.platform not in HOSTED_AGENT_PLATFORMS]
     rows = data.costs
     currencies = {row.currency for row in rows}
     if not rows or len(currencies) != 1 or any(row.amount < 0 for row in rows):

@@ -36,7 +36,7 @@ def workbook(tmp_path_factory: pytest.TempPathFactory) -> Path:
             "collect", "--fixture", str(ROOT / "tests" / "fixtures" / "three_subscriptions.json"),
             "--output-dir", str(directory),
         ]) == 0
-    return next(directory.rglob("report-*.xlsx"))
+    return next(directory.rglob("AI Agent Governance Readiness*.xlsx"))
 
 
 def all_text(deck: Presentation) -> str:
@@ -60,7 +60,7 @@ def test_default_is_the_approved_27_slide_business_template() -> None:
 
 
 def test_generated_deck_covers_all_26_codes_and_preserves_original_design_parts(workbook: Path) -> None:
-    path = next(workbook.parent.glob("EASM-report-*.pptx"))
+    path = next(workbook.parent.glob("AI Agent Governance Readiness*.pptx"))
     deck = Presentation(path)
     assessment = read_assessment(workbook)
     assert len(deck.slides) == 27
@@ -90,10 +90,18 @@ def test_generated_deck_covers_all_26_codes_and_preserves_original_design_parts(
     assert "제공 Excel 입력 유지" in text
     cross = "\n".join(target.text for target in _walk(deck.slides[22].shapes) if target.has_text_frame)
     assert "고아 23%" not in cross and "비용 식별 45%" not in cross
+    plan = "\n".join(
+        target.text if target.has_text_frame else "\n".join(
+            cell.text for row in target.table.rows for cell in row.cells
+        ) if target.has_table else ""
+        for page in (23, 25) for target in _walk(deck.slides[page].shapes)
+    )
+    assert not any(sample in plan for sample in ("실제 412개", "Shadow117개", "Shadow Agent 117개",
+                                               "민감 데이터 노출 25건", "고아23%", "승인37%"))
 
 
 def test_provided_manual_and_business_reference_prose_is_preserved(workbook: Path) -> None:
-    deck = Presentation(next(workbook.parent.glob("EASM-report-*.pptx")))
+    deck = Presentation(next(workbook.parent.glob("AI Agent Governance Readiness*.pptx")))
     source = Presentation(presentation_template_path())
     for page in (10, 11):
         text = "\n".join(target.text for target in _walk(deck.slides[page].shapes) if target.has_text_frame)
@@ -141,7 +149,7 @@ def test_entered_interview_values_and_actual_quotes_are_reflected_without_excel_
 
 
 def test_tables_and_crosscheck_numbers_stay_in_their_display_regions(workbook: Path) -> None:
-    deck = Presentation(next(workbook.parent.glob("EASM-report-*.pptx")))
+    deck = Presentation(next(workbook.parent.glob("AI Agent Governance Readiness*.pptx")))
     for page in (15, 16, 17, 18, 19, 20, 24):
         for target in deck.slides[page].shapes:
             if target.has_table:
@@ -164,11 +172,11 @@ def test_tables_and_crosscheck_numbers_stay_in_their_display_regions(workbook: P
 
 
 def test_orphan_table_reuses_measured_overprivileged_role_breakdown_not_pending(workbook: Path) -> None:
-    book = load_workbook(next(workbook.parent.glob("report-*.xlsx")))
+    book = load_workbook(next(workbook.parent.glob("AI Agent Governance Readiness*.xlsx")))
     detail = book["2b_세부 내역"]
     labels = [detail.cell(row, 1).value for row in range(12, 16)]
     counts = [detail.cell(row, 2).value for row in range(12, 16)]
-    deck = Presentation(next(workbook.parent.glob("EASM-report-*.pptx")))
+    deck = Presentation(next(workbook.parent.glob("AI Agent Governance Readiness*.pptx")))
     table = next(target for target in deck.slides[18].shapes if target.shape_id == 46).table
     rows = list(table.rows)
     if all(isinstance(count, (int, float)) for count in counts[:3]):

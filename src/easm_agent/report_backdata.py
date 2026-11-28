@@ -18,6 +18,7 @@ from pydantic import (
     model_validator,
 )
 
+from easm_agent.agent365_grading import REGISTRY_PROFILES
 from easm_agent.azure import redact
 from easm_agent.models import Collection, Finding, Reason
 from easm_agent.proposals import azure_agents
@@ -100,9 +101,9 @@ def report_metrics(data: Collection, findings: list[Finding], mode: str) -> list
         refs=source_refs,
     )
     add(
-        "inventory.azure", "Azure Agent·탐지 후보", len(azure_agents(data))
+        "inventory.azure", "Foundry Agent", len(azure_agents(data))
         if data.facts.get("agent_inventory_complete") else None, "개",
-        "Azure Agent·탐지 후보 레코드이며 Microsoft 365 전체 고유 Agent 수가 아닙니다.",
+        "Foundry API로 확인한 Agent 레코드이며 Microsoft 365 전체 고유 Agent 수가 아닙니다.",
         refs=[ref for agent in azure_agents(data) for ref in agent.evidence_refs],
     )
     copilot_complete = data.facts.get("copilot_inventory_complete") is True
@@ -225,6 +226,8 @@ def report_metrics(data: Collection, findings: list[Finding], mode: str) -> list
             reason="feature_unavailable", refs=usage_refs,
         )
     snapshot = data.assessment_provenance.criteria_snapshot if data.assessment_provenance else {}
+    add("criteria.profile", "평가 프로필", snapshot.get("grading_profile"), "",
+        "서로 다른 평가 프로필의 등급·충족률은 직접 비교하지 않습니다.")
     configs = list(snapshot.get("items", {}).values())
     for level in ("L1", "L2", "L3", "L4", "L5"):
         conditions = [
@@ -243,9 +246,13 @@ def report_metrics(data: Collection, findings: list[Finding], mode: str) -> list
             "보고서 표시용 분류이며 API 등급을 변경하지 않습니다.",
         )
     for finding in findings:
+        config = snapshot.get("items", {}).get(finding.se_code, {})
+        if config.get("registry_check"):
+            add(f"se.{finding.se_code}.title", finding.se_code + " 항목", config.get("short_title", config["title"]), "",
+                "저장된 평가 기준의 보고서용 짧은 항목명.")
         measurement = finding.measurement
         current_ratio = (
-            snapshot.get("grading_profile") == "api_configuration_v1"
+            snapshot.get("grading_profile") in ("api_configuration_v1", *REGISTRY_PROFILES)
             and finding.level != "N/A" and finding.reason is None
             and finding.metric_value is not None
             and measurement is not None and measurement.complete and measurement.reason is None

@@ -8,16 +8,15 @@ import shlex
 import subprocess
 import sys
 import tempfile
-import time
 import zipfile
 from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path, PurePosixPath
 
-import requests
 import yaml
 
 from demo.auth import GraphCertificates, TemporaryCertificate
+from demo.infrastructure import expected_agent_count
 from demo.manage import ROOT, save
 from easm_agent.paths import state_path
 from easm_agent.report import RUN_PATTERN, load_result
@@ -145,30 +144,6 @@ def codespace_main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def ready_health(url: str) -> dict:
-    for attempt in range(18):
-        try:
-            response = requests.get(url, timeout=30, allow_redirects=False)
-        except (requests.Timeout, requests.ConnectionError):
-            print("최종 앱 상태 확인: 재시작 연결 대기", flush=True)
-        else:
-            try:
-                if response.status_code in (301, 302, 401, 403, 404):
-                    raise RuntimeError(f"샘플 health 경로 확인 필요: HTTP {response.status_code}")
-                if response.status_code == 200 and response.headers.get("Content-Type", "").startswith(
-                    "application/json",
-                ):
-                    value = response.json()
-                    if value.get("smoke_status") == "failed":
-                        raise RuntimeError("샘플 모델 실행이 실패했습니다.")
-                    if value.get("status") == "ready" and value.get("sample_revision") == "chatbot-v2":
-                        return value
-                print(f"최종 앱 상태 확인: 준비 대기, HTTP {response.status_code}", flush=True)
-            finally:
-                response.close()
-        if attempt < 17:
-            time.sleep(10)
-    raise RuntimeError("실제 샘플 앱의 최신 코드 준비 상태를 확인하지 못했습니다.")
 
 
 def summary_main() -> int:
@@ -194,17 +169,6 @@ def summary_main() -> int:
             raise RuntimeError("진단 앱에 인증서가 남아 있습니다.")
     finally:
         registry.close()
-    health = []
-    for host in lab["hosts"]:
-        value = ready_health(host["health_url"])
-        if host["smoke"]["smoke_status"] != "completed":
-            raise RuntimeError("샘플 실제 모델 실행 완료 증거가 없습니다.")
-        if host.get("chat_url"):
-            with requests.post(host["chat_url"] + "/api/chat", json={"messages": []},
-                               timeout=30, allow_redirects=False) as denied:
-                if denied.status_code not in (302, 401, 403):
-                    raise RuntimeError("비인증 챗봇 모델 호출이 차단되지 않았습니다.")
-        health.append({"name": host["name"], "current": value})
     if not run["temporary_certificate_cleaned"]:
         raise RuntimeError("인증서 정리 완료 증거가 없습니다.")
     roles = []
@@ -216,11 +180,12 @@ def summary_main() -> int:
                      if row.get("principalId", "").lower() == setup["principal_id"])
     if any(row["role"] in {"Owner", "Contributor", "User Access Administrator"} for row in roles):
         raise RuntimeError("진단 SP에 금지된 관리자 역할이 발견됐습니다.")
-    if len(data["agents"]) < lab.get("expected_agent_count", 3):
+    if len(data["agents"]) < expected_agent_count(lab):
         raise RuntimeError("계획한 Agent 수만큼 실제 인벤토리에서 발견되지 않았습니다.")
     verification = {
         "verified_at": datetime.now(UTC).isoformat(), "tests_passed": int(count[1]),
-        "ruff": "passed", "remaining_certificates": 0, "diagnostic_roles": roles, "health": health,
+        "ruff": "passed", "remaining_certificates": 0, "diagnostic_roles": roles,
+        "foundry_smoke": lab["foundry_smoke"],
         "diagnostic_agents": len(data["agents"]), "evidence_issues": len(data["issues"]),
         "administrator_collection_fallback": run["administrator_collection_fallback"],
     }

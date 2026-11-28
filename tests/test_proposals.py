@@ -178,20 +178,21 @@ def test_cached_target_properties_keep_their_own_evidence_after_role_queries() -
     assert network.evidence_refs == ["properties-source"]
 
 
-def test_default_allow_all_rule_is_not_reported_as_ip_restriction() -> None:
+def test_host_network_configuration_is_not_queried() -> None:
     source = collector({"identity": properties_rows()})
     source.targets(SID)
     source.http.request.side_effect = None
     source.http.request.return_value = {"properties": {
         "ipSecurityRestrictions": [{"ipAddress": "Any", "action": "Allow", "priority": 2147483647}],
     }}
+    source.http.request.reset_mock()
     result = Collection(collected_at=NOW)
     source.network(SID, result)
-    host = next(row for row in result.proposal_observations if row.subject == SITE)
-    assert host.values["ip_restrictions"] == 0
+    assert all(row.subject != SITE for row in result.proposal_observations)
+    source.http.request.assert_not_called()
 
 
-def test_monitoring_includes_actual_langchain_host_alert_scope() -> None:
+def test_host_only_alert_scope_does_not_cover_ai_accounts() -> None:
     source = collector({
         "identity": properties_rows(),
         "microsoft.insights": [{
@@ -201,7 +202,7 @@ def test_monitoring_includes_actual_langchain_host_alert_scope() -> None:
     })
     result = Collection(collected_at=NOW)
     source.monitoring(SID, result)
-    assert any(row.values.get("targets_ai") for row in result.proposal_observations)
+    assert not any(row.values.get("targets_ai") for row in result.proposal_observations)
 
 
 def test_collector_records_identity_network_safety_and_policy_facts() -> None:
@@ -226,24 +227,25 @@ def test_collector_records_identity_network_safety_and_policy_facts() -> None:
         ],
     ).discover([SID])
     observed = {(item.code, item.kind): item.values for item in result.proposal_observations}
-    host = next(
+    account = next(
         item.values for item in result.proposal_observations
-        if item.code == "OE-SY-19" and item.subject == SITE
+        if item.code == "OE-SY-19" and item.subject == ACCOUNT
     )
-    assert host["privileged_assignments"] == 1 and host["subscription_scope_assignments"] == 1
-    assert host["principal_count"] == 2
+    assert account["privileged_assignments"] == 0 and account["subscription_scope_assignments"] == 0
+    assert account["principal_count"] == 1
+    assert not any(item.subject == SITE for item in result.proposal_observations)
     assert not any(item.subject.endswith("-other") for item in result.proposal_observations)
     assert observed[("BI-SY-11", "ai_account")]["custom_policy_names"] == ["strict"]
     network = [item.values for item in result.proposal_observations if item.code == "DS-SY-05"]
     assert any(row["public_network_access"] == "Enabled" and row["default_action"] is None
                and row["private_endpoints"] == 0 and row["approved_private_endpoints"] == 0 for row in network)
-    assert any(item["ip_restrictions"] == 1 and item["https_only"] is True for item in network if "https_only" in item)
+    assert not any("https_only" in item for item in network)
     monitoring = [item.values for item in result.proposal_observations if item.code == "OE-SY-20"]
     assert {"kind": "actiongroups", "receivers": {"webhook": 1}} in monitoring
     assert any(item.get("targets_ai") and item.get("has_action_group") for item in monitoring)
     states = {item.values["state"]: item.values["resources"] for item in result.proposal_observations
               if item.code == "BI-SY-14" and item.kind == "policy_state"}
-    assert states == {"Compliant": 1, "NonCompliant": 1}
+    assert states == {"NonCompliant": 1}
 
 
 def test_collector_isolates_a_failed_step() -> None:

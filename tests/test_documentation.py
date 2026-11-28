@@ -115,7 +115,7 @@ def test_screenshot_notes_match_the_documented_example() -> None:
     assert "`easmagent-diagnostic`" in readme
     assert "**[" not in readme
     assert "docs/imgs/12-entra-consent.png" in readme
-    step3 = readme.split("## Step 3.", 1)[1].split("## Step 4.", 1)[0]
+    step3 = readme.split("## Step 4.", 1)[1].split("## Step 5.", 1)[0]
     for image in ("10-reader-role.png", "17-foundry-reader.png", "12-entra-consent.png"):
         assert f"(docs/imgs/{image})" in step3
     assert "[**customer-setup.zip**](docs/downloads/customer-setup.zip)" in step3
@@ -127,7 +127,7 @@ def test_screenshot_notes_match_the_documented_example() -> None:
 
 def test_setup_success_example_masks_identifiers_and_covers_all_grants() -> None:
     readme = (Path(__file__).parents[1] / "README.md").read_text(encoding="utf-8")
-    example = readme.split("## Step 3.", 1)[1].split("## Step 4.", 1)[0]
+    example = readme.split("## Step 4.", 1)[1].split("## Step 5.", 1)[0]
     assert not re.search(r"\b[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\b", example, re.I)
     assert "(docs/imgs/20-customer-setup-success.png)" in example
     assert "```text" not in example
@@ -142,9 +142,9 @@ def test_setup_success_example_masks_identifiers_and_covers_all_grants() -> None
 
 def test_ms_collection_step_uses_existing_certificate_without_shell_variable_dependency() -> None:
     readme = (Path(__file__).parents[1] / "README.md").read_text(encoding="utf-8")
-    step4 = readme.split("## Step 4.", 1)[1].split("## Step 5.", 1)[0]
+    step4 = readme.split("## Step 5.", 1)[1].split("## Step 6.", 1)[0]
     assert "저장소 루트" in step4
-    assert "Step 1에서 사용한 동일 Codespaces 터미널" in step4
+    assert "Step 2에서 사용한 동일 Codespaces 터미널" in step4
     assert 'AZURE_CLIENT_CERTIFICATE_PATH="$(python3 scripts/certificate_path.py)" &&' in step4
     assert "read -r -p '위 인증서의 전체 경로: '" not in step4
     assert "$cert_dir" not in step4
@@ -155,7 +155,7 @@ def test_ms_collection_step_uses_existing_certificate_without_shell_variable_dep
 def test_cleanup_commands_and_masked_reference_screenshot_are_preserved() -> None:
     root = Path(__file__).parents[1]
     readme = (root / "README.md").read_text(encoding="utf-8")
-    step5 = readme.split("## Step 5.", 1)[1].split("## 점검 항목", 1)[0]
+    step5 = readme.split("## Step 6.", 1)[1].split("## 점검 항목", 1)[0]
     for text in ("IAM", "먼저 회수", "다른 활성·적격 할당", "certificate-path", "임시 PIM", "보관 기간"):
         assert text in step5
     assert "bash setup.sh cleanup-plan" in step5 and "bash setup.sh cleanup-apply" in step5
@@ -173,21 +173,25 @@ def test_summary_table_links_resolve_to_checklist_sections_with_images() -> None
     readme = (root / "README.md").read_text(encoding="utf-8")
     detail = (root / "docs" / "checklist.md").read_text(encoding="utf-8")
 
-    def anchor(heading: str) -> str:
-        return re.sub(r"[^\w\- ]", "", heading.lower()).replace(" ", "-")
-
-    anchors = {anchor(h) for h in re.findall(r"^## ([A-Z]{2}-SY-\d+ .+)$", detail, re.M)}
+    anchors = set(re.findall(r'<a id="([^"]+)"></a>', detail))
     links = re.findall(r"^\| \[([A-Z]{2}-SY-[P\d]+)\]\(docs/checklist\.md#([^)]+)\)", readme, re.M)
     assert len(links) == 26
     assert {target for _, target in links} == anchors
-    implemented = re.findall(r"^- \*\*구현:\*\* (?!❌)", detail, re.M)
-    assert len(implemented) == 26
-    assert len(re.findall(r"^!\[[^\]]+\]\(portal/imgs/[^)]+\.png\)$", detail, re.M)) == 22
+    assert len(re.findall(r"^## [A-Z]{2}-SY-\d+ ", detail, re.M)) == 26
+    images = re.findall(r"^!\[[^\]]+\]\((portal/imgs/[^)]+\.png)\)$", detail, re.M)
+    assert images and all((root / "docs" / image).is_file() for image in images)
     assert "<img" not in readme and not re.search(r"^\|.*!\[", readme, re.M)
     assert "## Agent 365 등록부 교차 확인" not in detail
     for code in ("DP-SY-15", "OE-SY-22"):
         section = re.search(rf"^## {code} .+?(?=^## |\Z)", detail, re.M | re.S)
-        assert section and "- **구현:** ✅ 구현 - 현재 API 기준 완료" in section[0]
+        assert section and "| 충족 분자 |" in section[0] and "| 한계 |" in section[0]
+
+
+def test_current_assessment_docs_do_not_include_transition_narrative() -> None:
+    root = Path(__file__).parents[1]
+    for path in (root / "README.md", root / "docs" / "api-notes.md", root / "docs" / "checklist.md"):
+        text = path.read_text(encoding="utf-8")
+        assert not re.search(r"criteria-agent365|기본 v1|공통 평가 v2|공통 등록부 v2|v1·v2|v1 점수|기존 API 평가", text)
 
 
 def test_summary_lists_all_controls_without_new_item_markers() -> None:
@@ -209,29 +213,12 @@ def test_summary_lists_all_controls_without_new_item_markers() -> None:
     assert "추가 제안 13개" not in readme and "점수 산정에는 포함하지 않음" not in readme
 
 
-def test_chatbot_guide_uses_real_masked_highlighted_screenshots() -> None:
-    docs = Path(__file__).parents[1] / "docs"
-    demo = docs.parent / "demo"
-    manifest = json.loads((docs / "manifest.json").read_text(encoding="utf-8"))["chatbots"]
-    guide = (demo / "README.md").read_text(encoding="utf-8")
-    assert manifest["account_identifiers_masked"] is True
-    assert manifest["synthetic_conversations_only"] is True
-    for image in manifest["images"]:
-        assert image["file"] in guide
-        data = (demo / image["file"]).read_bytes()
-        assert data[:8] == b"\x89PNG\r\n\x1a\n"
-        assert image["highlight_count"] > 0
-    root = (docs.parent / "README.md").read_text(encoding="utf-8")
-    assert re.search(r"^## (?:Step )?1\.", root, re.M)
-    assert "오프라인 검증" not in root
-    assert "docs/guide.md" not in root
-    assert "고객사 담당자" in root and "MS EASM 관리자" in root
-
-
 def test_consolidated_document_links_and_collapsed_demo_are_preserved() -> None:
     root = Path(__file__).parents[1]
     docs = root / "docs"
-    assert {path.name for path in docs.glob("*.md")} == {"api-notes.md", "checklist.md"}
+    assert {path.name for path in docs.glob("*.md")} == {
+        "api-notes.md", "checklist.md", "connected-platforms.md",
+    }
     for path in [root / "README.md", *docs.glob("*.md"), *(root / "demo").glob("*.md")]:
         for target in re.findall(r"!?\[[^\]]*\]\(([^)]+)\)", path.read_text(encoding="utf-8")):
             target = unquote(target.split("#", 1)[0].strip("<>"))
@@ -242,7 +229,8 @@ def test_consolidated_document_links_and_collapsed_demo_are_preserved() -> None:
     assert readme.count("<details>") == 3
     assert "<details open" not in readme
     assert "수집은 나중에 수동 실행" in readme
-    assert "raw-data-<타임스탬프>.json" in readme and "report-<타임스탬프>.xlsx" in readme
+    assert "raw-data-<타임스탬프>.json" in readme
+    assert "AI Agent Governance Readiness 진단 결과 보고서 (프로세스·System 통합)_<수집일>.xlsx" in readme
     assert "results.zip" not in readme and "report.html" not in readme
     assert "docs/assessment-result-template.xlsx" in readme
     assert "bash demo/run.sh --apply --collect" in readme

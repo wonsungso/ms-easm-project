@@ -21,6 +21,7 @@ from openpyxl.worksheet.table import Table, TableStyleInfo
 from openpyxl.worksheet.worksheet import Worksheet
 from pydantic import BaseModel
 
+from easm_agent.agent365_grading import REGISTRY_PROFILES
 from easm_agent.azure import redact
 from easm_agent.collect_agent365 import STATUS_LABELS
 from easm_agent.deck_model import _score
@@ -359,6 +360,8 @@ def _table(
 def collection_summary(data: Collection, finding: Finding) -> tuple[str, str | None]:
     from easm_agent.report_integrated import criteria_for
 
+    if criteria_for(data)["items"].get(finding.se_code, {}).get("registry_check"):
+        return ("증적 확인" if finding.metric_value is not None else "일부 수집"), finding.rationale
     if data.copilot_agents and criteria_for(data)["items"].get(finding.se_code, {}).get("copilot_inventory_check"):
         return ("증적 확인" if finding.metric_value is not None else "일부 수집"), finding.rationale
     agents = azure_agents(data)
@@ -436,7 +439,7 @@ def presentation_evidence_rows(data: Collection, findings: list[Finding]) -> Ite
         finding = by_code.get(current_code)
         measurement = finding.measurement if finding else None
         metric_confirmed = (
-            comparable and snapshot.get("grading_profile") == "api_configuration_v1"
+            comparable and snapshot.get("grading_profile") in ("api_configuration_v1", *REGISTRY_PROFILES)
             and isinstance(items, dict) and isinstance(items.get(current_code), dict)
             and items[current_code].get("metric") == expected_metrics[current_code]
         )
@@ -740,10 +743,13 @@ def write_workbook(
     data: Collection, findings: list[Finding], path: Path, *, interview_workbook: Path | None = None,
 ) -> None:
     """Extend the assessment template with a masked collected-evidence snapshot."""
+    if any(agent.platform in ("langchain", "custom") for agent in data.agents):
+        raise ValueError("자체 호스트 후보를 제외하여 재평가한 결과로 보고서를 생성하세요.")
     data, findings = with_evidence_only_findings(data, findings)
     book, template = load_report_template()
     from easm_agent.report_integrated import (
         GRADES,
+        apply_template_layout,
         copy_manual_inputs,
         is_integrated,
         populate_integrated,
@@ -765,6 +771,16 @@ def write_workbook(
         code for code, definition in criteria_for(data)["items"].items()
         if definition.get("copilot_inventory_check")
     }
+    registry_codes = {
+        code for code, definition in criteria_for(data)["items"].items() if definition.get("registry_check")
+    }
+    package_names = {package.package_id: package.display_name for package in data.agent365_packages}
+    for finding in findings:
+        if finding.se_code in registry_codes and finding.measurement:
+            resources[finding.se_code] = [
+                ResourceName("Agent 365 Agent", package_names.get(target.subject), target.subject)
+                for target in finding.measurement.targets if target.status != "excluded"
+            ]
     result_rows = populate_integrated(book, data, findings) if integrated else _result_sheet(
         book, data, findings, resources,
     )
@@ -777,7 +793,7 @@ def write_workbook(
             "조회 제한 사유": readable(item.reason) if item.reason else "해당 없음",
             "수집 구성 요약": readable(item.observation), "구성 값·건수": item.metrics, "검증 한계": item.limit,
             "증적 ID": item.evidence_refs,
-        } for item in data.proposals
+        } for item in data.proposals if item.code not in registry_codes
     ]
     codes = {item["SY 코드"] for item in details}
     if len(codes) != len(details):
@@ -831,10 +847,16 @@ def write_workbook(
             + (f"\n비교 {check.compared}, 일치 {check.matched}, 불일치 {check.mismatched}, 미확인 {check.unverified}"
                if check.compared is not None else "")
             + (f"\n조회 사유: {readable(check.reason)}" if check.reason else "")
-        ) if check else "기존 수집 결과에 Agent 365 교차검증 기록 없음. 기존 등급 유지"
-        if check and check.status == "not_comparable":
+        ) if check else "Agent 365 교차 관측 기록 없음 - 평가 등급과 별도의 참고 정보"
+        if detail["SY 코드"] in registry_codes:
+            detail["Agent 365 교차검증"] = "본평가"
             detail["교차검증 범위·결과"] = (
-                "기존 Azure/Graph API로 평가하는 항목 - 평가 제외 아님\n"
+                "Agent 365 등록부 구성·기록 평가\n독립 교차 대사 미적용\n"
+                + criteria_for(data)["items"][detail["SY 코드"]]["limit"]
+            )
+        elif check and check.status == "not_comparable":
+            detail["교차검증 범위·결과"] = (
+                "플랫폼 API로 평가하는 항목 - 평가 제외 아님\n"
                 "Agent 365 등록부에 같은 판정 정보 미제공\n" + check.detail
             )
         detail["교차검증 증적"] = check.evidence_refs if check else []
@@ -1028,8 +1050,16 @@ def write_workbook(
             for binding in contract.bindings
         ), sheet=proposals_sheet, start_row=header)
     if integrated:
+        from easm_agent.report import presentation_name
         from easm_agent.report_integrated import GUIDE
 
+        apply_template_layout(book, template)
+        filename = presentation_name(data)
+        value = str(book[GUIDE]["C7"].value or "")
+        book[GUIDE]["C7"] = re.sub(
+            r"AI Agent Governance Readiness 진단 결과 보고서 \(프로세스·System 통합\)_\d{8}(?:\.pptx)?",
+            lambda _: filename, value, count=1,
+        )
         guide_index = book.index(book[GUIDE])
         book.active = guide_index
         for view in book.views:

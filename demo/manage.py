@@ -17,7 +17,7 @@ from openai import OpenAIError
 
 from demo import defender, studio
 from demo.auth import TemporaryCertificate
-from demo.infrastructure import deploy, deployment_parameters, plan
+from demo.infrastructure import deploy, deployment_parameters, expected_agent_count, plan
 from demo.saas import SaaSError, deploy_saas, load_verified_saas_receipt, preflight_saas
 from easm_agent.azure import redact
 from easm_agent.models import load_yaml
@@ -52,8 +52,8 @@ def validate(cli: Any, setup: dict, options: dict, root: Path, prepare_providers
     proof["checks"].append({"command": "az bicep build --stdout", "status": "passed"})
     for index, group in enumerate(lab["groups"]):
         sid = group["subscription_id"]
-        print(f"배포 전 ARM 검증: 구독 {index + 1}/3", flush=True)
-        namespace = "Microsoft.CognitiveServices" if index == 0 else "Microsoft.Web"
+        print(f"배포 전 ARM 검증: 구독 {index + 1}/{len(lab['groups'])}", flush=True)
+        namespace = "Microsoft.CognitiveServices"
         providers = cli.run("provider", "list", "--subscription", sid)
         # PolicyInsights는 정책 준수 상태를 읽는 수집 단계에 필요하다.
         required_providers = ("Microsoft.Resources", namespace, "Microsoft.OperationalInsights", "Microsoft.Insights")
@@ -93,7 +93,7 @@ def validate(cli: Any, setup: dict, options: dict, root: Path, prepare_providers
     proof["passed"] = True
     proof["finished_at"] = datetime.now(UTC).isoformat()
     proof_path.write_text(json.dumps(proof, ensure_ascii=False, indent=2), encoding="utf-8")
-    print("배포 전 검증 통과: Python/Bicep/3개 구독 validate·what-if·정책 조회", flush=True)
+    print("배포 전 검증 통과: Python/Bicep/Foundry 배포 구독 validate·what-if·정책 조회", flush=True)
     return 0
 
 
@@ -181,6 +181,7 @@ def offline() -> None:
 
 def collect_live(
     setup: dict, lab: dict, cli: AzureCLI, options: dict, skip_graph_roles: bool = False,
+    *, persist_lab: bool = True,
 ) -> int:
     if lab.get("resources_deleted"):
         raise ValueError("데모 리소스가 삭제된 상태입니다. 먼저 데모를 다시 배포하세요.")
@@ -206,9 +207,14 @@ def collect_live(
     if "saas" in options:
         stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
         for script, key, suffix, extra in (
-            ("export_copilot_inventory.py", "copilot_inventory_files", "copilot", []),
+            ("export_copilot_inventory.py", "copilot_inventory_files", "copilot", ["--include-evaluations"]),
             ("export_report_evidence.py", "report_evidence_files", "conditional-access", ["--conditional-access"]),
         ):
+            if script == "export_copilot_inventory.py" and options.get("copilot_evaluation_cli"):
+                extra = [
+                    *extra, "--evaluation-cli", options["copilot_evaluation_cli"],
+                    "--evaluation-project", options["copilot_evaluation_project"],
+                ]
             export_path = state / f"{suffix}-{stamp}.json"
             status = child([
                 str(ROOT / "scripts" / script), "--tenant-id", setup["tenant_id"],
@@ -217,6 +223,18 @@ def collect_live(
             if status not in (0, 2) or not export_path.is_file():
                 raise RuntimeError("별도 관리자 증적 내보내기 실패; 진단 SP·수동 값으로 대체하지 않음")
             settings[key] = [str(export_path)]
+        for script, extra in (
+            ("export_admin_environments.py", []),
+            ("export_dlp_policies.py", ["--approved"]),
+        ):
+            export_path = state / f"{script.removesuffix('.py')}-{stamp}.json"
+            status = child([
+                str(ROOT / "scripts" / script), "--tenant-id", setup["tenant_id"],
+                "--output", str(export_path), *extra,
+            ])
+            if status not in (0, 2) or not export_path.is_file():
+                raise RuntimeError("관리자 환경·DLP API 내보내기 실패")
+            settings.setdefault("admin_evidence_files", []).append(str(export_path))
     config_path = state / "lab-collection.yaml"
     config_path.write_text(yaml.safe_dump(settings, allow_unicode=True), encoding="utf-8")
     projects_path = state / "lab-projects.json"
@@ -258,20 +276,8 @@ def collect_live(
                 if code not in (0, 2):
                     raise RuntimeError("제한된 추가 읽기 역할 적용 후 수집 실행 실패")
         lab["additional_diagnostic_read_roles"] = changes
-        save(state / "lab.json", lab)
-        for attempt in range(3):
-            current = load_result(ROOT / "output")["collection"]
-            pending = [
-                agent for agent in current["agents"]
-                if agent["platform"] == "langchain" and agent["usage_30d"] is None
-            ]
-            if not pending or not lab.get("functional_smoke_complete"):
-                break
-            print(f"실제 Agent 로그 유입 대기: {len(pending)}개, 재조회 {attempt + 1}/3", flush=True)
-            time.sleep(30)
-            code = child(command, environment)
-            if code not in (0, 2):
-                raise RuntimeError("로그 유입 대기 후 진단 SP 수집 실행 실패")
+        if persist_lab:
+            save(state / "lab.json", lab)
         preflight = child([
             "scripts/verify_permissions.py", "--tenant-id", setup["tenant_id"],
             "--expected-principal-id", setup["principal_id"],
@@ -280,7 +286,7 @@ def collect_live(
         if preflight not in (0, 2):
             raise RuntimeError("진단 SP 접근 사전 점검 실행 실패")
     collection = load_result(ROOT / "output")["collection"]
-    expected = lab.get("expected_agent_count", 3)
+    expected = expected_agent_count(lab)
     if len(collection["agents"]) < expected or len(collection["completed_subscriptions"]) != 3:
         raise RuntimeError(f"승인된 3개 구독/{expected}개 Agent 샘플의 실측 발견을 확인하지 못했습니다.")
     return code

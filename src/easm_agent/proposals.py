@@ -24,7 +24,7 @@ TITLES = {
     "OT-SY-26": "구독 예산·실제·예측 경보 구성",
     "OE-SY-22": "리소스 지역·workspace 보존 구성",
     "BI-SY-14": "AI 리소스 정책 평가 준수",
-    "BI-SY-12": "Agent 버전·호스트 런타임 식별",
+    "BI-SY-12": "Agent 버전 식별",
 }
 # (주 영역, 보조 영역, 근거): 영역 정의와 질문은 평가 모델 Excel '2. 질문 및 확인사항' 기준
 DOMAINS = {
@@ -48,7 +48,7 @@ PRODUCTS = {
     "DS-SY-06": "Microsoft Foundry Agent 정의", "DS-SY-07": "Microsoft Foundry Agent 정의",
     "OE-SY-21": "Azure Monitor - 작업 그룹", "OT-SY-26": "Azure Cost Management",
     "OE-SY-22": "Azure 리소스 위치, Log Analytics", "BI-SY-14": "Azure Policy",
-    "BI-SY-12": "Azure OpenAI 배포, App Service",
+    "BI-SY-12": "Microsoft Foundry Agent 버전·모델 배포",
 }
 LIMITS = {
     "BI-SY-13": "같은 Agent의 태그·메타데이터 존재를 확인. 값의 업무 승인·인사 상태를 뜻하지 않음",
@@ -62,7 +62,7 @@ LIMITS = {
     "OT-SY-26": "구독 예산의 예측 경보 설정만 확인. Agent 단위 비용 귀속과 통보 후 조치 이력은 확인 불가",
     "OE-SY-22": "리소스 위치와 로그 보존 설정만 확인. 실제 처리 지역, 앱 메모리, 삭제 검증은 확인 불가",
     "BI-SY-14": "정책 준수 상태만 확인. 예외 만료 승인과 편차 검토 기록은 확인 불가. 정책 준수가 앱 동작 안전을 보장하지 않음",
-    "BI-SY-12": "Foundry Agent 버전·호스트 런타임·이미지 다이제스트 확인. 소스·빌드 출처와 배포 승인은 포함하지 않음",
+    "BI-SY-12": "Foundry Agent 버전·모델 배포 구성 확인. 소스·빌드 출처와 배포 승인은 포함하지 않음",
 }
 ISSUE_COLLECTORS = {
     "OE-SY-19": ("proposal_OE-SY-19",), "DS-SY-05": ("proposal_DS-SY-05",), "BI-SY-11": ("proposal_BI-SY-11", "model_deployments"),
@@ -262,22 +262,17 @@ def build(code: str, data: Collection, tags: dict[str, Any]) -> tuple[dict[str, 
             "AI 관련 리소스 정책 준수 상태: "
             + (", ".join(f"{key} {value}개" for key, value in sorted(states.items())) or "평가 결과 0건(할당 없음 또는 평가 전)")
         ), bool(data.facts.get("proposal_policy_subscriptions"))
-    rows = observations(data, "BI-SY-12")
+    agents = azure_agents(data)
     options = Counter(item.version_upgrade_option or "unknown" for item in data.deployments)
-    runtimes = [item.values.get("runtime") for item in rows if item.values.get("runtime")]
-    images = [item.values for item in rows if item.values.get("image")]
     metrics = {
         "model_deployments": len(data.deployments), "version_upgrade_option": dict(options),
-        "hosts": len(rows), "hosts_with_runtime": len(runtimes),
-        "container_images": len(images),
-        "images_pinned_by_digest": count([item.get("pinned_by_digest") for item in images]),
+        "agents": len(agents), "agents_with_version": count([agent.agent_version for agent in agents]),
     }
     return metrics, (
         f"모델 배포 {metrics['model_deployments']}개의 버전 업그레이드 옵션 "
         f"{', '.join(f'{key} {value}' for key, value in sorted(options.items())) or '없음'}; "
-        f"호스트 {metrics['hosts']}개 중 런타임 확인 {metrics['hosts_with_runtime']}개, 이미지 다이제스트 고정 "
-        f"{metrics['images_pinned_by_digest']}/{metrics['container_images']}개"
-    ), bool(rows) or bool(data.deployments)
+        f"Foundry Agent {metrics['agents']}개 중 버전 확인 {metrics['agents_with_version']}개"
+    ), bool(agents) or bool(data.deployments)
 
 
 def evaluate_proposals(data: Collection, tags: dict[str, Any]) -> list[ProposalFinding]:

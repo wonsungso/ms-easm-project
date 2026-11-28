@@ -1,30 +1,8 @@
-"""수집 대상 System Evidence 26개의 F열 설명."""
+"""수집 대상 System Evidence의 평가 기준 설명."""
+
+from easm_agent.models import load_criteria
 
 ITEM_DETAILS = {
-    "DM-SY-01": "관리자에게 보이는 Power Platform 환경과 환경별 역할 할당 건수 조회\n역할 할당이 1건 이상 확인된 환경 비율 산출\n고유 Maker 수 제외",
-    "DS-SY-02": "Power Platform 데이터 정책(DLP)의 적용 범위와 대상 환경 ID 조회\n정책 범위에 포함된 환경 비율 산출\n커넥터 분류·차단 내용 제외",
-    "BI-SY-08": "Power Platform 환경의 유형·보호 수준 조회\n보호 수준이 Standard(관리형 환경)인 환경 비율 산출\n개발·운영 분리 통제 제외",
-    "DS-SY-03": "Entra Agent ID의 Blueprint 참조 ID와 실제 Blueprint 목록 대조\n존재하는 Blueprint에 연결된 Agent ID 비율 산출",
-    "DS-SY-04": "모델 배포별 모델명·버전·형식·업데이트 옵션 조회\n필수 버전 정보와 인식 가능한 업데이트 옵션을 갖춘 배포 비율 산출",
-    "DS-SY-05": "AI 계정의 공용 네트워크 비활성화 및 승인된 Private Endpoint 확인\n자체 호스트의 비공개 진입 또는 기본 거부 접근 제한 확인",
-    "DS-SY-06": "Foundry Agent의 MCP 도구별 require_approval 조회\n모든 호출에 승인을 요구하는 always 설정 비율 산출\n함수·내장 도구 제외",
-    "DS-SY-07": "외부 도구 URL의 HTTPS·유효 호스트·사용자명/암호 미포함 여부 확인\n조건을 모두 충족한 URL 비율 산출\nURL 경로·인증값 저장 제외",
-    "BI-SY-09": "Foundry 프로젝트별 평가 정의·실행 이력 조회\ncompleted 또는 succeeded 평가 실행이 있는 프로젝트 비율 산출",
-    "BI-SY-10": "AI 리소스에 연결된 보안 권고 상태 조회\n적용 가능한 권고 중 Healthy 비율 산출\nNotApplicable 제외, 권고 없음은 충족 처리 제외",
-    "BI-SY-11": "모델 배포의 콘텐츠 필터 정책 이름과 실제 정책 목록 대조\n연결 정책에 활성 필터가 확인된 배포 비율 산출",
-    "BI-SY-12": "Foundry Agent의 명시적 버전 조회\n자체 호스트의 버전 지정 런타임·컨테이너 sha256 다이제스트 확인\n실행 구성 식별 가능 비율 산출",
-    "BI-SY-13": "동일 Agent의 owner·sponsor·env·cost-center 태그·메타데이터 확인\n책임자·환경·비용 분류 4개 항목을 모두 갖춘 Agent 비율 산출",
-    "BI-SY-14": "AI 계정·프로젝트·자체 호스트의 Azure Policy 평가 조회\n모든 평가가 Compliant인 리소스 비율 산출\n면제·미확인 상태는 준수 처리 제외",
-    "DP-SY-15": "Azure Agent의 구독·계정·프로젝트·이름과 Blueprint 태그 대조\n해당 Blueprint를 참조하는 실제 Entra Agent ID 존재 확인",
-    "OE-SY-16": "Entra Agent ID별 owners·sponsors 연결 개체 수 조회\n소유자·스폰서가 모두 연결된 Agent ID 비율 산출\n연결된 사람의 재직 상태 판정 제외",
-    "OE-SY-17": "Entra Agent ID에 할당된 앱 역할 이름 조회\n기준 파일의 쓰기·전체제어 패턴에 해당하는 역할이 없는 비율 산출\nARM·위임 권한 제외",
-    "OE-SY-18": "AI 계정·자체 호스트의 진단 설정 조회\n활성 로그와 Log Analytics workspace 연결 여부 확인\n구독 공통 Activity Log·실제 이벤트 유입 검증 제외",
-    "OE-SY-19": "AI 계정·호스트의 관리 ID 연결 및 동일 구독 직접 ARM 역할 조회\nAI 계정의 키 인증 비활성화 확인\n관리 ID 연결·광범위 직접 역할 없음·계정 키 인증 비활성 충족 비율 산출",
-    "OE-SY-20": "활성 메트릭·로그·Activity Log 경보 범위와 AI 리소스 ID 대조\n하나 이상의 활성 경보 범위에 포함된 AI 리소스 비율 산출",
-    "OE-SY-21": "AI 경보에 연결된 작업 그룹의 존재·활성 상태·수신자 설정 확인\n조건을 충족한 AI 경보 비율 산출\n실제 통보 전달 성공 검증 제외",
-    "OE-SY-22": "AI 리소스 지역과 연결된 Log Analytics workspace 보존기간 조회\n지역 식별·기준일 이상 보존 설정 충족 비율 산출\n실제 모델 처리 지역·테이블별 유효 보존기간 제외",
-    "OT-SY-23": "조회 기간 내 AI 계정·자체 호스트의 숫자 메트릭 표본 확인\n값이 0인 표본도 관측으로 포함\n개별 Agent의 실제 이용자 수 측정 제외",
-    "OT-SY-24": "동일 통화의 양수 AI 비용을 사용일자·리소스·Agent 연결 관계와 대조\n정확히 한 Agent에 귀속 가능한 금액 비율 산출\n공유 비용 중복 배분 제외",
-    "OT-SY-25": "구독별 Defender for Cloud의 AI 서비스 플랜과 Defender CSPM 플랜 pricingTier 조회\nCSPM의 SensitiveDataDiscovery 확장 활성 여부 확인\n세 조건을 모두 충족한 구독 비율 산출\n실제 경보·노출 여부와 리소스별 적용 범위 제외",
-    "OT-SY-26": "승인 구독별 현재 유효한 양수 Cost 예산의 구독 전체 적용 여부 확인\n활성 실제·예측 비용 경보의 임계값·수신자 설정 조회",
+    code: "\n".join((item["evidence"], f'{item["numerator"]} / {item["denominator"]}', item["limit"]))
+    for code, item in load_criteria()["items"].items()
 }

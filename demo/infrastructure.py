@@ -4,16 +4,10 @@ import base64
 import hashlib
 import json
 import re
-import subprocess
-import sys
-import tempfile
 import time
-import tomllib
-import zipfile
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-from urllib.parse import urljoin, urlparse
 
 import requests
 from azure.ai.projects import AIProjectClient
@@ -32,177 +26,6 @@ from openai import APIStatusError
 from easm_agent.azure import redact
 from easm_agent.paths import state_path
 from scripts.setup_account import ensure_assignment, role_spec, verify_custom_role
-
-
-def build_linux_package(root: Path) -> Path:
-    dependencies = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))[
-        "project"
-    ]["optional-dependencies"]["demo"]
-    archive = state_path(root, "demo", "langchain-sample.zip")
-    archive.parent.mkdir(parents=True, exist_ok=True)
-    requirements_text = "\n".join(dependencies) + "\n"
-    sources = {
-        name: root / "demo" / name
-        for name in ("app.py", "governance.py", "catalog.json", "chat.html")
-    }
-    for path in sources.values():
-        if not path.is_file():
-            raise FileNotFoundError(f"챗봇 패키지 입력이 없습니다: {path.name}")
-    if archive.is_file():
-        with zipfile.ZipFile(archive) as existing:
-            names = existing.namelist()
-            if (
-                {"app.py", "requirements.txt", ".deployment"} <= set(names)
-                and existing.read("requirements.txt").decode().replace("\r\n", "\n") == requirements_text
-                and existing.read(".deployment") == b"[config]\nSCM_DO_BUILD_DURING_DEPLOYMENT = false\n"
-                and any(name.endswith(".so") for name in names)
-                and not any(name.endswith(".pyd") for name in names)
-                and existing.testzip() is None
-            ):
-                if all(
-                    name in names and existing.read(name) == path.read_bytes()
-                    for name, path in sources.items()
-                ) and all(
-                    name in sources or name in (".deployment", "requirements.txt")
-                    or name.startswith(".python_packages/")
-                    for name in names
-                ):
-                    print("검증된 CPython 3.11 Linux 패키지 재사용", flush=True)
-                    return archive
-                with tempfile.TemporaryDirectory(prefix="easmagent-repack-") as directory:
-                    refreshed = Path(directory) / "sample.zip"
-                    with zipfile.ZipFile(refreshed, "w", zipfile.ZIP_DEFLATED) as bundle:
-                        for item in existing.infolist():
-                            if item.filename.startswith(".python_packages/") or item.filename in (
-                                ".deployment", "requirements.txt",
-                            ):
-                                bundle.writestr(item, existing.read(item))
-                        for name, path in sources.items():
-                            bundle.write(path, name)
-                    existing.close()
-                    refreshed.replace(archive)
-                print("검증된 Linux 의존성은 유지하고 변경한 챗봇 소스만 다시 패키징", flush=True)
-                return archive
-        print("패키지 입력이 변경되어 Linux 의존성을 다시 준비합니다.", flush=True)
-    with tempfile.TemporaryDirectory(prefix="easmagent-wheel-") as directory:
-        temporary = Path(directory)
-        requirements = temporary / "requirements.txt"
-        requirements.write_text(requirements_text, encoding="utf-8")
-        packages = temporary / "packages"
-        print("Python 3.11 Linux wheel 사전 패키징: 원격 Oryx 플랫폼 설치에 의존하지 않음", flush=True)
-        completed = subprocess.run([
-            sys.executable, "-m", "pip", "install", "--target", str(packages),
-            "--platform", "manylinux_2_28_x86_64",
-            "--platform", "manylinux_2_17_x86_64",
-            "--platform", "manylinux2014_x86_64",
-            "--python-version", "3.11", "--implementation", "cp", "--abi", "cp311",
-            "--only-binary=:all:", "--no-compile", "-r", str(requirements),
-        ], capture_output=True, text=True, check=False)
-        if completed.returncode:
-            raise RuntimeError("Linux wheel 의존성 사전 패키징 실패. pip 원문은 비밀 보호를 위해 출력하지 않음.")
-        with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as bundle:
-            for name, path in sources.items():
-                bundle.write(path, name)
-            bundle.write(requirements, "requirements.txt")
-            bundle.writestr(".deployment", "[config]\nSCM_DO_BUILD_DURING_DEPLOYMENT = false\n")
-            for path in packages.rglob("*"):
-                if path.is_file():
-                    destination = Path(".python_packages") / "lib" / "site-packages" / path.relative_to(packages)
-                    bundle.write(path, destination.as_posix())
-    return archive
-
-
-def deploy_zip(
-    site: dict[str, Any], archive: Path, credential: Any, previous_ids: set[str],
-) -> dict[str, Any]:
-    host = site["defaultHostName"]
-    if not host.endswith(".azurewebsites.net") or "/" in host:
-        raise ValueError("승인된 Azure 웹 앱 호스트가 아닙니다.")
-    scm = "https://" + host.removesuffix(".azurewebsites.net") + ".scm.azurewebsites.net"
-    token = credential.get_token("https://management.azure.com/.default").token
-    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/zip"}
-    print(f"직접 Kudu ZIP 전송: {site['name']}", flush=True)
-    try:
-        with archive.open("rb") as stream:
-            response = requests.post(
-                scm + "/api/zipdeploy?isAsync=true", data=stream, headers=headers,
-                timeout=(30, 300), allow_redirects=False,
-            )
-    except (requests.Timeout, requests.ConnectionError):
-        raise RuntimeError("Kudu ZIP 접수 여부 미확인 - 재전송 전 실제 배포 상태를 확인하세요.") from None
-    location = response.headers.get("Location")
-    status = response.status_code
-    response.close()
-    if status not in (200, 201, 202):
-        raise RuntimeError(f"Kudu ZIP 접수 미확인: HTTP {status} - 재전송 전 실제 배포 상태를 확인하세요.")
-    if not location:
-        raise RuntimeError("Kudu ZIP 접수 후 상태 URL이 없습니다 - 재전송 전 실제 배포 상태를 확인하세요.")
-    status_url = urljoin(scm, location)
-    if urlparse(status_url).scheme != "https" or urlparse(status_url).netloc != urlparse(scm).netloc:
-        print("Kudu Location 원점이 달라 신뢰한 원래 SCM의 새 배포 상태를 검증합니다.", flush=True)
-        status_url = scm + "/api/deployments/latest"
-    for attempt in range(60):
-        try:
-            response = requests.get(status_url, headers={"Authorization": f"Bearer {token}"},
-                                    timeout=30, allow_redirects=False)
-        except (requests.Timeout, requests.ConnectionError):
-            if attempt % 6 == 0:
-                print(f"Kudu 상태 조회 일시 오류 - 재조회: {site['name']}", flush=True)
-            time.sleep(10)
-            continue
-        if response.status_code in (408, 429, 500, 502, 503, 504):
-            status = response.status_code
-            response.close()
-            if attempt % 6 == 0:
-                print(f"Kudu 상태 조회 일시 오류 HTTP {status} - 재조회: {site['name']}", flush=True)
-            time.sleep(10)
-            continue
-        if response.status_code == 202:
-            response.close()
-            if attempt % 6 == 0:
-                print(f"Kudu 비동기 처리 중: {site['name']}", flush=True)
-            time.sleep(10)
-            continue
-        try:
-            if response.status_code != 200:
-                raise RuntimeError(f"Kudu 상태 조회 실패: HTTP {response.status_code}")
-            state = response.json()
-        finally:
-            response.close()
-        if state["id"] not in previous_ids:
-            if state.get("status") == 3:
-                raise RuntimeError("Kudu 직접 ZIP 배포 실패(status=3)")
-            if state.get("status") == 4 and state.get("complete"):
-                print(f"Kudu 새 배포 완료 확인: {site['name']}", flush=True)
-                return state
-        if attempt % 6 == 0:
-            print(f"Kudu 상태 대기: {site['name']}, status={state.get('status')}", flush=True)
-        time.sleep(10)
-    raise RuntimeError("Kudu ZIP 배포 상태 미확인 - 재전송 전 실제 배포 상태를 확인하세요.")
-
-
-def deploy_webapp_code(
-    cli: Any, site: dict[str, Any], archive: Path, credential: Any,
-    resource_group: str, subscription_id: str,
-) -> dict[str, Any]:
-    target = ("--name", site["name"], "--resource-group", resource_group, "--subscription", subscription_id)
-    previous = cli.run("webapp", "log", "deployment", "list", *target)
-    if not any(row.get("status") == 4 and row.get("complete") is True for row in previous):
-        config = cli.run("webapp", "config", "show", *target)
-        if "appCommandLine" not in config:
-            raise RuntimeError("웹 앱의 기존 시작 명령을 확인하지 못했습니다.")
-        if config["appCommandLine"]:
-            cli.run("webapp", "config", "set", *target, "--generic-configurations", '{"appCommandLine":""}')
-            cleared = cli.run("webapp", "config", "show", *target)
-            if "appCommandLine" not in cleared or cleared["appCommandLine"]:
-                raise RuntimeError("웹 앱의 기존 시작 명령을 비우지 못했습니다.")
-    deployment = deploy_zip(site, archive, credential, {row["id"] for row in previous})
-    cli.run(
-        "webapp", "config", "set", *target, "--startup-file",
-        "gunicorn --chdir /home/site/wwwroot --bind=0.0.0.0 --timeout 120 --workers 1 app:app",
-    )
-    return deployment
-
 
 ARM = "https://management.azure.com"
 FOUNDRY_USER = "53ca6127-db72-4b80-b1b0-d745d6d5456d"
@@ -282,7 +105,7 @@ def plan(setup: dict[str, Any], options: dict[str, Any]) -> dict[str, Any]:
     groups = [
         {"subscription_id": sid, "name": f"{options['resource_group_prefix']}-{index:02d}",
          "id": f"/subscriptions/{sid}/resourceGroups/{options['resource_group_prefix']}-{index:02d}"}
-        for index, sid in enumerate(setup["subscription_ids"], 1)
+        for index, sid in enumerate(setup["subscription_ids"][:1], 1)
     ]
     return {
         "lab_id": lab_id, "region": region, "groups": groups,
@@ -290,26 +113,30 @@ def plan(setup: dict[str, Any], options: dict[str, Any]) -> dict[str, Any]:
         "deployment_name": options["deployment_name"], "model": options["model"],
         "model_version": options["model_version"], "sku": options["model_sku"], "capacity": options["model_capacity"],
         "extra_models": options.get("extra_models", []),
-        "host_names": [f"easmagent-lc-{lab_id}-02", f"easmagent-lc-{lab_id}-03"],
         "retention_days": options["retention_days"], "after_run": options["after_run"],
         "budget_usd": options["budget_usd"],
-        "b1_plans_usd_per_hour": 0.036,
     }
+
+
+def expected_agent_count(lab: dict[str, Any]) -> int:
+    if "chatbot_agents" not in lab:
+        return 1
+    agents = lab["chatbot_agents"]
+    if not isinstance(agents, list) or not agents:
+        raise ValueError("Foundry Agent 배포 영수증 목록이 비어 있거나 형식이 잘못되었습니다.")
+    return len(agents)
 
 
 def deployment_parameters(lab: dict[str, Any], index: int) -> list[str]:
     group = lab["groups"][index]
     parameters = {
         "location": lab["region"], "resourceGroupName": group["name"],
-        "labId": lab["lab_id"], "workload": "foundry" if index == 0 else "langchain",
+        "labId": lab["lab_id"],
         "accountName": lab["account_name"], "projectName": lab["project_name"],
         "deploymentName": lab["deployment_name"], "modelName": lab["model"],
         "modelVersion": lab["model_version"], "modelSku": lab["sku"],
         "modelCapacity": lab["capacity"], "retentionDays": lab["retention_days"],
         "extraModels": json.dumps(lab.get("extra_models", []), separators=(",", ":")),
-        "hostName": "" if index == 0 else lab["host_names"][index - 1],
-        "modelResourceId": lab["groups"][0]["id"]
-        + "/providers/Microsoft.CognitiveServices/accounts/" + lab["account_name"],
     }
     return [f"{key}={value}" for key, value in parameters.items()]
 
@@ -346,9 +173,7 @@ def deploy(
         sid = group["subscription_id"]
         providers = cli.run("provider", "list", "--subscription", sid)
         required = ["Microsoft.OperationalInsights", "Microsoft.Insights",
-                    "Microsoft.CognitiveServices" if group is groups[0] else "Microsoft.Web"]
-        if group is groups[0]:
-            required.append("Microsoft.PolicyInsights")
+                    "Microsoft.CognitiveServices", "Microsoft.PolicyInsights"]
         for namespace in required:
             state = next((p["registrationState"] for p in providers
                           if p["namespace"].lower() == namespace.lower()), None)
@@ -369,8 +194,7 @@ def deploy(
                     continue
                 if (resource.get("tags") or {}).get("easmagent-lab") != lab_id:
                     raise RuntimeError("샘플 그룹 안에 소유 태그가 다른 리소스가 있습니다. 덮어쓰지 않습니다.")
-        print(f"샘플 인프라 {'재사용' if reuse_infrastructure else '배포'}: 구독 {index + 1}/3, "
-              f"workload={'foundry' if index == 0 else 'langchain'}",
+        print(f"Foundry 샘플 인프라 {'재사용' if reuse_infrastructure else '배포'}: 구독 {index + 1}/{len(groups)}",
               flush=True)
         if not reuse_infrastructure:
             cli.run(
@@ -389,7 +213,7 @@ def deploy(
         first = groups[0]
         base = first["id"]
         account_id = base + "/providers/Microsoft.CognitiveServices/accounts/" + result["account_name"]
-        account = arm.ensure(account_id, "2025-06-01", {
+        arm.ensure(account_id, "2025-06-01", {
             "location": region, "kind": "AIServices", "sku": {"name": "S0"},
             "identity": {"type": "SystemAssigned"}, "tags": tags,
             "properties": {"customSubDomainName": result["account_name"],
@@ -412,15 +236,6 @@ def deploy(
         ), None)
         if not project_endpoint:
             raise RuntimeError("생성된 Foundry 프로젝트 응답에 데이터 endpoint가 없습니다.")
-        account_endpoints = account.get("properties", {}).get("endpoints") or {}
-        model_endpoint = next((
-            value for key, value in account_endpoints.items()
-            if isinstance(value, str) and ("openai" in key.lower() or ".openai.azure.com" in value)
-        ), None)
-        if not model_endpoint:
-            raise RuntimeError("생성된 Foundry 계정 응답에 OpenAI endpoint가 없습니다.")
-        if urlparse(model_endpoint).scheme != "https":
-            raise RuntimeError("모델 endpoint가 HTTPS가 아닙니다.")
         raw_token = credential.get_token(ARM + "/.default").token
         segment = raw_token.split(".")[1]
         claims = json.loads(base64.urlsafe_b64decode(segment + "=" * (-len(segment) % 4)))
@@ -485,7 +300,7 @@ def deploy(
                 ) from exc
         workspace_id = base + "/providers/Microsoft.OperationalInsights/workspaces/easmagent-observability"
         workspace = arm.ensure(workspace_id, "2022-10-01", {
-            "location": region, "tags": {**tags, "agent-type": "shared-observability"},
+            "location": region, "tags": tags,
             "properties": {"sku": {"name": "PerGB2018"}, "retentionInDays": result["retention_days"],
                            "workspaceCapping": {"dailyQuotaGb": 1}},
         }, lab_id)
@@ -494,111 +309,18 @@ def deploy(
             "agent_id": agent_id, "foundry_smoke": foundry_smoke,
             "workspace_id": workspace_id,
             "workspace_customer_id": workspace["properties"]["customerId"],
-            "hosts": [],
         })
         partial_path = state_path(root, "demo", "lab.partial.json")
         partial_path.parent.mkdir(parents=True, exist_ok=True)
         partial_path.write_text(json.dumps(redact(result), ensure_ascii=False, indent=2), encoding="utf-8")
-        hosts = []
-        archive = build_linux_package(root)
-        for group, name in reversed(list(zip(groups[1:], result["host_names"], strict=True))):
-            sid = group["subscription_id"]
-            plan_name = name + "-plan"
-            host_tags = {**tags, "agent-type": "langchain", "agent-id": name,
-                         "model-resource-id": account_id, "model-deployment": result["deployment_name"]}
-            existing_sites = cli.run("webapp", "list", "--resource-group", group["name"], "--subscription", sid)
-            if not any(site["name"] == name for site in existing_sites):
-                if reuse_infrastructure:
-                    raise RuntimeError("재사용할 샘플 웹 앱이 없습니다.")
-                cli.run("appservice", "plan", "create", "--name", plan_name, "--resource-group", group["name"],
-                        "--subscription", sid, "--location", region, "--sku", "B1", "--is-linux",
-                        "--tags", *[f"{key}={value}" for key, value in host_tags.items()])
-                site = cli.run(
-                    "webapp", "create", "--name", name, "--resource-group", group["name"],
-                    "--subscription", sid, "--plan", plan_name, "--runtime", "PYTHON:3.11",
-                    "--assign-identity", "[system]",
-                    "--tags", *[f"{key}={value}" for key, value in host_tags.items()],
-                )
-            else:
-                site = next(site for site in existing_sites if site["name"] == name)
-                if (site.get("tags") or {}).get("easmagent-lab") != lab_id:
-                    raise RuntimeError("동명 웹 앱의 소유 태그 불일치")
-            principal = (site.get("identity") or {}).get("principalId")
-            if not principal:
-                raise RuntimeError("샘플 웹 앱 Managed Identity가 없습니다.")
-            ensure_assignment(cli, principal, "ServicePrincipal", account_id, OPENAI_USER)
-            site_id = site["id"]
-            public_settings = {
-                "SCM_DO_BUILD_DURING_DEPLOYMENT": "false",
-                "ENABLE_ORYX_BUILD": "false",
-                "PYTHONPATH": "/home/site/wwwroot:/home/site/wwwroot/.python_packages/lib/site-packages",
-                "AZURE_OPENAI_ENDPOINT": model_endpoint,
-                "AZURE_OPENAI_DEPLOYMENT": result["deployment_name"],
-                "EASMAGENT_AGENT_ID": name, "EASMAGENT_SMOKE_ON_START": "true",
-            }
-            cli.run(
-                "webapp", "config", "appsettings", "set", "--name", name,
-                "--resource-group", group["name"], "--subscription", sid,
-                "--settings", *[f"{key}={value}" for key, value in public_settings.items()],
-            )
-            cli.run(
-                "webapp", "log", "config", "--name", name, "--resource-group", group["name"],
-                "--subscription", sid, "--docker-container-logging", "filesystem",
-                "--application-logging", "filesystem", "--level", "information",
-            )
-            arm.request("PUT", site_id + "/providers/Microsoft.Insights/diagnosticSettings/easmagent-sample",
-                        "2021-05-01-preview", {"properties": {
-                            "workspaceId": workspace_id,
-                            "logs": [{"category": "AppServiceConsoleLogs", "enabled": True}],
-                            "logAnalyticsDestinationType": "Dedicated",
-                        }})
-            deployment = deploy_webapp_code(cli, site, archive, credential, group["name"], sid)
-            host = site.get("defaultHostName")
-            if not host:
-                raise RuntimeError("생성된 웹 앱 응답에 defaultHostName이 없습니다.")
-            health = "https://" + host + "/health"
-            smoke_state = None
-            for attempt in range(30):
-                try:
-                    response = requests.get(health, timeout=30)
-                    try:
-                        payload = response.json()
-                    except ValueError:
-                        print(f"샘플 앱 준비 대기: HTTP {response.status_code}, 아직 JSON health가 아님", flush=True)
-                        time.sleep(10)
-                        continue
-                    if payload.get("smoke_status") == "failed":
-                        error_type = str(payload.get("error_type", "unknown"))
-                        safe_error = error_type if re.fullmatch(r"[A-Za-z_]{1,100}", error_type) else "unknown"
-                        raise RuntimeError(f"LangChain 샘플 smoke 실패: {safe_error}")
-                    if response.status_code == 200:
-                        if payload.get("smoke_status") == "completed":
-                            smoke_state = payload
-                            break
-                except (requests.Timeout, requests.ConnectionError):
-                    if attempt == 29:
-                        raise
-                time.sleep(10)
-            if not smoke_state:
-                raise RuntimeError("LangChain sample의 실제 모델 smoke 완료 확인 시간 초과")
-            cli.run(
-                "webapp", "config", "appsettings", "set", "--name", name,
-                "--resource-group", group["name"], "--subscription", sid,
-                "--settings", "EASMAGENT_SMOKE_ON_START=false",
-            )
-            hosts.append({
-                "id": site_id, "name": name, "health_url": health, "smoke": smoke_state,
-                "deployment_id": deployment["id"], "deployment_verified": True,
-            })
-            result["hosts"] = hosts
-            partial_path.write_text(json.dumps(redact(result), ensure_ascii=False, indent=2), encoding="utf-8")
         result.update({
             "account_id": account_id, "project_id": project_id, "project_endpoint": project_endpoint,
             "agent_id": agent_id, "foundry_smoke": foundry_smoke,
             "workspace_id": workspace_id, "workspace_customer_id":
-                workspace["properties"]["customerId"], "hosts": hosts,
+                workspace["properties"]["customerId"],
             "deployed_at": datetime.now(UTC).isoformat(),
-            "functional_smoke_complete": len(hosts) == 2,
+            "functional_smoke_complete": foundry_smoke["status"] == "completed",
+            "expected_agent_count": 1,
         })
         arm.session.close()
     return result

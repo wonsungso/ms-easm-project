@@ -122,7 +122,7 @@ def test_audit_summary_and_target_table_do_not_promote_pending_results(tmp_path:
 
 
 def test_presentation_evidence_keeps_unavailable_and_distinct_metrics_separate(tmp_path: Path) -> None:
-    from easm_agent.models import load_criteria
+    from easm_agent.models import Settings, load_criteria
     from easm_agent.provenance import assessment_provenance
 
     rows = [
@@ -141,7 +141,8 @@ def test_presentation_evidence_keeps_unavailable_and_distinct_metrics_separate(t
     ]
     path = tmp_path / "report.xlsx"
     data = sample()
-    data.assessment_provenance = assessment_provenance(load_criteria(), {}, "evaluation")
+    criteria = load_criteria(Settings(criteria_file=Path(__file__).parent / "fixtures" / "resource-criteria.yaml"))
+    data.assessment_provenance = assessment_provenance(criteria, {}, "evaluation")
     write_workbook(data, rows, path)
     sheet = load_workbook(path)[TITLES["수집결과 근거"]]
     table = next(t for t in sheet.tables.values() if t.tableColumns[0].name == "원본 PPT 항목")
@@ -464,7 +465,7 @@ def test_436_catalog_detail_references_complete_excel_ppt_and_recover_all_links(
     assert not any(secret in str(cell.value) for secret in SECRETS
                    for sheet in book for row in sheet for cell in row)
     book.close()
-    deck = next(path.parent.glob("EASM-report-*.pptx"))
+    deck = next(path.parent.glob("AI Agent Governance Readiness*.pptx"))
     presentation = Presentation(deck)
     assert len(presentation.slides) == 12
     notes = presentation.slides[9].notes_slide.notes_text_frame.text
@@ -547,13 +548,14 @@ def test_fixture_cli_is_offline_and_writes_only_workbook_and_raw_data(tmp_path: 
     assert re.fullmatch(r"\d{8}T\d{12}Z(?:-\d+)?", runs[0].name)
     names = sorted(path.name for path in runs[0].iterdir())
     assert len(names) == 3
-    assert names == sorted([
-        f"raw-data-{runs[0].name}.json", f"report-{runs[0].name}.xlsx", f"EASM-report-{runs[0].name}.pptx",
-    ])
     result = load_result(tmp_path)
+    assert names == sorted([
+        f"raw-data-{runs[0].name}.json", report_name(result["collection"]), presentation_name(result["collection"]),
+    ])
     assert result["mode"] == "fixture"
     agents = result["collection"]["agents"]
-    assert len(agents) == 3 and len(result["findings"]) == 26
+    assert len(agents) == 1 and len(result["findings"]) == 26
+    assert result["collection"]["facts"]["excluded_host_candidates"]["count"] == 2
     assert {
         "collected_at", "tenant_id", "subscription_id", "resource_group", "platform",
         "agent_id", "agent_name", "resource_id", "hosting_type", "owner", "sponsor",
@@ -571,7 +573,7 @@ def test_raw_data_keeps_machine_contract_and_manifest_matches_files(tmp_path: Pa
     assert {path.name for path in workbook.parent.iterdir()} == {
         workbook.name, deck.name, raw_name(data, workbook.parent.name),
     }
-    assert workbook.stem.removeprefix("report-") == workbook.parent.name
+    assert workbook.stem == deck.stem
     assert latest_raw(output).stem.removeprefix("raw-data-") == workbook.parent.name
     assert load_result(output)["collection"]["collected_at"] == data.model_dump(mode="json")["collected_at"]
     result = load_result(output)
@@ -749,9 +751,8 @@ def test_repeated_collection_timestamp_creates_distinct_runs_without_overwrite(t
     original = first.read_bytes()
     data.agents[0].agent_name = "second run"
     second = write_reports(data, [], tmp_path)
-    assert first.parent != second.parent and first.name != second.name
-    assert first.stem.removeprefix("report-") == first.parent.name
-    assert second.stem.removeprefix("report-") == second.parent.name
+    assert first.parent != second.parent and first.name == second.name
+    assert first.name == report_name(data)
     assert first.read_bytes() == original
     assert latest_raw(tmp_path).parent == second.parent
     assert load_result(first.parent)["collection"]["agents"][0]["agent_name"] == "테스트 Agent"
@@ -780,7 +781,7 @@ def test_new_report_names_match_run_stamp_including_collision_suffix(tmp_path: P
         second = write_reports(sample(), [], tmp_path)
     assert second.parent.name == first.parent.name + "-1"
     for path in (first, second):
-        assert path.name == f"report-{path.parent.name}.xlsx"
+        assert path.name == report_name(sample())
         assert latest_raw(path.parent).name == f"raw-data-{path.parent.name}.json"
     assert latest_raw(tmp_path).parent == second.parent
 

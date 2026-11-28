@@ -41,16 +41,42 @@ def _stamp(data: Collection) -> str:
     return data.collected_at.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")
 
 
-def report_name(data: Collection, run_stamp: str | None = None) -> str:
-    return f"report-{run_stamp or _stamp(data)}.xlsx"
+def report_stem(data: Collection | dict[str, Any]) -> str:
+    from easm_agent.models import timestamp
+    from easm_agent.report_integrated import KST
+
+    instant = data.collected_at if isinstance(data, Collection) else timestamp(data.get("collected_at"))
+    if instant is None:
+        raise ValueError("보고서 파일명에 사용할 수집 시각이 없습니다.")
+    return "AI Agent Governance Readiness 진단 결과 보고서 (프로세스·System 통합)_" + instant.astimezone(KST).strftime("%Y%m%d")
+
+
+def report_name(data: Collection | dict[str, Any], run_stamp: str | None = None) -> str:
+    return report_stem(data) + ".xlsx"
 
 
 def raw_name(data: Collection, run_stamp: str | None = None) -> str:
     return f"raw-data-{run_stamp or _stamp(data)}.json"
 
 
-def presentation_name(data: Collection, run_stamp: str | None = None) -> str:
-    return f"EASM-report-{run_stamp or _stamp(data)}.pptx"
+def presentation_name(data: Collection | dict[str, Any], run_stamp: str | None = None) -> str:
+    return report_stem(data) + ".pptx"
+
+
+def report_workbook(directory: Path, data: Collection, result: dict[str, Any]) -> Path:
+    current = directory / report_name(data)
+    if current.is_file():
+        return current
+    for item in result.get("manifest", {}).get("files", []):
+        name = item.get("path")
+        if isinstance(name, str) and Path(name).name == name and name.endswith(".xlsx"):
+            path = directory / name
+            if path.is_file():
+                return path
+    source = latest_raw(directory)
+    if source:
+        return directory / ("report-" + source.stem.removeprefix("raw-data-") + ".xlsx")
+    return current
 
 
 def latest_raw(output: Path) -> Path | None:
@@ -275,7 +301,17 @@ def write_reports(
     *, new_run: bool = True, customer: str = DEFAULT_CUSTOMER, interview_workbook: Path | None = None,
 ) -> Path:
     """Write a unique run folder, or rebuild an explicitly selected existing run."""
+    if any(agent.platform in ("langchain", "custom") for agent in data.agents):
+        raise ValueError("자체 호스트 후보가 포함된 결과는 package --reassess로 재평가한 후 보고서를 생성하세요.")
     output.mkdir(parents=True, exist_ok=True)
+    previous = load_result(output) if not new_run and latest_raw(output) else {}
+    previous_reports = [
+        output / item["path"] for item in previous.get("manifest", {}).get("files", [])
+        if isinstance(item.get("path"), str) and Path(item["path"]).name == item["path"]
+        and Path(item["path"]).suffix in (".xlsx", ".pptx")
+    ]
+    if any(path.is_symlink() for path in previous_reports):
+        raise ValueError("보고서 파일의 심볼릭 링크는 이름 변경 대상으로 사용할 수 없습니다.")
     result = normalize_result(data, findings, output, mode)
     if new_run:
         output = create_run_directory(output)
@@ -288,6 +324,17 @@ def write_reports(
     normalized = Collection.model_validate(result["collection"])
     rows = [Finding.model_validate(row) for row in result["findings"]]
     workbook = output / report_name(normalized, run_stamp)
+    if interview_workbook is None and not new_run:
+        candidate = report_workbook(output, normalized, previous)
+        if candidate.is_file():
+            from openpyxl import load_workbook
+
+            from easm_agent.report_integrated import is_integrated
+
+            existing_book = load_workbook(candidate, read_only=True)
+            if is_integrated(existing_book):
+                interview_workbook = candidate
+            existing_book.close()
     if interview_workbook is None and not new_run and workbook.is_file():
         from openpyxl import load_workbook
 
@@ -336,6 +383,9 @@ def write_reports(
         os.replace(staging, workbook)
         os.replace(deck_staging, presentation)
         atomic_write(output / raw_name(normalized, run_stamp), json_bytes(result))
+        for path in previous_reports:
+            if path not in (workbook, presentation) and path.is_file():
+                path.unlink()
     finally:
         staging.unlink(missing_ok=True)
         deck_staging.unlink(missing_ok=True)

@@ -6,18 +6,22 @@ from copy import copy
 from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import patch
+from xml.etree import ElementTree
 from zipfile import ZipFile
 
 import pytest
 from openpyxl import load_workbook
+from openpyxl.utils import get_column_letter
 
 from easm_agent.azure import AccessError
 from easm_agent.cli import main
 from easm_agent.deck_model import read_assessment
 from easm_agent.models import (
+    AgentEvidence,
     AssessmentMeasurement,
     Collection,
     Finding,
+    Settings,
     TargetAssessment,
     load_criteria,
 )
@@ -35,15 +39,42 @@ from easm_agent.report_integrated import (
     RAW_GUIDE,
 )
 from easm_agent.report_interviews import result_cell_updates, write_interview_responses
+from easm_agent.report_layout import PLATFORM_COLUMNS, PLATFORM_SHEET, load_report_layout
 from easm_agent.report_template import assessment_template_path
 
 NOW = datetime(2026, 11, 23, tzinfo=UTC)
 ROOT = Path(__file__).parents[1]
 
 
+def test_output_uses_reference_dimensions_and_preserves_hidden_metadata(tmp_path: Path):
+    path = tmp_path / "layout.xlsx"
+    write_workbook(collection(), [], path)
+    book = load_workbook(path)
+    layout = load_report_layout()
+    inverse = {new: old for old, new in PLATFORM_COLUMNS.items()}
+    for sheet in book:
+        reference = layout[sheet.title]
+        assert sheet.sheet_format.defaultRowHeight == reference["default_row_height"]
+        for column in range(1, sheet.max_column + 1):
+            old = inverse.get(column, column) if sheet.title == PLATFORM_SHEET else column
+            expected = reference["columns"].get(get_column_letter(old), {"width": 13})["width"]
+            assert sheet.column_dimensions[get_column_letter(column)].width == expected
+        last_row = max(sheet.max_row, max(map(int, reference["row_heights"]), default=1))
+        for row in range(1, last_row + 1):
+            expected = reference["row_heights"].get(str(row), reference["default_row_height"])
+            actual = sheet.row_dimensions[row].height
+            assert actual == expected, (sheet.title, row)
+        if sheet.title in INTEGRATED_SHEETS:
+            assert sheet["A2"].font.name == "Microsoft GothicNeo" and sheet["A2"].font.sz == 9
+    assert book[RAW].column_dimensions["Q"].hidden
+    assert book[GRADES].column_dimensions["U"].hidden
+    assert not book["8b_수집이슈 Raw 데이터"].merged_cells.ranges
+
+
 def collection() -> Collection:
     data = Collection(collected_at=NOW)
-    data.assessment_provenance = assessment_provenance(load_criteria(), {}, "evaluation")
+    saved_criteria = load_criteria(Settings(criteria_file=ROOT / "tests" / "fixtures" / "resource-criteria.yaml"))
+    data.assessment_provenance = assessment_provenance(saved_criteria, {}, "evaluation")
     return data
 
 
@@ -84,7 +115,7 @@ def test_same_column_colors_are_uniform_without_changing_values_or_status_styles
                     assert cell.font.color == column[0].font.color
                     assert cell.fill == copy(column[0].fill)
     assert book["1_진단 개요"]["B13"].data_type == "f"
-    assert book["1_진단 개요"]["B14"].value is None
+    assert book["1_진단 개요"]["B14"].data_type == "f"
     assert book["1a_플랫폼 기준"]["F8"].value is None
     assert book["1_진단 개요"]["B4"].fill.fgColor.rgb == "FFD9D9D9"
     assert book["1a_플랫폼 기준"]["F14"].fill.fgColor.rgb == "FFDDEBF7"
@@ -112,6 +143,16 @@ def test_observed_zero_and_unavailable_have_distinct_inputs_scores_and_audit(tmp
     ]
     path = tmp_path / "report.xlsx"
     write_workbook(data, findings, path)
+    with ZipFile(path) as archive:
+        comments = [ElementTree.fromstring(archive.read(name)) for name in archive.namelist()
+                    if name.startswith("xl/comments/") and name.endswith(".xml")]
+    assert comments
+    namespace = {"s": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+    for comment in comments:
+        runs = comment.findall(".//s:rPr", namespace)
+        assert runs
+        assert all(run.find("s:rFont", namespace).get("val") == "Microsoft GothicNeo" for run in runs)
+        assert all(run.find("s:sz", namespace).get("val") == "9" for run in runs)
     book = load_workbook(path)
     assert book.active.title == GUIDE
     assert all(view.activeTab == book.index(book[GUIDE]) for view in book.views)
@@ -151,7 +192,7 @@ def test_observed_zero_and_unavailable_have_distinct_inputs_scores_and_audit(tmp
     assert len(book[RAW].data_validations.dataValidation) == 0
     assert "조회 권한 부족" in book[RAW]["K7"].value
     assert len(book[RAW]["K5"].value) < 30 and book[RAW]["K5"].comment is None
-    assert all(book[RAW].row_dimensions[row].height <= 20 for row in range(5, 57))
+    assert all(book[RAW].row_dimensions[row].height <= 34 for row in range(5, 57))
     assert book[PROCESS].data_validations.dataValidation
     assert book[RAW]["E5"].value == "역할 할당이 1건 이상 확인된 환경 수"
     assert book[RAW]["E6"].value == "관리자에게 보이는 Power Platform 환경 수"
@@ -305,7 +346,7 @@ def test_platform_breakdown_reuses_real_identity_and_blueprint_linkage() -> None
 def test_matrix_scope_for_combined_copilot_and_azure_checks() -> None:
     from easm_agent.report_integrated import platform_breakdown, platform_scope
 
-    config = load_criteria()["items"]["BI-SY-13"]
+    config = load_criteria(Settings(criteria_file=ROOT / "tests" / "fixtures" / "resource-criteria.yaml"))["items"]["BI-SY-13"]
     finding = Finding(
         se_code="BI-SY-13", scope="partial", level="L2", metric_value=0.5, rationale="test",
         measurement=AssessmentMeasurement(
@@ -414,14 +455,14 @@ def test_copilot_details_use_publication_and_actual_target_decisions(tmp_path: P
     write_workbook(data, findings, path)
     book = load_workbook(path)
     detail = book["2b_세부 내역"]
-    assert [detail[f"B{row}"].value for row in (20, 21, 22, 24)] == [1, 1, 0, 2]
+    assert [detail[f"B{row}"].value for row in (20, 21, 22, 24)] == [2, 0, 0, 2]
     assert "사용 이력 아님" in detail["A18"].value
     assert "실제 노출·조치 기록 아님" in detail["A26"].value
     assert all(detail[f"B{row}"].value == detail[f"C{row}"].value == 2 for row in range(28, 32))
     assert "C28/B28" in detail["E28"].value
     assert "Agent 중복" in detail["A32"].value
     report = book["7_보고서 산출"]
-    assert report["C168"].value == "Copilot 게시·채널 구성 분류"
+    assert report["C168"].value == "전체 관측 대상 생성·등록·배포 상태"
     assert report["F169"].value == "2b_세부 내역!B32"
     for row in range(97, 123):
         assert report[f"A{row}"].value == "p.11" and report[f"B{row}"].value == "26개 항목 판정"
@@ -433,9 +474,32 @@ def test_copilot_details_use_publication_and_actual_target_decisions(tmp_path: P
     data.copilot_agents[0].channels = None
     write_workbook(data, findings, path)
     book = load_workbook(path)
-    assert book["2b_세부 내역"]["B20"].value is None
-    assert "미확인" in book["2b_세부 내역"]["F24"].value
+    assert book["2b_세부 내역"]["B20"].value == 2
+    assert "일치" in book["2b_세부 내역"]["F24"].value
     book.close()
+
+
+def test_foundry_creation_is_reported_without_claiming_publication_or_runtime(tmp_path: Path):
+    data = collection()
+    data.facts["agent_inventory_complete"] = True
+    data.agents = [
+        AgentEvidence(collected_at=NOW, platform="foundry", agent_id="created-agent",
+                      agent_name="Foundry", detection_confidence="tag", created_at=NOW),
+        AgentEvidence(collected_at=NOW, platform="langchain", agent_id="host",
+                      agent_name="Host", detection_confidence="tag"),
+    ]
+    data.exclude_host_candidates()
+    path = tmp_path / "states.xlsx"
+    write_workbook(data, [], path)
+    book = load_workbook(path)
+    detail = book["2b_세부 내역"]
+    assert detail["H37"].value == "생성·등록 확인" and detail["N37"].value == 1
+    assert detail["H38"].value is None and detail["N38"].value is None
+    assert detail.column_dimensions["N"].hidden
+    assert "채널 게시·실행 성공은 별도" in detail["M37"].value
+    assert book["1a_플랫폼 기준"]["G7"].value == 1 and book["1a_플랫폼 기준"]["H7"].value == 0
+    assert detail["B20"].value == 1 and detail["B22"].value == 0
+    assert "$N$37:$N$37" in book["2a_월별 추이"]["C10"].value
 
 
 def test_region_breakdown_does_not_assign_azure_population_to_copilot() -> None:
@@ -458,7 +522,6 @@ def test_report_columns_keep_numeric_units_formulas_and_section_headers(tmp_path
     book = load_workbook(path)
     sheet = book["7_보고서 산출"]
     assert sheet.freeze_panes == "A3" and sheet.print_title_rows == "$1:$2"
-    assert {sheet.row_dimensions[row].height for row in range(1, sheet.max_row + 1)} == {24}
     assert sheet["G4"].value == "보정 여부" and sheet["G15"].value == "보고서 표기"
     assert sheet["D169"].number_format == "General"
     assert sheet["E169"].value == "건"
@@ -545,12 +608,12 @@ def test_matrix_sheet_shows_real_platform_breakdown_and_reconciles_unmapped_iden
     assert "P1 1/1 · P2 0/0 · P3 1/1" in matrix["Q10"].value
     assert "미귀속 1건 중 충족 0건" in matrix["Q10"].value
     platform = book["1a_플랫폼 기준"]
-    assert platform["J5"].value == (
+    assert platform["M5"].value == (
         "=COUNTIF(INDEX('2c_수집 매트릭스'!$E$8:$K$33,0,"
         "MATCH($A5,'2c_수집 매트릭스'!$E$6:$K$6,0)),\"A\")"
     )
-    assert platform["I5"].value == "=J5+K5"
-    assert platform["N5"].value == (
+    assert platform["L5"].value == "=M5+N5"
+    assert platform["Q5"].value == (
         "=COUNTIF(INDEX('2c_수집 매트릭스'!$E$8:$K$33,0,"
         "MATCH($A5,'2c_수집 매트릭스'!$E$6:$K$6,0)),\"해당 없음\")"
     )
@@ -612,8 +675,8 @@ def test_collect_package_and_deck_use_the_new_default_without_azure(tmp_path: Pa
     with patch("easm_agent.cli.DefaultAzureCredential", side_effect=AssertionError("Azure 호출 금지")):
         assert main(["collect", "--fixture", str(fixture), "--output-dir", str(tmp_path)]) == 0
         result = load_result(tmp_path)
-        workbook = next(tmp_path.rglob("report-*.xlsx"))
-        presentation = next(tmp_path.rglob("EASM-report-*.pptx"))
+        workbook = next(tmp_path.rglob("AI Agent Governance Readiness*.xlsx"))
+        presentation = next(tmp_path.rglob("AI Agent Governance Readiness*.pptx"))
         assert read_assessment(workbook).interview_items[0].score == 4
         assert main(["package", "--output-dir", str(workbook.parent)]) == 0
         assert main(["deck", "--output-dir", str(workbook.parent)]) == 0
@@ -627,8 +690,8 @@ def test_authentication_failure_outputs_both_reports_and_extractable_values(tmp_
         "easm_agent.cli.collect", side_effect=AccessError("permission_denied", "private token not logged"),
     ):
         assert main(["collect", "--output-dir", str(tmp_path)]) == 2
-    workbook = next(tmp_path.rglob("report-*.xlsx"))
-    assert next(tmp_path.rglob("EASM-report-*.pptx")).is_file()
+    workbook = next(tmp_path.rglob("AI Agent Governance Readiness*.xlsx"))
+    assert next(tmp_path.rglob("AI Agent Governance Readiness*.pptx")).is_file()
     result = load_result(workbook.parent)
     assert len(result["findings"]) == 26
     assert all(row["level"] == "N/A" and row["reason"] == "permission_denied" for row in result["findings"])
@@ -666,7 +729,7 @@ def test_explicit_manual_source_and_existing_run_are_preserved(tmp_path: Path) -
     with patch("easm_agent.cli.DefaultAzureCredential", side_effect=AssertionError("Azure 호출 금지")):
         assert main(["collect", "--fixture", str(ROOT / "tests" / "fixtures" / "three_subscriptions.json"),
                      "--interview-workbook", str(manual), "--output-dir", str(tmp_path)]) == 0
-        workbook = next(tmp_path.rglob("report-*.xlsx"))
+        workbook = next(tmp_path.rglob("AI Agent Governance Readiness*.xlsx"))
         assert main(["package", "--output-dir", str(workbook.parent)]) == 0
     assert load_workbook(workbook)[PROCESS]["M5"].value == "원본 보존 검증"
     assert load_workbook(workbook)["1_진단 개요"]["B34"].value == 1.4

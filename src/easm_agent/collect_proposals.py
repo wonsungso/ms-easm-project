@@ -6,8 +6,7 @@ from datetime import datetime
 from typing import Any
 
 from easm_agent.azure import ARM, GRAPH_URL, AccessError, ReaderHTTP, issue
-from easm_agent.collect_inventory import HOSTS
-from easm_agent.models import HOSTED_AGENT_PLATFORMS, Collection, ProposalObservation
+from easm_agent.models import Collection, ProposalObservation
 
 PRIVILEGED_ROLES = {
     "8e3af657-a8ff-443c-a75c-2fe8c4bcb635": "Owner",
@@ -16,9 +15,7 @@ PRIVILEGED_ROLES = {
     "f58310d9-a9f6-439a-9e8d-f62e7b41a168": "Role Based Access Control Administrator",
 }
 AI_ACCOUNT_KINDS = ("aiservices", "openai")
-AI_TYPES = (
-    "microsoft.cognitiveservices/accounts", "microsoft.web/sites", "microsoft.app/containerapps",
-)
+AI_TYPES = ("microsoft.cognitiveservices/accounts",)
 PROPERTIES_QUERY = (
     "Resources | where type in~ ({types}) | project id, name, type, kind, location,"
     " identityType=tostring(identity.type), principalId=tostring(identity.principalId),"
@@ -132,20 +129,13 @@ class ProposalCollector:
     def targets(self, sid: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         if sid in self.cache:
             return self.cache[sid]
-        host_ids = {
-            (agent.resource_id or "").lower() for agent in self.data.agents
-            if agent.platform in HOSTED_AGENT_PLATFORMS and agent.subscription_id == sid
-        }
         types = quoted(AI_TYPES)
         rows = self.graph(sid, PROPERTIES_QUERY.format(types=types))
         accounts = [
             row for row in rows
             if row["type"].lower() == AI_TYPES[0] and str(row.get("kind", "")).lower() in AI_ACCOUNT_KINDS
         ]
-        hosts = [
-            row for row in rows
-            if row["type"].lower() in HOSTS and row["id"].lower() in host_ids
-        ]
+        hosts: list[dict[str, Any]] = []
         self.cache[sid] = (accounts, hosts)
         self.cache_refs[sid] = self.refs()
         return accounts, hosts
@@ -374,7 +364,6 @@ class ProposalCollector:
     def policy(self, sid: str, result: Collection) -> None:
         types = quoted((
             "microsoft.cognitiveservices/accounts", "microsoft.cognitiveservices/accounts/projects",
-            "microsoft.web/sites", "microsoft.app/containerapps",
         ))
         rows = self.graph(sid, POLICY_QUERY.format(types=types))
         refs = self.refs()
@@ -382,7 +371,7 @@ class ProposalCollector:
         relevant = {row["id"].lower() for row in (*accounts, *hosts)}
         relevant.update(
             agent.resource_id.lower() for agent in self.data.agents
-            if agent.subscription_id == sid and agent.resource_id
+            if agent.platform == "foundry" and agent.subscription_id == sid and agent.resource_id
         )
         rows = [row for row in rows if str(row.get("resourceId", "")).lower() in relevant]
         by_resource: dict[str, set[str]] = {}

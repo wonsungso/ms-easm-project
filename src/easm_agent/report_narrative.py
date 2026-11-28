@@ -118,9 +118,13 @@ CONTROL_VERDICT = {
 }
 
 
+def topic(d: DeckData, code: str) -> str:
+    return d.label(code) if code in d.registry_codes else TOPIC.get(code, d.label(code))
+
+
 def compact(d: DeckData, code: str) -> str:
     """Short business label with the n/d numbers, e.g. '유출 방지 규칙 적용 0/2'."""
-    if d.score(code) is None:
+    if d.score(code) is None or code in d.registry_codes:
         return d.fact(code)
     pair = d.counts(code)
     if pair is None or code not in FACTS:
@@ -131,6 +135,8 @@ def compact(d: DeckData, code: str) -> str:
 
 
 def risk_short(d: DeckData, code: str) -> str:
+    if code in d.registry_codes:
+        return d.risk(code)
     return RISK_SHORT.get(code) or d.risk(code)
 
 
@@ -155,7 +161,7 @@ def footer(d: DeckData, page: int, *notes: str, lead: str = "", limit: float = 8
 
 
 def pending_names(d: DeckData) -> str:
-    return " · ".join(TOPIC.get(item.code, item.code) for item in d.pending)
+    return " · ".join(topic(d, item.code) for item in d.pending)
 
 
 def pending_reasons(d: DeckData) -> str:
@@ -171,6 +177,8 @@ def catalog_clause(d: DeckData) -> str | None:
     catalog = d.catalog
     if catalog is None:
         return None
+    if catalog.source == "통합 관측 생성월":
+        return f"생성 시각이 확인된 통합 관측 대상이 월 {catalog.first}개 → {catalog.last}개로"
     word = ("Agent 365 목록 패키지" if catalog.source.startswith("Agent 365") else "신규 Azure 에이전트")
     store = "(스토어 앱 포함)" if catalog.source.startswith("Agent 365") else ""
     base = f"{word}가 월 {catalog.first}개 → {catalog.last}개{store}로"
@@ -361,7 +369,8 @@ def insights(d: DeckData) -> tuple[str, str, str]:
     waiting = d.score("OT-SY-24") is None
     spread = ""
     if catalog:
-        who = "Agent 365 목록 패키지가" if catalog.source.startswith("Agent 365") else "Azure 에이전트가"
+        who = ("통합 관측 대상이" if catalog.source == "통합 관측 생성월" else
+               "Agent 365 목록 패키지가" if catalog.source.startswith("Agent 365") else "Azure 에이전트가")
         spread = f"{who} 월 {catalog.first}→{catalog.last}개로 늘고 "
     cost = "비용 구분은 확인 중" if waiting else compact(d, "OT-SY-24")
     action = ("전사 에이전트 목록과 비용 구분 체계 수립" if waiting or d.score("OT-SY-24") < 3
@@ -386,6 +395,8 @@ def overview(d: DeckData) -> dict[int, str]:
     spread = (
         f"{catalog.last}개\n월 신규 목록 패키지 ({len(catalog.months)}개월 전 {catalog.first}개)"
         if catalog and catalog.source.startswith("Agent 365")
+        else f"{catalog.last}개\n생성 시각 확인 통합 대상 ({len(catalog.months)}개월 전 {catalog.first}개)"
+        if catalog and catalog.source == "통합 관측 생성월"
         else f"{catalog.last}개\n월 신규 Azure 에이전트 ({len(catalog.months)}개월 전 {catalog.first}개)" if catalog
         else f"{d.azure_agents() or 0}개\nAzure에서 확인된 에이전트"
     )
@@ -541,13 +552,13 @@ def matrix_rows(d: DeckData) -> list[list[str]]:
                 row.extend(["", "", ""])
                 continue
             code = items[position].code
-            topic = TOPIC.get(code, d.label(code))
+            label = topic(d, code)
             if d.score(code) is None:
-                row.extend([f"{code}\n{topic}", "-", PENDING_LABEL])
+                row.extend([f"{code}\n{label}", "-", PENDING_LABEL])
                 continue
             fraction, percent = d.fraction(code), d.percent(code)
             row.extend([
-                f"{code}\n{topic}",
+                f"{code}\n{label}",
                 f"{fraction} ({percent})" if fraction and percent else fraction or d.metric_text(code),
                 d.level(code),
             ])
@@ -565,7 +576,7 @@ def distribution(d: DeckData) -> list[int]:
 
 def headline_matrix(d: DeckData) -> str:
     gaps = sorted(d.gaps(tuple(d.items)), key=lambda c: (d.score(c), c))
-    top = [TOPIC.get(code, d.label(code)) for code in gaps[:3]]
+    top = [topic(d, code) for code in gaps[:3]]
     lead = f"측정 가능한 {len(d.scored)}개 항목 중 {d.passed}개가 L3 목표를 충족했으나"
     tail = f" {' · '.join(top)} 등 {len(gaps)}개 항목은 L3 미달" if gaps else " L3 미달 항목은 없음"
     wait = f"이며 {len(d.pending)}개 항목은 확인 중" if d.pending else ""
@@ -576,7 +587,7 @@ def matrix_box(d: DeckData) -> str:
     gaps = sorted(d.gaps(tuple(d.items)), key=lambda c: (d.score(c), c))
     if not gaps:
         return "L3 미달 없음\n\n측정된 모든 항목이 L3 이상\n\n→ 정기 재점검으로 유지 확인"
-    names = " · ".join(TOPIC.get(code, d.label(code)) for code in gaps[:3])
+    names = " · ".join(topic(d, code) for code in gaps[:3])
     return f"L3 미달 {len(gaps)}개 항목\n\n{names} 등\n\n→ 설정 변경 중심이라 빠른 개선 가능"
 
 
@@ -592,6 +603,8 @@ def headline_creation(d: DeckData) -> str:
     catalog = d.catalog
     creation = d.gaps(DOMAIN_CODES["creation"])
     worst = d.worst_gap(DOMAIN_CODES["creation"])
+    if catalog and catalog.source == "통합 관측 생성월":
+        return f"MS·이기종 관측 대상 중 생성 시각 확인 {catalog.total}개 - 플랫폼별 구성 상태와 생성월 분포를 함께 확인"
     if catalog is None:
         return ("신규 에이전트 확산 추이는 등록 목록 수집 후 표시하며, 현재 "
                 + (d.long_fact(worst) if worst else "생성 통제는 기준을 충족"))
@@ -615,6 +628,8 @@ def creation_caption(d: DeckData) -> str:
     catalog = d.catalog
     if catalog is None:
         return "신규 등록 이력은 등록 목록 수집 후 표시"
+    if catalog.source == "통합 관측 생성월":
+        return f"생성 시각 확인 {catalog.total}개 중 생성·등록·배포 확인 {catalog.built}개 - 실행 이력 아님"
     owners = d.catalog_owner_clause()
     if catalog.source.startswith("Agent 365"):
         parts = [f"{len(catalog.months)}개월 누적 목록 패키지 {catalog.total}개 중 직접 제작·구성 {catalog.built}개"
@@ -636,6 +651,9 @@ def creation_insight(d: DeckData) -> str:
 def creation_notes(d: DeckData) -> list[str]:
     """Footnote lines on how to read the monthly package chart."""
     catalog = d.catalog
+    if catalog is not None and catalog.source == "통합 관측 생성월":
+        return ["※ MS·이기종 통합 관측 대상의 생성월 분포. 생성 시각 미확인은 제외",
+                "※ Foundry 생성·등록, Copilot 게시, 이기종 원본 ID 연결 기준. 실행 성공·과거 승인 이력 아님"]
     if catalog is None or not catalog.source.startswith("Agent 365"):
         return []
     lines = ["※ Agent 365 목록 패키지 기준 · 플랫폼 미확인 앱(스토어 앱 포함) · 등록일은 이 테넌트 등록일과 다를 수 있음"]
@@ -822,10 +840,10 @@ def headline_security(d: DeckData) -> str:
     weak = sorted((c for c in SECURITY_POOL if d.score(c) is not None and d.score(c) < 3),
                   key=lambda c: (d.score(c), c))
     wait = [c for c in SECURITY_POOL if d.score(c) is None]
-    strong_text = " · ".join(TOPIC[c] for c in strong)
+    strong_text = " · ".join(topic(d, c) for c in strong)
     weak_text = fit([d.fact(c) for c in weak[:2]], 46)
     risks = " · ".join(dict.fromkeys(risk_short(d, c) for c in weak[:2]))
-    wait_text = f" (확인 중 : {' · '.join(TOPIC[c] for c in wait[:2])})" if wait else ""
+    wait_text = f" (확인 중 : {' · '.join(topic(d, c) for c in wait[:2])})" if wait else ""
     if weak and strong:
         return pick([f"{strong_text} 등은 갖췄으나 {weak_text} - {risks}{wait_text}",
                      f"{strong_text} 등은 갖췄으나 {weak_text}{wait_text}"], 112)
@@ -839,7 +857,7 @@ def security_box(d: DeckData) -> tuple[str, str]:
     first = "\n".join(protect[:2]) if protect else "도구 연결 보호는 확인 중"
     weak = [c for c in SECURITY_POOL if d.score(c) is not None and d.score(c) < 3]
     if weak:
-        names = " · ".join(TOPIC[c] for c in sorted(weak, key=lambda c: (d.score(c), c))[:2])
+        names = " · ".join(topic(d, c) for c in sorted(weak, key=lambda c: (d.score(c), c))[:2])
         second = f"{names} 공백 → 접근 시도·규칙 위반 방치 가능성, 적용 결정 필요"
     else:
         second = "품질 · 보안 설정이 기준을 충족 - 재점검으로 유지 확인"
@@ -855,7 +873,7 @@ def security_notes(d: DeckData) -> str:
         note = d.pending_note(code)
         if code == "BI-SY-10" and "구독" in note:
             note += "(Defender 평가 반영 후 판정)"
-        parts.append(note if code == "BI-SY-10" else f"{TOPIC[code]} {note}")
+        parts.append(note if code == "BI-SY-10" else f"{topic(d, code)} {note}")
     return ", ".join(parts)
 
 
@@ -908,7 +926,7 @@ def headline_ops(d: DeckData) -> str:
     gaps = sorted(d.gaps(codes), key=lambda c: (d.score(c), c))
     good = [c for c in ("OE-SY-20", "OE-SY-21", "OT-SY-26") if d.score(c) is not None and d.score(c) >= 4]
     gap_text = fit([d.fact(c) for c in gaps[:2]], 44)
-    good_text = " · ".join(TOPIC[c] for c in good[:3])
+    good_text = " · ".join(topic(d, c) for c in good[:3])
     cost = ("에이전트별 비용은 청구 반영 후에야 확인 가능" if d.score("OT-SY-24") is None
             else d.fact("OT-SY-24"))
     if gaps and good:

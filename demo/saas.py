@@ -150,6 +150,34 @@ def settings_for(options: dict, setup: dict) -> SaaSSettings | None:
     return settings
 
 
+def run_cli(root: Path, phase: str, command: list[str], timeout_seconds: int) -> str:
+    environment = os.environ.copy()
+    for key in (
+        "M365_ACCOUNT_NAME", "M365_ACCOUNT_PASSWORD", "TEAMS_APP_ID", "M365_APP_ID",
+        "M365_TITLE_ID", "M365_TENANT_ID", "TEAMSFX_M365_TENANT_ID",
+        "AGENT_SCOPE", "TEAMSFX_ENV", "APP_NAME_SUFFIX",
+    ):
+        environment.pop(key, None)
+    environment.update({
+        "NO_COLOR": "1", "AZURE_CORE_COLLECT_TELEMETRY": "false",
+        "AZURE_CORE_ONLY_SHOW_ERRORS": "true", "AZURE_LOGGING_ENABLE_LOG_FILE": "false",
+        "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1",
+    })
+    try:
+        result = subprocess.run(
+            command, cwd=root, env=environment, capture_output=True, text=True,
+            encoding="utf-8", errors="replace", timeout=timeout_seconds,
+            check=False, shell=False,
+        )
+    except subprocess.TimeoutExpired:
+        raise SaaSError(phase, "timeout - 부분 실행 여부를 수동 확인하세요.") from None
+    except OSError:
+        raise SaaSError(phase, "실행 파일 시작 실패") from None
+    if result.returncode:
+        raise SaaSError(phase, f"exit={result.returncode} - 원문 응답은 저장/출력하지 않습니다.")
+    return result.stdout
+
+
 class CLITools:
     def __init__(self, root: Path, settings: SaaSSettings) -> None:
         self.root, self.settings = root.resolve(), settings
@@ -175,32 +203,7 @@ class CLITools:
         self.azure = cli_prefix()
 
     def run(self, phase: str, command: list[str]) -> str:
-        environment = os.environ.copy()
-        # 비대화형 Toolkit의 암호 기반 자동 로그인 경로를 사용하지 않는다.
-        for key in (
-            "M365_ACCOUNT_NAME", "M365_ACCOUNT_PASSWORD", "TEAMS_APP_ID", "M365_APP_ID",
-            "M365_TITLE_ID", "M365_TENANT_ID", "TEAMSFX_M365_TENANT_ID",
-            "AGENT_SCOPE", "TEAMSFX_ENV", "APP_NAME_SUFFIX",
-        ):
-            environment.pop(key, None)
-        environment.update({
-            "NO_COLOR": "1", "AZURE_CORE_COLLECT_TELEMETRY": "false",
-            "AZURE_CORE_ONLY_SHOW_ERRORS": "true", "AZURE_LOGGING_ENABLE_LOG_FILE": "false",
-            "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1",
-        })
-        try:
-            result = subprocess.run(
-                command, cwd=self.root, env=environment, capture_output=True, text=True,
-                encoding="utf-8", errors="replace", timeout=self.settings.timeout_seconds,
-                check=False, shell=False,
-            )
-        except subprocess.TimeoutExpired:
-            raise SaaSError(phase, "timeout - 부분 실행 여부를 수동 확인하세요.") from None
-        except OSError:
-            raise SaaSError(phase, "실행 파일 시작 실패") from None
-        if result.returncode:
-            raise SaaSError(phase, f"exit={result.returncode} - 원문 응답은 저장/출력하지 않습니다.")
-        return result.stdout
+        return run_cli(self.root, phase, command, self.settings.timeout_seconds)
 
     def atk(self, phase: str, *args: str) -> str:
         guard = self.root / "demo" / "m365" / "easm-demo-declarative" / "toolkit-no-login.cjs"

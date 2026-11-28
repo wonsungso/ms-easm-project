@@ -217,6 +217,9 @@ class DeckData:
         self.customer = customer
         self.collected_at = collected_at or (collection.collected_at if collection else None)
         self.items = {item.code: item for item in assessment.system_items}
+        from easm_agent.agent365_grading import REGISTRY_CHECKS, REGISTRY_PROFILES
+
+        self.registry_codes = set(REGISTRY_CHECKS) if self.value("criteria.profile") in REGISTRY_PROFILES else set()
         self.scored = [item for item in self.items.values() if item.score is not None]
         self.passed = sum(item.score >= GAP_LEVEL for item in self.scored)
         self.pending = [item for item in self.items.values() if item.score is None]
@@ -338,6 +341,8 @@ class DeckData:
 
     def pending_reason(self, code: str) -> str:
         """Short plain reason shown after '확인 중' in footnotes."""
+        if code in self.registry_codes:
+            return "Agent 365 필수 구성·기록 증적 미확인"
         metric = self.metrics.get("se." + code)
         reason = metric.reason if metric and metric.reason else ""
         if code == "BI-SY-10" and self.collection and self.collection.copilot_agents:
@@ -347,6 +352,8 @@ class DeckData:
         return PENDING_REASON_PLAIN.get(reason, "조회 범위 확인")
 
     def label(self, code: str) -> str:
+        if code in self.registry_codes and code in self.items:
+            return str(self.value(f"se.{code}.title") or self.items[code].title)
         return LABELS.get(code) or (self.items[code].title if code in self.items else code)
 
     def _pattern(self, pattern: str, code: str) -> str:
@@ -363,6 +370,8 @@ class DeckData:
 
     def fact(self, code: str, *, short: bool = True) -> str:
         """Business wording with the numbers; a pending item says it is being confirmed."""
+        if code in self.registry_codes:
+            return f"{self.label(code)} {self.fraction(code) or self.level(code)}"
         label = FACTS[code][0] if code in FACTS else self.label(code)
         if self.score(code) is None:
             return f"{label} 확인 중"
@@ -378,6 +387,8 @@ class DeckData:
         return self.fact(code, short=False)
 
     def risk(self, code: str) -> str:
+        if code in self.registry_codes:
+            return "중앙 등록정보의 확인·추적 범위가 제한될 수 있음"
         return FACTS[code][3] if code in FACTS else ""
 
     def gap_line(self, code: str) -> str:
@@ -467,9 +478,15 @@ class DeckData:
     def catalog(self) -> Catalog | None:
         if self.collection is None or self.collection.collected_at is None:
             return None
+        from easm_agent.report_agent_inventory import agent_report_records
+
+        observed = agent_report_records(self.collection)
+        records = [(record.created_at, record.lifecycle_confirmed is True) for record in observed if record.created_at is not None]
+        source = "통합 관측 생성월"
         packages = [p for p in self.collection.agent365_packages if p.created_at is not None]
-        records = [(p.created_at, p.platform not in (None, "", BUILT_NOT_AVAILABLE)) for p in packages]
-        source = "Agent 365 목록"
+        if not observed:
+            records = [(p.created_at, p.platform not in (None, "", BUILT_NOT_AVAILABLE)) for p in packages]
+            source = "Agent 365 목록"
         if not records:
             records = [(a.created_at, True) for a in self.collection.agents if a.created_at is not None]
             source = "Azure 에이전트 생성일"

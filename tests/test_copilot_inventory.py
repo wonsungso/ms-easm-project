@@ -19,12 +19,18 @@ from easm_agent.azure import (
 from easm_agent.collect import collect, merge
 from easm_agent.collect_copilot import (
     CopilotInventoryExport,
+    CopilotInventoryRow,
     load_copilot_export,
     read_copilot_inventory,
     read_copilot_reviews,
 )
 from easm_agent.models import Collection, Settings
-from scripts.export_copilot_inventory import PROJECTION, export_inventory, inventory_pages
+from scripts.export_copilot_inventory import (
+    PROJECTION,
+    export_inventory,
+    inventory_pages,
+    read_empty_evaluations_cli,
+)
 
 NOW = datetime.now(UTC)
 TENANT = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
@@ -43,6 +49,26 @@ def row(identifier: str = BUILDER, origin: str = "Microsoft Copilot Agent Builde
         "model": None, "authentication": "Microsoft Entra", "channels": [],
         "is_quarantined": False, "shared_with_tenant": False,
     }
+
+
+@pytest.mark.parametrize("runs", [[], [{"unexpected": "payload"}]])
+def test_native_cli_evaluation_read_never_turns_unverified_history_into_zero(runs: list) -> None:
+    agent = CopilotInventoryRow.model_validate_json(json.dumps(row(STUDIO, "Copilot Studio")))
+    responses = [
+        {"success": True, "schemaVersion": 1, "signedIn": True, "tenantId": TENANT},
+        {"success": True, "schemaVersion": 1, "agents": [{
+            "agentId": "local", "mcsAgentId": STUDIO, "environmentId": agent.environment_id, "tenantId": TENANT,
+        }]},
+        {"success": True, "schemaVersion": 1, "status": "evaluations-listed",
+         "mcsAgentId": STUDIO, "environmentId": agent.environment_id, "truncated": False, "runs": runs},
+    ]
+    with patch("scripts.export_copilot_inventory.subprocess.run", side_effect=[
+        Mock(returncode=0, stdout=json.dumps(response)) for response in responses
+    ]):
+        result = read_empty_evaluations_cli(Path("msagent.exe"), Path("project"), TENANT, agent)
+    assert result.completed is (not runs)
+    assert result.runs == []
+    assert result.reason == ("feature_unavailable" if runs else None)
 
 
 def packet() -> dict:
@@ -548,6 +574,8 @@ def test_agent365_registry_is_opt_in_minimized_and_preserves_failures(
 
     settings = Settings(
         tenant_id=TENANT, expected_principal_id=OWNER, subscriptions=[OTHER],
+        agent365_tools_enabled=False,
+        criteria_file=Path(__file__).parent / "fixtures" / "resource-criteria.yaml",
         evidence_dir=tmp_path / "evidence", **({"agent365_registry": True} if enabled else {}),
     )
     baseline = Collection(collected_at=NOW, completed_subscriptions=[OTHER],

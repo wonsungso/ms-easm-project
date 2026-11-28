@@ -14,6 +14,7 @@ from pathlib import Path
 from azure.core.exceptions import ClientAuthenticationError
 from azure.identity import DefaultAzureCredential
 
+from easm_agent.agent365_insights import catalog_changes, read_connections
 from easm_agent.azure import AccessError, EvidenceStore
 from easm_agent.collect import collect, merge
 from easm_agent.collect_admin_evidence import read_admin_evidence
@@ -57,6 +58,7 @@ def main(argv: list[str] | None = None) -> int:
     command.add_argument("--copilot-inventory-file", action="append", type=Path, default=[])
     command.add_argument("--copilot-review-file", action="append", type=Path, default=[])
     command.add_argument("--report-evidence-file", action="append", type=Path, default=[])
+    command.add_argument("--agent365-connections-file", type=Path, help="승인된 연결 상태 관리 화면 증적 JSON")
     command.add_argument("--report-cost-history", action="store_true", help="현재 Azure AI 리소스의 과거 비용 읽기 - 과거 Agent 귀속은 추론하지 않음")
     command.add_argument(
         "--copilot-only", action="store_true",
@@ -79,6 +81,7 @@ def main(argv: list[str] | None = None) -> int:
     package.add_argument("--copilot-inventory-file", action="append", type=Path, default=[])
     package.add_argument("--copilot-review-file", action="append", type=Path, default=[])
     package.add_argument("--report-evidence-file", action="append", type=Path, default=[])
+    package.add_argument("--agent365-connections-file", type=Path, help="승인된 연결 상태 관리 화면 증적 JSON")
     package.add_argument("--tenant-id")
     package.add_argument(
         "--reassess", action="store_true",
@@ -92,10 +95,10 @@ def main(argv: list[str] | None = None) -> int:
     values.add_argument("--workbook", type=Path, required=True)
     values.add_argument("--output", type=Path)
     deck = subparsers.add_parser(
-        "deck", help="인터뷰 점수를 기입한 Excel 보고서에서 PPT 보고서(EASM-report-<타임스탬프>.pptx) 생성",
+        "deck", help="인터뷰 점수를 기입한 Excel 보고서에서 수집일 기준 PPT 보고서 생성",
     )
     deck.add_argument("--output-dir", type=Path, default=Path("output"), help="실행 폴더 또는 그 상위 output 폴더")
-    deck.add_argument("--workbook", type=Path, help="기입이 끝난 Excel 보고서 - 기본값은 실행 폴더의 report-*.xlsx")
+    deck.add_argument("--workbook", type=Path, help="기입이 끝난 Excel 보고서 - 기본값은 실행 결과에 기록된 Excel")
     deck.add_argument("--customer", default=DEFAULT_CUSTOMER, help="PPT 표지의 고객사명")
     args = parser.parse_args(argv)
     logging.getLogger("azure").setLevel(logging.WARNING)
@@ -128,17 +131,18 @@ def main(argv: list[str] | None = None) -> int:
             source = latest_raw(args.output_dir)
             if source is None:
                 raise ValueError("수집 결과 raw-data JSON을 찾을 수 없습니다.")
-            stamp = source.stem.removeprefix("raw-data-")
-            workbook = args.workbook or source.parent / f"report-{stamp}.xlsx"
+            from easm_agent.report import presentation_name, report_workbook
+
+            result = load_result(source.parent)
+            collection = Collection.model_validate(result["collection"])
+            workbook = args.workbook or report_workbook(source.parent, collection, result)
             if not workbook.is_file():
                 raise FileNotFoundError(f"Excel 보고서를 찾을 수 없습니다: {workbook}")
-            result = load_result(source.parent)
             refresh_interview_summary(
                 workbook, Collection.model_validate(result["collection"]),
                 [Finding.model_validate(row) for row in result["findings"]],
             )
-            deck_path = source.parent / f"EASM-report-{stamp}.pptx"
-            collection = Collection.model_validate(result["collection"])
+            deck_path = source.parent / presentation_name(collection)
             findings = [Finding.model_validate(row) for row in result["findings"]]
             mode = result.get("mode") or collection.facts.get("data_mode") or "live"
             write_presentation(workbook, deck_path, context_from_workbook(
@@ -222,6 +226,17 @@ def main(argv: list[str] | None = None) -> int:
                     merge(data, read_report_evidence(path, tenant, datetime.now(UTC), store))
                 data.evidence_sources.extend(store.sources())
             data.facts["data_mode"] = mode
+            if args.agent365_connections_file:
+                if mode != "live" or not args.tenant_id:
+                    raise ValueError("연결 화면 증적에는 live 결과·명시적 테넌트가 필요합니다.")
+                directory = source.parent / "evidence"
+                directory.mkdir(exist_ok=True)
+                store = EvidenceStore(directory)
+                data.facts["agent365_connection_observations"] = read_connections(
+                    args.agent365_connections_file, args.tenant_id, store, datetime.now(UTC),
+                )
+                data.evidence_sources.extend(store.sources())
+                data.facts["evidence_directory"] = str(source.parent.resolve())
             if args.reassess:
                 settings = load_settings(args.config)
                 if args.criteria:
@@ -237,6 +252,7 @@ def main(argv: list[str] | None = None) -> int:
                     interviews={row.se_code: row.interview_level for row in findings if row.interview_level is not None},
                     provenance_origin="saved_snapshot_reassessment",
                 )
+                data.proposals = evaluate_proposals(data, conventions)
                 data.assessment_provenance.source_result_data_sha256 = result.get("manifest", {}).get("data_sha256")
             write_reports(data, findings, source.parent, mode, new_run=False, customer=args.customer,
                           interview_workbook=args.interview_workbook)
@@ -351,6 +367,19 @@ def main(argv: list[str] | None = None) -> int:
                 "explicit_subscription_list" if settings.subscriptions else "all_accessible_active_in_tenant"
             )
         data.facts["data_mode"] = "fixture" if args.fixture else "live"
+        if args.agent365_connections_file:
+            if args.fixture or not settings.tenant_id:
+                raise ValueError("연결 화면 증적에는 live 결과·명시적 테넌트가 필요합니다.")
+            directory = Path(data.facts["evidence_directory"])
+            store = EvidenceStore(directory)
+            data.facts["agent365_connection_observations"] = read_connections(
+                args.agent365_connections_file, settings.tenant_id, store, datetime.now(UTC),
+            )
+            data.evidence_sources.extend(store.sources())
+        if data.facts.get("agent365_requested") is True and not args.fixture:
+            prior_source = latest_raw(args.output_dir)
+            previous = Collection.model_validate(load_result(prior_source.parent)["collection"]) if prior_source else None
+            data.facts["agent365_comparison"] = catalog_changes(data, previous)
         data.proposals = evaluate_proposals(data, load_conventions(settings))
         findings = evaluate(
             data, criteria,

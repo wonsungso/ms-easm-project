@@ -12,18 +12,13 @@ from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
-import requests
 
 from demo import diagnostics as remote
-from demo.agents import agent_revision, agent_tools, auth_settings, configure
+from demo.agents import agent_revision, agent_tools
 from demo.auth import GraphCertificates, TemporaryCertificate
-from demo.diagnostics import ready_health
 from demo.infrastructure import (
     AdminARM,
-    build_linux_package,
     configure_diagnostic_reader,
-    deploy_webapp_code,
-    deploy_zip,
     deployment_parameters,
     plan,
 )
@@ -179,88 +174,39 @@ def test_evaluation_submits_all_three_synthetic_samples(tmp_path: Path) -> None:
     assert result["samples"] == samples and result["status"] == "completed"
 
 
-def authentication_setup(actual: dict) -> tuple[Mock, Mock, Mock, dict, dict, dict, list[tuple]]:
-    setup = {"tenant_id": "test-tenant"}
-    lab = {"lab_id": "test-lab", "region": "koreacentral"}
-    host = {"id": "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Web/sites/site", "name": "site"}
-    identity_id = "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/site-login"
-    events: list[tuple] = []
-    cli, arm, graph = Mock(), Mock(), Mock()
-    arm.ensure.return_value = {"properties": {"principalId": "identity", "clientId": "identity-client"}}
+def test_administrator_sample_waits_for_model_quota() -> None:
+    import httpx
+    from openai import RateLimitError
 
-    def cli_run(*args: str) -> object:
-        events.append(("cli", *args))
-        if args[:2] == ("provider", "list"):
-            return [{"namespace": "Microsoft.ManagedIdentity", "registrationState": "Registered"}]
-        return {}
+    from demo.agents import sample_response
 
-    def arm_request(method: str, path: str, *args: object) -> dict:
-        events.append(("arm", method, path))
-        if path == host["id"]:
-            return {"identity": {"userAssignedIdentities": {identity_id: {}}}}
-        if path.endswith("/config/authsettingsV2") and method == "GET":
-            return actual
-        return {}
-
-    def graph_request(method: str, path: str, *args: object, **kwargs: object) -> dict:
-        if path == "/applications":
-            return {"value": [{
-                "id": "app-object", "appId": "app-client", "notes": "EASMAgent chatbot lab test-lab",
-                "signInAudience": "AzureADMyOrg", "web": {
-                    "redirectUris": ["https://site.azurewebsites.net/.auth/login/aad/callback"],
-                    "implicitGrantSettings": {"enableIdTokenIssuance": True},
-                },
-            }]}
-        if path == "/servicePrincipals":
-            return {"value": [{"id": "principal"}]}
-        if path.endswith("/federatedIdentityCredentials"):
-            return {"value": [{
-                "name": "easmagent-web-login", "issuer": "https://login.microsoftonline.com/test-tenant/v2.0",
-                "subject": "identity", "audiences": ["api://AzureADTokenExchange"],
-            }]}
-        raise AssertionError((method, path))
-
-    cli.run.side_effect, arm.request.side_effect, graph.request.side_effect = cli_run, arm_request, graph_request
-    return cli, arm, graph, setup, lab, host, events
+    response = httpx.Response(
+        429, request=httpx.Request("POST", "https://example.test/responses"),
+        headers={"retry-after": "5"},
+    )
+    client = Mock()
+    client.responses.create.side_effect = [RateLimitError("fixture", response=response, body=None), "real-response"]
+    with patch("demo.agents.time.sleep") as sleep:
+        assert sample_response(client, input="synthetic", max_output_tokens=32, store=False) == "real-response"
+    sleep.assert_called_once_with(5)
+    assert client.responses.create.call_count == 2
 
 
-def test_host_enables_allowed_users_only_after_platform_authentication_is_verified() -> None:
-    actual = auth_settings("test-tenant", "app-client", ["operator"])
-    cli, arm, graph, setup, lab, host, events = authentication_setup(actual)
-    configure(cli, arm, graph, setup, lab, host, ["operator"])
-    verify = next(index for index, event in enumerate(events) if event[0:2] == ("arm", "GET")
-                  and event[2].endswith("/config/authsettingsV2"))
-    enable = next(index for index, event in enumerate(events) if "EASMAGENT_CHAT_ALLOWED_OIDS=operator" in event)
-    assert enable > verify
-    assert "EASMAGENT_CHAT_ALLOWED_OIDS=" in events[0]
+def test_expected_agent_count_uses_foundry_receipts_not_removed_candidates() -> None:
+    from demo.infrastructure import expected_agent_count
+
+    assert expected_agent_count({}) == 1
+    assert expected_agent_count({"expected_agent_count": 10, "chatbot_agents": [
+        {"agent_id": str(index)} for index in range(8)
+    ]}) == 8
+    with pytest.raises(ValueError, match="영수증"):
+        expected_agent_count({"chatbot_agents": []})
 
 
-@pytest.mark.parametrize("broken", [
-    "platform", "provider", "allowed_users", "require_authentication", "redirect", "excluded_paths", "app",
-])
-def test_host_does_not_enable_users_if_platform_authentication_is_incomplete(broken: str) -> None:
-    actual = auth_settings("test-tenant", "app-client", ["operator"])
-    properties = actual["properties"]
-    if broken == "platform":
-        properties["platform"]["enabled"] = False
-    elif broken == "provider":
-        properties["identityProviders"]["azureActiveDirectory"]["enabled"] = False
-    elif broken == "allowed_users":
-        properties["identityProviders"]["azureActiveDirectory"]["validation"]["defaultAuthorizationPolicy"][
-            "allowedPrincipals"
-        ]["identities"] = ["other-user"]
-    elif broken == "require_authentication":
-        properties["globalValidation"]["requireAuthentication"] = False
-    elif broken == "redirect":
-        properties["globalValidation"]["unauthenticatedClientAction"] = "AllowAnonymous"
-    elif broken == "excluded_paths":
-        properties["globalValidation"]["excludedPaths"] = ["/health", "/api/agents"]
-    else:
-        properties["identityProviders"]["azureActiveDirectory"]["registration"]["clientId"] = "other-app"
-    cli, arm, graph, setup, lab, host, events = authentication_setup(actual)
-    with pytest.raises(RuntimeError, match="인증"):
-        configure(cli, arm, graph, setup, lab, host, ["operator"])
-    assert not any("EASMAGENT_CHAT_ALLOWED_OIDS=operator" in event for event in events)
+
+
+
+
 
 
 class FakeCLI:
@@ -343,10 +289,11 @@ def test_acl_failure_does_not_register_any_credential(tmp_path: Path) -> None:
     assert not directory.exists()
 
 
-def test_lab_plan_has_three_scoped_groups_and_no_secret() -> None:
+def test_lab_plan_deploys_foundry_only_and_keeps_collection_scope() -> None:
     options = load_yaml(ROOT / "demo" / "config.yaml")
     result = plan(setup_values(), options)
-    assert len(result["groups"]) == 3
+    assert len(result["groups"]) == 1
+    assert result["groups"][0]["subscription_id"] == setup_values()["subscription_ids"][0]
     assert result["region"] == options["region"]
     assert result["after_run"] == "retain"
     assert result["capacity"] == 1
@@ -414,7 +361,6 @@ def test_new_generation_changes_resource_names_without_changing_approved_scope()
     rebuilt = plan(setup_values(), {**options, "generation": "new-run"})
     assert original["lab_id"] != rebuilt["lab_id"]
     assert original["account_name"] != rebuilt["account_name"]
-    assert original["host_names"] != rebuilt["host_names"]
     assert original["groups"] == rebuilt["groups"]
     assert original["region"] == rebuilt["region"]
 
@@ -422,8 +368,8 @@ def test_new_generation_changes_resource_names_without_changing_approved_scope()
 def test_administrator_arm_blocks_writes_outside_sample_groups() -> None:
     arm = AdminARM(None, ["/subscriptions/fixture/resourceGroups/owned"])
     with pytest.raises(ValueError, match="승인된 리소스 그룹 밖"):
-        arm.request("PUT", "/subscriptions/fixture/resourceGroups/foreign/providers/Microsoft.Web/sites/x",
-                    "2024-04-01", {})
+        arm.request("PUT", "/subscriptions/fixture/resourceGroups/foreign/providers/Microsoft.CognitiveServices/accounts/x",
+                    "2025-06-01", {})
 
 
 def test_lab_cli_plan_does_not_construct_azure_cli(tmp_path: Path) -> None:
@@ -601,25 +547,8 @@ def test_codespace_download_uses_validated_ssh_stream(tmp_path: Path, run_folder
     assert any(command[-1].startswith("base64 ") for command in commands)
 
 
-def test_final_health_waits_for_real_json_after_restart() -> None:
-    old = Mock(status_code=503, headers={"Content-Type": "text/html"})
-    ready = Mock(status_code=200, headers={"Content-Type": "application/json"})
-    ready.json.return_value = {"status": "ready", "sample_revision": "chatbot-v2"}
-    with patch("demo.diagnostics.requests.get", side_effect=[old, ready]), patch(
-        "demo.diagnostics.time.sleep",
-    ):
-        assert ready_health("https://example.test/health")["status"] == "ready"
-    old.json.assert_not_called()
-    old.close.assert_called_once()
-    ready.close.assert_called_once()
 
 
-def test_final_health_does_not_hide_authentication_failure() -> None:
-    denied = Mock(status_code=403)
-    with patch("demo.diagnostics.requests.get", return_value=denied), pytest.raises(
-        RuntimeError, match="403",
-    ):
-        ready_health("https://example.test/health")
 
 
 def test_demo_configuration_yields_mixed_model_allowlist_results() -> None:
@@ -661,7 +590,7 @@ def test_monitor_template_uses_safe_receiver_and_verified_metrics() -> None:
     assert "armRoleReceivers" in text and "43d0d8ad-25c7-4714-9337-8ba259a9fe05" in text
     assert "useCommonAlertSchema: true" in text
     assert "AzureOpenAIAvailabilityRate" in text and "Microsoft.CognitiveServices/accounts" in text
-    assert "metricName: 'Http5xx'" in text and "Microsoft.Web/sites" in text
+    assert "Http5xx" not in text and "Microsoft.Web/sites" not in text
     assert "actionGroupId: actionGroup.id" in text
 
 
@@ -672,12 +601,17 @@ def test_policy_template_is_audit_only_builtin_assignment() -> None:
     assert "value: 'Audit'" in text and "[DEMO]" in text
 
 
-def test_main_template_wires_monitor_everywhere_and_policy_for_foundry_only() -> None:
+def test_main_template_wires_foundry_monitor_and_policy() -> None:
     text = read_bicep("main.bicep")
     monitor = text.split("module monitor ", 1)[1].split("module policy ", 1)[0]
     assert "if (" not in monitor.split("{", 1)[0] and "scope: group" in monitor
     policy_header = text.split("module policy ", 1)[1].split("{", 1)[0]
-    assert "workload == 'foundry'" in policy_header
+    assert "if (" not in policy_header
+    assert "module host" not in text
+    parameters = dict(item.split("=", 1) for item in deployment_parameters(
+        plan(setup_values(), load_yaml(ROOT / "demo" / "config.yaml")), 0,
+    ))
+    assert not {"workload", "hostName", "modelResourceId"} & parameters.keys()
 
 
 def test_agent_tools_map_catalog_to_sdk_models() -> None:
@@ -695,212 +629,3 @@ def test_agent_tools_map_catalog_to_sdk_models() -> None:
     assert agent_revision(by_id["privacy-helper"]) != agent_revision(by_id["policy-guide"])
     with pytest.raises(ValueError):
         agent_tools({"agent_tool": {"type": "unknown"}})
-
-
-def test_source_only_repack_reuses_verified_dependencies(tmp_path: Path) -> None:
-    source = tmp_path / "demo"
-    source.mkdir(parents=True)
-    (source / "app.py").write_text("new chatbot source", encoding="utf-8")
-    (source / "governance.py").write_text("new governance controls", encoding="utf-8")
-    (source / "chat.html").write_text("new chat form", encoding="utf-8")
-    (source / "catalog.json").write_text("[]", encoding="utf-8")
-    (source / "manage.py").write_text("administrator-only source", encoding="utf-8")
-    (source / "config.yaml").write_text("administrator-only config", encoding="utf-8")
-    (tmp_path / "pyproject.toml").write_text(
-        '[project.optional-dependencies]\ndemo = ["fixture==1"]\n', encoding="utf-8",
-    )
-    output = tmp_path / ".easm-agent" / "demo"
-    output.mkdir(parents=True)
-    archive = output / "langchain-sample.zip"
-    native = ".python_packages/lib/site-packages/native.so"
-    with zipfile.ZipFile(archive, "w") as bundle:
-        bundle.writestr("app.py", "old health source")
-        bundle.writestr("requirements.txt", "fixture==1\n")
-        bundle.writestr(".deployment", "[config]\nSCM_DO_BUILD_DURING_DEPLOYMENT = false\n")
-        bundle.writestr(native, b"\x7fELF fixture")
-        bundle.writestr("manage.py", "obsolete administrator source")
-    with patch("demo.infrastructure.subprocess.run", side_effect=AssertionError("no reinstall")):
-        assert build_linux_package(tmp_path) == archive
-        assert build_linux_package(tmp_path) == archive
-    with zipfile.ZipFile(archive) as bundle:
-        assert bundle.read("app.py") == (source / "app.py").read_bytes()
-        assert bundle.read("governance.py") == (source / "governance.py").read_bytes()
-        assert bundle.read("chat.html") == (source / "chat.html").read_bytes()
-        assert bundle.read(native) == b"\x7fELF fixture"
-        assert set(bundle.namelist()) == {
-            "app.py", "governance.py", "chat.html", "catalog.json", ".deployment", "requirements.txt", native,
-        }
-        assert bundle.testzip() is None
-
-
-@pytest.mark.parametrize("existing_success", [False, True])
-def test_webapp_starts_application_only_after_successful_package_deployment(
-    tmp_path: Path, existing_success: bool,
-) -> None:
-    events: list[tuple[str, str]] = []
-    previous = [{"id": "previous", "status": 4 if existing_success else 0, "complete": existing_success}]
-    cli = Mock()
-    configs = iter([{"appCommandLine": "old-startup"}, {"appCommandLine": ""}])
-
-    def run(*args: str) -> object:
-        if args[:4] == ("webapp", "log", "deployment", "list"):
-            return previous
-        if args[:3] == ("webapp", "config", "show"):
-            return next(configs)
-        if args[:3] == ("webapp", "config", "set"):
-            if "--generic-configurations" in args:
-                assert json.loads(args[args.index("--generic-configurations") + 1]) == {"appCommandLine": ""}
-                events.append(("clear", ""))
-            else:
-                events.append(("startup", args[args.index("--startup-file") + 1]))
-            return {}
-        raise AssertionError(args)
-
-    cli.run.side_effect = run
-
-    def package(_site: dict, _archive: Path, _credential: object, previous_ids: set[str]) -> dict:
-        assert previous_ids == {"previous"}
-        events.append(("deploy", "new"))
-        return {"id": "new", "status": 4, "complete": True}
-
-    site = {"name": "fixture", "defaultHostName": "fixture.azurewebsites.net"}
-    with patch("demo.infrastructure.deploy_zip", side_effect=package):
-        result = deploy_webapp_code(cli, site, tmp_path / "sample.zip", Mock(), "group", "subscription")
-    assert result["id"] == "new"
-    assert events == ([("clear", "")] if not existing_success else []) + [
-        ("deploy", "new"),
-        ("startup", "gunicorn --chdir /home/site/wwwroot --bind=0.0.0.0 --timeout 120 --workers 1 app:app"),
-    ]
-
-
-def test_webapp_keeps_safe_startup_when_package_deployment_fails(tmp_path: Path) -> None:
-    cli = Mock()
-    cli.run.side_effect = [[], {"appCommandLine": "old-startup"}, {}, {"appCommandLine": ""}]
-    with patch("demo.infrastructure.deploy_zip", side_effect=RuntimeError("deployment failed")), pytest.raises(
-        RuntimeError, match="deployment failed",
-    ):
-        deploy_webapp_code(
-            cli, {"name": "fixture", "defaultHostName": "fixture.azurewebsites.net"},
-            tmp_path / "sample.zip", Mock(), "group", "subscription",
-        )
-    startup_calls = [call.args for call in cli.run.call_args_list if call.args[:3] == ("webapp", "config", "set")]
-    assert len(startup_calls) == 1
-    assert json.loads(startup_calls[0][-1]) == {"appCommandLine": ""}
-
-
-def test_webapp_stops_if_the_old_startup_command_was_not_cleared(tmp_path: Path) -> None:
-    cli = Mock()
-    old_config = {"appCommandLine": "old-startup"}
-    cli.run.side_effect = [[], old_config, {}, old_config]
-    with patch("demo.infrastructure.deploy_zip") as package, pytest.raises(RuntimeError, match="시작 명령"):
-        deploy_webapp_code(
-            cli, {"name": "fixture", "defaultHostName": "fixture.azurewebsites.net"},
-            tmp_path / "sample.zip", Mock(), "group", "subscription",
-        )
-    package.assert_not_called()
-
-
-def test_webapp_does_not_restart_an_already_safe_empty_startup(tmp_path: Path) -> None:
-    cli = Mock()
-    cli.run.side_effect = [[], {"appCommandLine": ""}, {}]
-    with patch("demo.infrastructure.deploy_zip", return_value={"id": "new"}) as package:
-        deploy_webapp_code(
-            cli, {"name": "fixture", "defaultHostName": "fixture.azurewebsites.net"},
-            tmp_path / "sample.zip", Mock(), "group", "subscription",
-        )
-    startup_calls = [call.args for call in cli.run.call_args_list if call.args[:3] == ("webapp", "config", "set")]
-    assert package.call_count == 1 and len(startup_calls) == 1 and startup_calls[0][-1].endswith("app:app")
-
-
-def test_new_webapp_template_does_not_start_missing_application() -> None:
-    assert "appCommandLine:" not in read_bicep("host.bicep")
-
-
-@pytest.mark.parametrize("pending_status", [200, 202])
-def test_direct_zip_requires_new_successful_kudu_operation(tmp_path: Path, pending_status: int) -> None:
-    archive = tmp_path / "sample.zip"
-    archive.write_bytes(b"fixture")
-    credential = Mock()
-    credential.get_token.return_value.token = "fixture-token"
-    accepted = Mock(status_code=202, headers={"Location": "https://fixture.scm.azurewebsites.net/api/deployments/new"})
-    pending = Mock(status_code=pending_status)
-    pending.json.return_value = {"id": "new", "status": 1, "complete": False}
-    complete = Mock(status_code=200)
-    complete.json.return_value = {"id": "new", "status": 4, "complete": True}
-    with patch("demo.infrastructure.requests.post", return_value=accepted), patch(
-        "demo.infrastructure.requests.get", side_effect=[pending, complete],
-    ), patch("demo.infrastructure.time.sleep"):
-        result = deploy_zip(
-            {"name": "fixture", "defaultHostName": "fixture.azurewebsites.net"},
-            archive, credential, {"previous"},
-        )
-    assert result["id"] == "new"
-    assert result["status"] == 4
-
-
-def test_direct_zip_does_not_send_token_to_external_status_url(tmp_path: Path) -> None:
-    archive = tmp_path / "sample.zip"
-    archive.write_bytes(b"fixture")
-    accepted = Mock(status_code=202, headers={"Location": "https://untrusted.invalid/api/deployments/new"})
-    complete = Mock(status_code=200)
-    complete.json.return_value = {"id": "new", "status": 4, "complete": True}
-    with patch("demo.infrastructure.requests.post", return_value=accepted), patch(
-        "demo.infrastructure.requests.get", return_value=complete,
-    ) as get:
-        result = deploy_zip(
-            {"name": "fixture", "defaultHostName": "fixture.azurewebsites.net"}, archive, Mock(), set(),
-        )
-    assert result["id"] == "new"
-    assert get.call_args.args[0] == "https://fixture.scm.azurewebsites.net/api/deployments/latest"
-
-
-def test_direct_zip_failure_is_not_success(tmp_path: Path) -> None:
-    archive = tmp_path / "sample.zip"
-    archive.write_bytes(b"fixture")
-    accepted = Mock(status_code=202, headers={"Location": "/api/deployments/failed"})
-    failed = Mock(status_code=200)
-    failed.json.return_value = {"id": "failed", "status": 3, "complete": True}
-    with patch("demo.infrastructure.requests.post", return_value=accepted), patch(
-        "demo.infrastructure.requests.get", return_value=failed,
-    ), pytest.raises(RuntimeError, match="status=3"):
-        deploy_zip({"name": "fixture", "defaultHostName": "fixture.azurewebsites.net"}, archive, Mock(), set())
-
-
-def test_direct_zip_retries_status_timeouts_without_resubmitting(tmp_path: Path) -> None:
-    archive = tmp_path / "sample.zip"
-    archive.write_bytes(b"fixture")
-    accepted = Mock(status_code=202, headers={"Location": "/api/deployments/new"})
-    transient = Mock(status_code=503)
-    complete = Mock(status_code=200)
-    complete.json.return_value = {"id": "new", "status": 4, "complete": True}
-    with patch("demo.infrastructure.requests.post", return_value=accepted) as post, patch(
-        "demo.infrastructure.requests.get",
-        side_effect=[requests.exceptions.ReadTimeout("status timeout"), transient, complete],
-    ) as get, patch("demo.infrastructure.time.sleep"):
-        result = deploy_zip(
-            {"name": "fixture", "defaultHostName": "fixture.azurewebsites.net"}, archive, Mock(), set(),
-        )
-    assert result["id"] == "new"
-    assert post.call_count == 1 and get.call_count == 3
-    transient.close.assert_called_once()
-
-
-def test_direct_zip_surfaces_persistent_unknown_status_without_resubmitting(tmp_path: Path) -> None:
-    archive = tmp_path / "sample.zip"
-    archive.write_bytes(b"fixture")
-    accepted = Mock(status_code=202, headers={"Location": "/api/deployments/new"})
-    with patch("demo.infrastructure.requests.post", return_value=accepted) as post, patch(
-        "demo.infrastructure.requests.get", side_effect=requests.exceptions.ReadTimeout("status timeout"),
-    ), patch("demo.infrastructure.time.sleep"), pytest.raises(RuntimeError, match="재전송 전"):
-        deploy_zip({"name": "fixture", "defaultHostName": "fixture.azurewebsites.net"}, archive, Mock(), set())
-    assert post.call_count == 1
-
-
-def test_direct_zip_post_timeout_requires_status_check_before_resubmission(tmp_path: Path) -> None:
-    archive = tmp_path / "sample.zip"
-    archive.write_bytes(b"fixture")
-    with patch(
-        "demo.infrastructure.requests.post", side_effect=requests.exceptions.ReadTimeout("upload timeout"),
-    ) as post, pytest.raises(RuntimeError, match="재전송 전"):
-        deploy_zip({"name": "fixture", "defaultHostName": "fixture.azurewebsites.net"}, archive, Mock(), set())
-    assert post.call_count == 1

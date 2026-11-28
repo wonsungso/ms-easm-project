@@ -1,0 +1,22 @@
+{
+  "harnessName": "EasmTokyoSample",
+  "executionRoleArn": "arn:aws:iam::000000000000:role/EasmDemoHarnessExecution",
+  "model": {
+    "bedrockModelConfig": {
+      "modelId": "amazon.nova-lite-v1:0",
+      "maxTokens": 128
+    }
+  },
+  "systemPrompt": [{"text": "Answer short synthetic demo questions only. Do not request personal data or credentials."}],
+  "tools": [],
+  "memory": {"disabled": {}},
+  "environment": {
+    "agentCoreRuntimeEnvironment": {
+      "lifecycleConfiguration": {"idleRuntimeSessionTimeout": 60, "maxLifetime": 120}
+    }
+  },
+  "maxIterations": 2,
+  "maxTokens": 256,
+  "timeoutSeconds": 30,
+  "tags": {"project": "easm-connected-demo"}
+}

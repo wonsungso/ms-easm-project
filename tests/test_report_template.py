@@ -313,6 +313,7 @@ def test_historical_terms_are_localized_without_rewriting_original_evidence(tmp_
 def test_all_findings_link_to_the_matching_detail_row_and_preserve_existing_metrics(tmp_path: Path) -> None:
     fixture = Path(__file__).parent / "fixtures" / "three_subscriptions.json"
     data = Collection.model_validate_json(fixture.read_text(encoding="utf-8"))
+    data.exclude_host_candidates()
     data.proposals = evaluate_proposals(data, DEFAULT_TAGS)
     findings = [
         Finding(se_code=code, scope=config["scope"], level="L2", rationale="보존할 판정 근거")
@@ -327,8 +328,12 @@ def test_all_findings_link_to_the_matching_detail_row_and_preserve_existing_metr
     detail_rows = {details.cell(row, 1).value: row for row in range(4, last_detail + 1)}
     assert len(detail_rows) == len(findings) == 26
     expected_metrics = {item.code: item.metrics for item in data.proposals}
+    definitions = load_criteria()["items"]
     for code, row in detail_rows.items():
-        if code in expected_metrics:
+        if definitions[code].get("registry_check"):
+            metrics = json.loads(details.cell(row, 7).value)
+            assert metrics["metric_value"] is None and metrics["assessment_basis"] == "criteria"
+        elif code in expected_metrics:
             assert json.loads(details.cell(row, 7).value) == expected_metrics[code]
     linked = 0
     for row in range(5, results.max_row + 1):

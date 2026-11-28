@@ -589,7 +589,8 @@ def build_creation(slide: Slide, data: DeckData) -> None:
     columns: list[Column] | None = history
     legend = ("승인 매칭", "미매칭")
     if columns is None and catalog is not None:
-        legend = (("직접 제작·구성", "플랫폼 미확인 앱·기타") if catalog.source.startswith("Agent 365")
+        legend = (("생성·등록·배포 확인", "미게시·상태 미확인") if catalog.source == "통합 관측 생성월" else
+                  ("직접 제작·구성", "플랫폼 미확인 앱·기타") if catalog.source.startswith("Agent 365")
                   else ("Azure 에이전트", ""))
         columns = [
             Column(f"{month}월" + ("*" if catalog.partial_last and index == len(catalog.months) - 1 else ""),
@@ -600,6 +601,8 @@ def build_creation(slide: Slide, data: DeckData) -> None:
         " (승인 매칭)" if history else "" if catalog and catalog.source.startswith("Agent") else " (Azure)")
     if history is None and catalog is not None and catalog.source.startswith("Agent 365"):
         chart_title = "I. 월별 신규 목록 패키지 (Agent 365 목록)"
+    if history is None and catalog is not None and catalog.source == "통합 관측 생성월":
+        chart_title = "I. 통합 관측 대상 생성월·플랫폼별 구성 상태"
     if columns is None:
         hide(slide, [i for pair in pairs for i in pair] + [29061, 29124])
         for identifier in (*layout["totals"], *layout["months"], *layout["components"], 29092, 29157):

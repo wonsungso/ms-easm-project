@@ -12,7 +12,7 @@ import pytest
 from easm_agent.azure import ARM, AccessError, EvidenceStore, ReaderHTTP, redact
 from easm_agent.collect import collect
 from easm_agent.collect_foundry import FoundryCollector, list_data
-from easm_agent.collect_inventory import LangChainCollector, ManualCollector
+from easm_agent.collect_inventory import ManualCollector
 from easm_agent.collect_signals import SignalCollector
 from easm_agent.models import Collection, Settings, load_conventions, load_criteria, load_settings
 
@@ -91,6 +91,25 @@ def test_security_without_targets_does_not_query_the_whole_subscription() -> Non
     with pytest.raises(AccessError, match="현재 AI 리소스"):
         collector.security("test", Collection(collected_at=NOW))
     http.request.assert_not_called()
+
+
+def test_complete_inventory_with_no_ai_targets_is_excluded_not_a_query_failure() -> None:
+    base = Collection(collected_at=NOW, subscriptions=["empty"], completed_subscriptions=["empty"],
+                      facts={"inventory_complete": True, "inventory_scope_evidence": [{
+                          "subscription_id": "empty", "complete": True, "evidence_refs": ["empty-inventory"],
+                      }]})
+    http = Mock()
+    collector = SignalCollector(http, base, NOW, {}, {})
+    with patch.object(collector, "logs"), patch.object(collector, "metrics"), patch.object(
+        collector, "secure_score",
+    ), patch.object(collector, "policies"), patch.object(collector, "budgets"), patch.object(
+        collector, "defender_plans",
+    ):
+        result = collector.discover(["empty"])
+    http.request.assert_not_called()
+    assert result.issues == []
+    assert {row["collector"] for row in result.facts["signal_scope_exclusions"]} == {"cost", "security"}
+    assert all(row["evidence_refs"] == ["empty-inventory"] for row in result.facts["signal_scope_exclusions"])
 
 
 @pytest.mark.parametrize("with_prior_costs", [False, True])
@@ -251,14 +270,14 @@ def test_three_subscription_pipeline_and_cross_subscription_model_link(tmp_path:
 
     with patch("requests.Session.request", side_effect=request):
         data = collect(settings, fake_credential(), NOW)
-    assert len(data.agents) == 3
+    assert len(data.agents) == 1
     assert not data.agent365_packages and not data.agent365_crosschecks
     assert "agent365_requested" not in data.facts
     assert len(data.completed_subscriptions) == 3
-    assert {agent.platform for agent in data.agents} == {"foundry", "custom" if custom else "langchain"}
+    assert {agent.platform for agent in data.agents} == {"foundry"}
     assert all(agent.model == "gpt-4o-mini" for agent in data.agents)
     assert all(agent.model_version == "2024-07-18" for agent in data.agents)
-    assert len(data.costs) == 3
+    assert len(data.costs) == 1
     assert len(data.secure_scores) == 3 and not data.budgets
     assert len(data.defender_plans) == 6
     assert set(data.facts["defender_plans_complete_subscriptions"]) == set(settings.subscriptions)
@@ -268,34 +287,6 @@ def test_three_subscription_pipeline_and_cross_subscription_model_link(tmp_path:
     for host in (agent for agent in data.agents if agent.platform != "foundry"):
         assert any(row.resource_id == host.resource_id for row in data.logs)
         assert any(row["resource_id"] == host.resource_id for row in data.facts["resource_metrics"])
-
-
-def test_custom_tags_add_or_matches_without_changing_default_detection_or_scope(tmp_path: Path) -> None:
-    sid = "11111111-1111-4111-8111-111111111111"
-    settings = Settings(tags={"agent-type": "custom-agent", "workload": "customer-support"})
-    specifications = [
-        ("custom", {"Agent-Type": "custom-agent"}, sid, "microsoft.web/sites"),
-        ("support", {"workload": "customer-support"}, sid, "microsoft.app/containerapps"),
-        ("cluster", {"agent-type": "custom-agent"}, sid, "microsoft.containerservice/managedclusters"),
-        ("langchain-default", {"agent-type": "langchain"}, sid, "microsoft.web/sites"),
-        ("both", {"agent-type": "langchain", "workload": "customer-support"}, sid, "microsoft.web/sites"),
-        ("wrong-value", {"agent-type": "Custom-Agent"}, sid, "microsoft.web/sites"),
-        ("missing", {}, sid, "microsoft.web/sites"),
-        ("other-scope", {"agent-type": "custom-agent"}, "other", "microsoft.web/sites"),
-        ("storage", {"agent-type": "custom-agent"}, sid, "microsoft.storage/storageaccounts"),
-    ]
-    resources = [{
-        "id": f"/subscriptions/{scope}/resourceGroups/rg/providers/{kind}/{name}",
-        "name": name, "subscriptionId": scope, "type": kind, "tags": tags, "resourceGroup": "rg",
-    } for name, tags, scope, kind in specifications]
-    data = LangChainCollector(
-        resources, load_conventions(settings), TENANT, NOW, EvidenceStore(tmp_path, NOW),
-    ).discover([sid])
-    assert {agent.agent_name: agent.platform for agent in data.agents} == {
-        "custom": "custom", "support": "custom", "cluster": "custom", "langchain-default": "langchain",
-        "both": "langchain",
-    }
-    assert all(agent.detection_confidence == "tag" for agent in data.agents)
 
 
 @pytest.mark.parametrize("tags", [{"agent-type": ""}, {" ": "agent"}, {"x": True}, {"x": ["agent"]}])
@@ -335,11 +326,11 @@ def test_subscription_failure_preserves_other_subscription_records(tmp_path: Pat
 
     with patch("easm_agent.collect_inventory.InventoryCollector.discover", autospec=True, side_effect=inventory), patch(
         "easm_agent.collect.FoundryCollector.discover", return_value=Collection(collected_at=NOW),
-    ), patch("easm_agent.collect.LangChainCollector.discover", return_value=Collection(collected_at=NOW)), patch(
+    ), patch(
         "easm_agent.collect.SignalCollector.discover", return_value=Collection(collected_at=NOW),
     ):
         data = collect(settings, fake_credential(), NOW)
-    assert len(data.agents) == 2
+    assert len(data.agents) == 1
     assert len(data.completed_subscriptions) == 2
     assert data.facts["inventory_complete"] is False
     assert any(item.reason == "permission_denied" for item in data.issues)

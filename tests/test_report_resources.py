@@ -27,7 +27,7 @@ ACCOUNT = f"/subscriptions/{SID}/resourceGroups/rg/providers/Microsoft.Cognitive
 
 
 @pytest.mark.parametrize(("platform", "category"), [("custom", "자체 Agent"), ("langchain", "LangChain Agent")])
-def test_host_names_keep_custom_classification(platform: str, category: str) -> None:
+def test_host_candidates_are_not_report_resources(platform: str, category: str) -> None:
     host = AgentEvidence(
         collected_at=NOW, platform=platform, agent_id="support", agent_name="support-host",
         subscription_id=SID, resource_id=f"/subscriptions/{SID}/resourceGroups/rg/providers/Microsoft.Web/sites/support",
@@ -35,9 +35,8 @@ def test_host_names_keep_custom_classification(platform: str, category: str) -> 
     )
     data = Collection(collected_at=NOW, agents=[host])
     resources = resource_names(data, "BI-SY-13")
-    assert len(resources) == 1 and resources[0].category == category
-    assert resources[0].name == "support-host"
-    assert [row.identifier for row in resource_names(data, "OT-SY-23")] == [host.resource_id.lower()]
+    assert resources == []
+    assert resource_names(data, "OT-SY-23") == []
 
 
 def resource_rows(book: Workbook) -> tuple[Worksheet, range]:

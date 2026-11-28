@@ -22,7 +22,6 @@ from easm_agent.collect_entra import EntraCollector
 from easm_agent.collect_foundry import FoundryCollector
 from easm_agent.collect_inventory import (
     InventoryCollector,
-    LangChainCollector,
     ManualCollector,
 )
 from easm_agent.collect_proposals import ProposalCollector
@@ -58,7 +57,7 @@ def merge(destination: Collection, source: Collection) -> None:
     for field in (
         "agents", "copilot_agents", "copilot_reviews", "deployments", "evaluations", "costs", "security", "secure_scores", "defender_plans",
         "policy_assignments", "budgets", "entra_blueprints", "entra_agent_identities",
-        "agent365_packages", "agent365_crosschecks",
+        "agent365_packages", "agent365_tools", "agent365_crosschecks",
         "admin_evidence", "report_evidence",
         "logs", "proposal_observations", "issues", "resources",
         "completed_subscriptions",
@@ -86,9 +85,6 @@ def collect_subscription(
         inventory = InventoryCollector(http, now).discover([sid])
         merge(result, inventory)
         merge(result, FoundryCollector(http, result.resources, settings, now).discover([sid]))
-        merge(result, LangChainCollector(
-            result.resources, tags, settings.tenant_id, now, store,
-        ).discover([sid]))
         merge(result, SignalCollector(
             http, result, now, criteria, settings.monitor, settings.subscriptions,
         ).discover([sid]))
@@ -147,6 +143,7 @@ def collect(settings: Settings, credential: Credential, now: datetime | None = N
         graph.close()
     if settings.manual_agents:
         merge(result, ManualCollector(settings.manual_agents, instant).discover([]))
+    result.exclude_host_candidates()
     for agent in result.agents:
         if agent.platform not in HOSTED_AGENT_PLATFORMS:
             continue
@@ -194,7 +191,10 @@ def collect(settings: Settings, credential: Credential, now: datetime | None = N
         registry_store = EvidenceStore(store.path / "agent365", instant)
         registry_http = ReaderHTTP(credential, store=None)
         try:
-            merge(result, Agent365Collector(registry_http, instant, registry_store).discover())
+            merge(result, Agent365Collector(
+                registry_http, instant, registry_store, include_tools=settings.agent365_tools_enabled,
+            ).discover())
+            result.facts["agent365_tenant_id"] = settings.tenant_id
         except (ClientAuthenticationError, ValueError, KeyError, TypeError) as exc:
             result.facts.update(agent365_requested=True, agent365_registry_complete=False)
             error = AccessError(

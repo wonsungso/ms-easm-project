@@ -25,12 +25,9 @@ easm-agent = "easm_agent.cli:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=8,<10", "ruff>=0.15,<1"]
+connected-demo = ["boto3[crt]>=1.42,<2", "snowflake-connector-python>=3.18,<5"]
 demo = [
-  "Flask>=3,<4",
-  "gunicorn>=23,<24",
   "azure-identity>=1.19,<2",
-  "langchain>=1,<2",
-  "langchain-openai>=1,<2",
   "azure-ai-projects>=2.3,<3",
   "pydantic>=2.10,<3",
 ]
@@ -39,7 +36,7 @@ demo = [
 where = ["src"]
 
 [tool.setuptools.data-files]
-"share/easm-agent" = ["config/criteria.yaml", "docs/assessment-result-template.xlsx", "docs/assessment-report-template.pptx"]
+"share/easm-agent" = ["config/criteria.yaml", "config/report-layout.json", "docs/assessment-result-template.xlsx", "docs/assessment-report-template.pptx"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "demo"]

@@ -188,7 +188,7 @@ def test_reports_compute_metrics_in_memory_to_restore_real_values_without_modify
     assert metrics_by_key(data, findings, "fixture")["approval.match"].value == 0.5
     assert len(book["8a_수집 Raw 데이터"].tables) == 18
     book.close()
-    deck = next(workbook.parent.glob("EASM-report-*.pptx"))
+    deck = next(workbook.parent.glob("AI Agent Governance Readiness*.pptx"))
     presentation = Presentation(deck)
     assert shape(presentation.slides[6], 29226).fill.type is not None
     assert shape(presentation.slides[6], 29337).text == "2"
@@ -217,7 +217,7 @@ def test_reports_compute_metrics_in_memory_to_restore_real_values_without_modify
 def test_executive_summary_uses_available_approval_registry_and_risk_evidence(tmp_path: Path) -> None:
     data = collection()
     workbook = write_reports(data, evaluate(data, load_criteria(), {}), tmp_path, "fixture")
-    presentation = Presentation(next(workbook.parent.glob("EASM-report-*.pptx")))
+    presentation = Presentation(next(workbook.parent.glob("AI Agent Governance Readiness*.pptx")))
     summary, overview = presentation.slides[1], presentation.slides[2]
     table = next(item.table for item in overview.shapes if item.has_table)
     assert "등록부 일치 67%" in shape(presentation.slides[6], 31446).text
@@ -236,7 +236,7 @@ def test_cost_chart_preserves_observed_totals_when_allocation_is_unknown(tmp_pat
     costs.pop(3)
     data = collection(payload)
     workbook = write_reports(data, evaluate(data, load_criteria(), {}), tmp_path, "fixture")
-    slide = Presentation(next(workbook.parent.glob("EASM-report-*.pptx"))).slides[9]
+    slide = Presentation(next(workbook.parent.glob("AI Agent Governance Readiness*.pptx"))).slides[9]
     assert shape(slide, 37293).text == "$100.00"
     assert shape(slide, 37392).text == "식별 확인 중"
     assert shape(slide, 37063).text == "귀속 불가·식별 미확인"
@@ -255,7 +255,7 @@ def test_cost_chart_identifies_gray_as_total_when_all_allocations_are_unknown(tm
         row["attributed_amount"] = None
     data = collection(payload)
     workbook = write_reports(data, evaluate(data, load_criteria(), {}), tmp_path, "fixture")
-    slide = Presentation(next(workbook.parent.glob("EASM-report-*.pptx"))).slides[9]
+    slide = Presentation(next(workbook.parent.glob("AI Agent Governance Readiness*.pptx"))).slides[9]
     assert shape(slide, 37063).text == "총액·식별 미확인"
     assert shape(slide, 37392).text == "식별 확인 중"
 
@@ -265,7 +265,7 @@ def test_usage_chart_does_not_show_a_partial_observation_as_activity(tmp_path: P
     payload["datasets"][5]["records"][0]["coverage_start"] = "2026-11-01T00:00:00Z"
     data = collection(payload)
     workbook = write_reports(data, evaluate(data, load_criteria(), {}), tmp_path, "fixture")
-    slide = Presentation(next(workbook.parent.glob("EASM-report-*.pptx"))).slides[9]
+    slide = Presentation(next(workbook.parent.glob("AI Agent Governance Readiness*.pptx"))).slides[9]
     for identifier in (39277, 39438, 39603, 39772, 39945, 40122):
         assert shape(slide, identifier)._element.find(".//{*}spPr/{*}noFill") is not None
     assert "사용 현황은" in shape(slide, 39858).text and "N/A" not in shape(slide, 39858).text

@@ -20,7 +20,7 @@ from easm_agent.collect_admin_evidence import (
     read_admin_evidence,
 )
 from easm_agent.models import AdminEvidenceExport, Collection, Finding
-from easm_agent.report import load_result, write_reports
+from easm_agent.report import load_result, presentation_name, write_reports
 from easm_agent.report_excel import write_workbook
 from scripts.export_admin_environments import export_environments
 from scripts.export_dlp_policies import export_policies
@@ -80,9 +80,10 @@ def power_platform_packet() -> dict:
 
 def graded(data: Collection) -> dict:
     from easm_agent.evaluation import evaluate
-    from easm_agent.models import DEFAULT_TAGS, load_criteria
+    from easm_agent.models import DEFAULT_TAGS, Settings, load_criteria
 
-    return {row.se_code: row for row in evaluate(data, load_criteria(), DEFAULT_TAGS)}
+    criteria = load_criteria(Settings(criteria_file=ROOT / "tests" / "fixtures" / "resource-criteria.yaml"))
+    return {row.se_code: row for row in evaluate(data, criteria, DEFAULT_TAGS)}
 
 
 def test_admin_receipt_records_provenance_and_scores_power_platform_environments(tmp_path: Path) -> None:
@@ -336,7 +337,7 @@ def test_package_enriches_portable_embedded_evidence_without_regrading(tmp_path:
     assert after["provenance"]["unattached_evidence"] == []
     assert not (workbook.parent / "evidence").exists()
     assert sorted(path.name for path in workbook.parent.iterdir()) == sorted(
-        [workbook.name, f"EASM-report-{workbook.parent.name}.pptx", f"raw-data-{workbook.parent.name}.json"])
+        [workbook.name, presentation_name(after["collection"]), f"raw-data-{workbook.parent.name}.json"])
     assert main(["package", "--output-dir", str(workbook.parent)]) == 0
     assert len(load_result(workbook.parent)["evidence"]) == 1
 
@@ -365,7 +366,7 @@ def test_package_reassess_grades_defender_protection_from_saved_collection(tmp_p
     assert row["level"] == "L5" and row["metric_value"] == 1
     assert after["collection"]["assessment_provenance"]["origin"] == "saved_snapshot_reassessment"
     assert after["collection"]["assessment_provenance"]["source_result_data_sha256"]
-    book = load_workbook(next(workbook.parent.glob("report-*.xlsx")))
+    book = load_workbook(next(workbook.parent.glob("AI Agent Governance Readiness*.xlsx")))
     sheet = book["3_SE 판정"]
     rows = {sheet.cell(row, 1).value: row for row in range(5, 31)}
     assert sheet.cell(rows["OT-SY-25"], 23).value == "Y"

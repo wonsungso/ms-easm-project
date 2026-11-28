@@ -25,6 +25,7 @@ from easm_agent.models import (
     EntraAgentIdentity,
     EntraBlueprint,
     Finding,
+    Settings,
     load_criteria,
 )
 from easm_agent.report_excel import write_workbook
@@ -65,7 +66,8 @@ def snapshot() -> Collection:
 
 
 def checks(data: Collection) -> dict:
-    return {row.se_code: row for row in crosscheck_agent365(data, load_criteria())}
+    criteria = load_criteria(Settings(criteria_file=Path(__file__).parent / "fixtures" / "resource-criteria.yaml"))
+    return {row.se_code: row for row in crosscheck_agent365(data, criteria)}
 
 
 def test_registry_uses_documented_get_and_saves_only_minimal_fields(tmp_path: Path) -> None:
@@ -94,9 +96,22 @@ def test_registry_uses_documented_get_and_saves_only_minimal_fields(tmp_path: Pa
         "displayName": "resource-agent", "platform": None, "availableTo": None,
         "deployedTo": None, "isBlocked": None, "createdDateTime": None, "requestStatus": None,
         "governanceMetadata": None, "ownerCount": None,
-        "requestType": None, "manifestId": None, "lastModifiedDateTime": None,
+        "requestType": None, "manifestId": None, "lastModifiedDateTime": None, "catalogToolTypes": [],
     }]
     assert package.field_status["available_to"].reason == "not_found"
+
+
+@pytest.mark.parametrize("description,expected", [("private instruction text", True), ("  ", False), (None, None)])
+def test_description_presence_is_minimized_without_retaining_body(tmp_path, description, expected):
+    source = http([{"id": "p"}])
+    source.request.side_effect = None
+    source.request.return_value = {"id": "p", "shortDescription": description}
+    result = Agent365Collector(source, NOW, EvidenceStore(tmp_path, NOW)).discover()
+    package = result.agent365_packages[0]
+    assert package.description_present is expected
+    text = Path(package.detail_evidence_refs[0]).read_text(encoding="utf-8")
+    assert "private instruction text" not in text
+    assert json.loads(text)["response"]["description_present"] is expected
 
 
 def test_unexpected_governance_field_keeps_verified_catalog_and_records_error(tmp_path: Path) -> None:
@@ -259,7 +274,11 @@ def test_duplicate_graph_id_does_not_create_false_match() -> None:
 
 
 def test_report_keeps_grades_and_separates_crosscheck_details(tmp_path: Path) -> None:
+    from easm_agent.provenance import assessment_provenance
+
     data = snapshot()
+    criteria = load_criteria(Settings(criteria_file=Path(__file__).parent / "fixtures" / "resource-criteria.yaml"))
+    data.assessment_provenance = assessment_provenance(criteria, {}, "evaluation")
     data.agent365_crosschecks = list(checks(data).values())
     finding = Finding(se_code="DS-SY-03", scope="in_scope", level="L5", metric_value=1, rationale="primary grade")
     path = tmp_path / "report.xlsx"
@@ -272,16 +291,17 @@ def test_report_keeps_grades_and_separates_crosscheck_details(tmp_path: Path) ->
     table = next(table for table in details.tables.values() if table.ref.startswith("A3:"))
     rows = {details.cell(row, 1).value: row for row in range(4, range_boundaries(table.ref)[3] + 1)}
     assert details.cell(rows["DS-SY-03"], 10).value == "일부 일치"
-    assert "기존 등급 유지" in details.cell(rows["DS-SY-03"], 11).value
+    assert "참고 관측" in details.cell(rows["DS-SY-03"], 11).value
     assert details.cell(rows["OE-SY-17"], 10).value == "동일 정보 미제공"
-    assert "기존 Azure/Graph API로 평가" in details.cell(rows["OE-SY-17"], 11).value
+    assert "플랫폼 API로 평가" in details.cell(rows["OE-SY-17"], 11).value
     assert "평가 제외 아님" in details.cell(rows["OE-SY-17"], 11).value
     assert len(book["8a_수집 Raw 데이터"].tables) == 18
     assert finding.level == "L5"
 
 
 def graded(data: Collection) -> dict:
-    return {row.se_code: row for row in evaluate(data, load_criteria(), DEFAULT_TAGS)}
+    criteria = load_criteria(Settings(criteria_file=Path(__file__).parent / "fixtures" / "resource-criteria.yaml"))
+    return {row.se_code: row for row in evaluate(data, criteria, DEFAULT_TAGS)}
 
 
 def test_registry_data_does_not_restore_retired_assessment_items() -> None:
@@ -336,6 +356,120 @@ def test_detail_usage_is_documented_get_and_saves_no_personal_or_agent_content(t
     assert json.loads(text)["response"]["exceptionRate"] == 2.0
     for private in (OTHER, "Private Person", "private instructions", "private customer", "private-token"):
         assert private not in text and private not in data.model_dump_json()
+
+
+def test_connected_definition_projection_is_minimized_and_cleared_after_failed_reread(tmp_path: Path) -> None:
+    source = http([{"id": "external", "platform": "SnowflakeAI"}])
+    source.request.side_effect = None
+    source.request.return_value = {
+        "id": "external",
+        "allowedUsersAndGroups": [],
+        "acquireUsersAndGroups": [{"resourceId": OTHER, "displayName": "Private Person"}],
+        "sharedWithUsersAndGroups": [],
+        "elementDetails": [{
+            "elementType": "AgentMetadatas",
+            "elements": [{"definition": json.dumps({
+                "SourceIds": {"ConnectionId": IDENTITY},
+                "SourceAgentId": "source-agent",
+                "Instructions": "private instructions; password=do-not-save",
+                "AgentEndpoints": [{"EndpointUrl": "https://safe.example/api?key=do-not-save"}],
+            })}],
+        }],
+    }
+    collector = Agent365Collector(source, NOW, EvidenceStore(tmp_path, NOW))
+    data = collector.discover()
+    package = data.agent365_packages[0]
+    assert package.connected_metadata.endpoint_https == [True]
+    assert package.audience_counts["allowedUsersAndGroups"] == 0
+    assert package.audience_counts["acquireUsersAndGroups"] == 1
+    assert package.detail_field_inventory["agentIdentityId"] == "not_found"
+    assert package.detail_field_inventory["elementDetails"] == "projected_only"
+    projection = Path(package.detail_evidence_refs[0]).read_text("utf-8")
+    for private in ("private instructions", "do-not-save", "source-agent", "safe.example", "Private Person", OTHER):
+        assert private not in projection and private not in data.model_dump_json()
+    source.request.side_effect = AccessError("permission_denied", "HTTP 403")
+    collector.collect_details(data)
+    assert not package.detail_read_completed
+    assert package.connected_metadata.endpoint_https is None
+    assert package.connected_metadata.source_agent_id_sha256 is None
+    assert package.audience_counts == {} and package.detail_field_inventory == {}
+
+
+def test_filtered_tools_are_separate_from_agents_and_follow_the_same_safe_details_path(tmp_path: Path) -> None:
+    from easm_agent.collect_agent365 import TOOLS_URL
+
+    source = http()
+    source.list_graph.side_effect = lambda url: (
+        [{"id": "mixed", "elementTypes": ["AgentConnectors", "StaticTabs", "MCPServers"]},
+         {"id": "skill", "elementTypes": ["AgentSkills"]}]
+        if url == TOOLS_URL else [{"id": "mixed"}]
+    )
+    data = Agent365Collector(source, NOW, EvidenceStore(tmp_path, NOW), include_tools=True).discover()
+    assert [item.package_id for item in data.agent365_packages] == ["mixed"]
+    assert {item.package_id for item in data.agent365_tools} == {"mixed", "skill"}
+    mixed = next(item for item in data.agent365_tools if item.package_id == "mixed")
+    assert mixed.catalog_tool_types == ["AgentConnectors"]
+    assert mixed.element_types is None and mixed.field_status["element_types"].reason == "feature_unavailable"
+    assert data.facts["agent365_tools_complete"] is True
+    assert source.list_graph.call_args_list[1].args == (TOOLS_URL,)
+    assert all(call.args[0] == "GET" for call in source.request.call_args_list)
+
+
+def test_tool_list_failure_is_not_reported_as_a_successful_zero_inventory() -> None:
+    from easm_agent.collect_agent365 import TOOLS_URL
+
+    source = http()
+
+    def catalog(url):
+        if url == TOOLS_URL:
+            raise AccessError("permission_denied", "HTTP 403")
+        return []
+
+    source.list_graph.side_effect = catalog
+    data = Agent365Collector(source, NOW, include_tools=True).discover()
+    assert data.facts["agent365_registry_complete"] is True
+    assert data.facts["agent365_tools_complete"] is False
+    assert data.issues[0].collector == "agent365_tools"
+
+
+def test_tool_authentication_failure_preserves_completed_agent_inventory() -> None:
+    from azure.core.exceptions import ClientAuthenticationError
+
+    from easm_agent.collect_agent365 import TOOLS_URL
+
+    source = http()
+
+    def catalog(url):
+        if url == TOOLS_URL:
+            raise ClientAuthenticationError("private-token")
+        return [{"id": "agent"}]
+
+    source.list_graph.side_effect = catalog
+    data = Agent365Collector(source, NOW, include_tools=True).discover()
+    assert data.facts["agent365_registry_complete"] is True
+    assert data.facts["agent365_tools_complete"] is False
+    assert len(data.agent365_packages) == 1 and data.issues[0].collector == "agent365_tools"
+    assert "private-token" not in data.model_dump_json()
+
+
+def test_audience_type_counts_do_not_guess_unknown_entities_or_store_people() -> None:
+    source = http([{"id": "audience"}])
+    source.request.side_effect = None
+    source.request.return_value = {
+        "id": "audience",
+        "allowedUsersAndGroups": [
+            {"resourceId": IDENTITY, "resourceType": "user"},
+            {"resourceId": OTHER, "resourceType": "group"},
+        ],
+        "acquireUsersAndGroups": [{"resourceType": "unknownFutureValue"}],
+        "sharedWithUsersAndGroups": [],
+    }
+    package = Agent365Collector(source, NOW).discover().agent365_packages[0]
+    assert package.audience_type_counts["allowedUsersAndGroups"] == {"user": 1, "group": 1}
+    assert package.audience_type_counts["sharedWithUsersAndGroups"] == {"user": 0, "group": 0}
+    assert package.audience_type_counts["acquireUsersAndGroups"] is None
+    assert package.audience_counts["acquireUsersAndGroups"] == 1
+    assert IDENTITY not in package.model_dump_json() and OTHER not in package.model_dump_json()
 
 
 @pytest.mark.parametrize("reason", [

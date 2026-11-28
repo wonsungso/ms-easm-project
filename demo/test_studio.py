@@ -44,6 +44,19 @@ def test_publish_posts_action_then_waits_for_publication() -> None:
     assert session.post.call_args.args[0].endswith("/Microsoft.Dynamics.CRM.PvaPublish")
 
 
+def test_publish_changed_content_waits_for_a_new_publication_timestamp() -> None:
+    session = MagicMock()
+    session.__enter__.return_value = session
+    previous, updated = "2026-11-19T00:00:00Z", "2026-11-19T01:00:00Z"
+    session.get.side_effect = [
+        response({"publishedon": previous}), response({"publishedon": previous}),
+        response({"publishedon": updated}),
+    ]
+    with patch("demo.studio.requests.Session", return_value=session), patch("demo.studio.time.sleep"):
+        assert studio.publish_draft(CLI(), URL, BOT, force=True) == updated
+    session.post.assert_called_once()
+
+
 def test_environment_url_rejects_non_dataverse_hosts() -> None:
     rows = {"value": [{"id": "env", "url": "https://example.invalid"}]}
     with patch("demo.studio.requests.get", return_value=response(rows)), pytest.raises(studio.PublishError):

@@ -48,7 +48,7 @@ def environment_url(cli: Any, environment_id: str) -> str:
     return url
 
 
-def publish_draft(cli: Any, url: str, bot_id: str, timeout_seconds: int = 180) -> str:
+def publish_draft(cli: Any, url: str, bot_id: str, timeout_seconds: int = 180, *, force: bool = False) -> str:
     """Call the bound PvaPublish action and wait for publishedon; returns the published timestamp."""
     UUID(bot_id)
     base = f"{url}/api/data/v9.2/bots({bot_id})"
@@ -57,8 +57,9 @@ def publish_draft(cli: Any, url: str, bot_id: str, timeout_seconds: int = 180) -
         session.headers.update(headers)
         current = session.get(base + "?$select=name,publishedon", timeout=(10, 60), allow_redirects=False)
         current.raise_for_status()
-        if current.json().get("publishedon"):
-            return str(current.json()["publishedon"])
+        previous = current.json().get("publishedon")
+        if previous and not force:
+            return str(previous)
         response = session.post(
             base + "/Microsoft.Dynamics.CRM.PvaPublish", json={}, timeout=(10, 120), allow_redirects=False,
         )
@@ -67,8 +68,9 @@ def publish_draft(cli: Any, url: str, bot_id: str, timeout_seconds: int = 180) -
         while time.monotonic() < deadline:
             polled = session.get(base + "?$select=publishedon", timeout=(10, 60), allow_redirects=False)
             polled.raise_for_status()
-            if polled.json().get("publishedon"):
-                return str(polled.json()["publishedon"])
+            observed = polled.json().get("publishedon")
+            if observed and observed != previous:
+                return str(observed)
             time.sleep(5)
     raise PublishError("게시 시각을 제한 시간 안에 확인하지 못했습니다.")
 

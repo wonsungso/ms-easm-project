@@ -1,259 +1,293 @@
 # 점검 항목 상세 (System Evidence 26개)
 
-[요약표·실행 절차](../README.md#점검-항목-system-evidence-26개) | [API·평가 계약](api-notes.md#심사기준-검토와-점수-반영-2026-11-05)
+[요약·실행 절차](../README.md#점검-항목-system-evidence-26개) | [평가 규칙](api-notes.md#평가-규칙)
 
-항목명은 평가표 기준이며 **실제 계산 범위는 각 항목의 점검 내용·한계를 따릅니다.** ✅는 수집 구현 여부이지 고객 환경의 충족 여부가 아닙니다. 등급은 API 충족률로 정하며(0% L1, 80% 미만 L2, 90% 미만 L3, 100% 미만 L4, 100% L5), **조회 실패·필수 필드 미확인·빈 분모는 `null`과 사유를 유지**하고 L1·0%로 바꾸지 않습니다. L5도 조직 승인·정책 실효성·자동화 동작을 입증하지 않습니다.
+충족률 = 충족 분자 / 측정 분모. 조회 실패·빈 분모는 `null`이며 구성·기록을 실행 성공·정책 승인으로 해석하지 않습니다. 실제 규칙·임계값은 [criteria.yaml](../config/criteria.yaml)이 기준입니다.
 
-Excel 6번 상단에서 범위·보류 항목을, 7번에서 계산값·대상별 판정·직접 증적·기준 출처를 확인합니다. 아래 포털 경로는 참고용이며 캡처는 데모 환경(빨간 네모는 확인 위치, 식별자 마스킹)입니다.
+<a id="dm-sy-01"></a>
+## DM-SY-01 Agent 관리 인벤토리 등록·기본정보 완전성
 
-## DM-SY-01 Copilot Studio 제작 권한 보유자 수 및 환경 현황
+| 구분 | 내용 |
+| --- | --- |
+| 충족 분자 | 등록 ID·플랫폼·생성 시각이 확인된 Agent 패키지 수 |
+| 측정 분모 | Agent 365에서 플랫폼이 식별된 Agent 패키지 수 |
+| 확인 근거 | Agent 365 catalog의 id·platform·createdDateTime |
+| 한계 | 등록부 관리 범위이며 원본 플랫폼 전체 Agent 수·실행 성공을 뜻하지 않음 |
 
-- **영역·제품:** Demand / Power Platform
-- **구현:** ✅ 구현
-- **점검 내용:** 관리자에게 보이는 환경별 역할 할당 존재 여부를 확인합니다. 공식 명령은 비 Dataverse 환경만 반환하며, 역할 건수가 확인되지 않은 환경을 0건으로 간주하지 않습니다. 중복 역할도 있어 실제 제작자 수로 해석하지 않습니다.
-- **비율 평가 기준:** (역할 할당이 1건 이상인 환경 수 / 관리자에게 보이는 환경 수) × 100. 환경 목록이나 대상별 역할 건수가 미확인이면 점수를 보류합니다.
-- **Azure Portal 기준(참고):** 해당 없음 - Power Platform 관리 센터 > 환경
+<a id="ds-sy-02"></a>
+## DS-SY-02 데이터 정책(DLP) 적용 환경
 
-## DS-SY-02 커넥터 분류·차단 정책(데이터 정책) 적용 현황
+| 구분 | 내용 |
+| --- | --- |
+| 충족 분자 | 데이터 정책(DLP)이 적용된 환경 수 |
+| 측정 분모 | 관리자에게 보이는 Power Platform 환경 수 |
+| 확인 근거 | 관리자 환경·DLP API의 AllEnvironments·OnlyEnvironments·ExceptEnvironments와 대상 ID |
+| 한계 | 적용 범위만 확인. 커넥터 분류·차단 효과·정책 승인 아님 |
 
-- **영역·제품:** Design / Power Platform 데이터 정책
-- **구현:** ✅ 구현
-- **점검 내용:** 관리자 내보내기의 DLP 정책 적용 범위(전체·포함·제외)로 환경별 적용 여부를 확인합니다. 커넥터 분류·차단 효과는 평가하지 않습니다.
-- **비율 평가 기준:** (정책 범위에 포함되는 환경 수 / 관리자에게 보이는 환경 수) × 100. 정책이 없으면 0%이며, 환경 목록이나 정책 조회가 미완료이면 점수를 보류합니다.
-- **Azure Portal 기준(참고):** 해당 없음 - Power Platform 관리 센터 > 정책 > 데이터 정책
+<a id="ds-sy-03"></a>
+## DS-SY-03 Agent 등록 출처·플랫폼 유형 식별
 
-## DS-SY-03 Agent ID의 Blueprint 연결
+| 구분 | 내용 |
+| --- | --- |
+| 충족 분자 | 플랫폼·패키지 유형과 적용 가능한 연결 공급자·원본 저장소가 확인된 패키지 수 |
+| 측정 분모 | Agent 365에서 플랫폼이 식별된 Agent 패키지 수 |
+| 확인 근거 | catalog platform·type 및 이기종 연결 정의의 등록 유형·공급자·원본 저장소 |
+| 한계 | 등록 출처 기록이며 Entra 청사진·공급자 신뢰성·정책 승인의 증거가 아님 |
 
-- **영역·제품:** Design / Microsoft Entra Agent ID
-- **구현:** ✅ 구현
-- **점검 내용:** Agent ID가 실제로 존재하는 에이전트 ID 청사진(Blueprint)에 연결됐는지 확인합니다. 청사진 수·조직 표준 승인 여부는 평가하지 않습니다.
-- **비율 평가 기준:** (존재하는 청사진에 연결된 Agent ID 수 / 조회한 전체 Agent ID 수) × 100.
-- **Azure Portal 기준(참고):** Azure Portal > Microsoft Entra ID > Agent ID > Blueprint 목록
-
-![DS-SY-03 확인 화면](portal/imgs/DS-SY-03.png)
-
+<a id="ds-sy-04"></a>
 ## DS-SY-04 플랫폼별 모델·오케스트레이션 구성
 
-- **영역·제품:** Design / Microsoft Foundry
-- **구현:** ✅ 구현
-- **점검 내용:** Azure는 모델 배포 이름·버전·형식·업데이트 옵션을, Copilot은 모델 선택 레이블·오케스트레이션을 확인합니다. 실제 기반 모델 버전과 조직의 모델 승인은 추론하지 않습니다.
-- **비율 평가 기준:** (플랫폼별 모델 구성 정보를 확인한 대상 수 / Azure 모델 배포 및 Copilot Agent 수) × 100.
-- **Azure Portal 기준(참고):** Azure Portal > Microsoft Foundry > (계정) > Go to Foundry portal > 모델 + 엔드포인트(배포 목록·업데이트 옵션)
+| 구분 | 내용 |
+| --- | --- |
+| 충족 분자 | 플랫폼별 모델 구성 정보가 확인된 대상 수 |
+| 측정 분모 | Azure 모델 배포·Copilot Agent 및 Bedrock 등록 패키지 수 |
+| 확인 근거 | Azure 모델 배포 구성·Copilot model/orchestration·Agent 365 Bedrock 정의 SourceIds.mac.modelInfo |
+| 한계 | Copilot은 모델 레이블·오케스트레이션, Bedrock은 Agent 365 정의의 mac.modelInfo만 확인. 실제 모델 버전·정책 승인·퇴역 대응 아님 |
 
-![DS-SY-04 확인 화면](portal/imgs/DS-SY-04.png)
+![DS-SY-04 확인 위치](portal/imgs/DS-SY-04.png)
 
+<a id="ds-sy-05"></a>
 ## DS-SY-05 플랫폼별 접근 범위 구성
 
-- **영역·제품:** Design / AI 계정·자체 Agent 호스트
-- **구현:** ✅ 구현
-- **점검 내용:** Azure는 기존 인바운드 경계를, Copilot은 인증 사용·전체 테넌트 공유 제한을 확인합니다. Copilot 공유 설정을 네트워크 격리·공개 채널 차단·공유 승인으로 해석하지 않습니다.
-- **비율 평가 기준:** (플랫폼별 접근 범위 조건을 충족한 대상 수 / Azure AI 계정·호스트 및 Copilot Agent 수) × 100.
-- **Azure Portal 기준(참고):** Azure Portal > Microsoft Foundry > (계정) > Resource Management > Networking, App Service > (앱) > Networking
+| 구분 | 내용 |
+| --- | --- |
+| 충족 분자 | 플랫폼별 접근 범위 조건을 충족한 대상 수 |
+| 측정 분모 | AI 계정·Copilot Agent 및 외부 동기화 패키지 수 |
+| 확인 근거 | Azure 비공개 인바운드·접근 제한, Copilot authentication·sharedWithViewers.entireTenant, 외부 Agent 365 availableTo·isBlocked의 명시적 구성 기록 |
+| 한계 | Copilot 인증·전체 공유 제한, 이기종 접근·차단 기록을 각각 확인. 원본 IAM·격리·공유 승인 아님 |
 
-![DS-SY-05 확인 화면](portal/imgs/DS-SY-05.png)
+![DS-SY-05 확인 위치](portal/imgs/DS-SY-05.png)
 
+<a id="ds-sy-06"></a>
 ## DS-SY-06 도구 승인·사용자 동의 구성
 
-- **영역·제품:** Design / Microsoft Foundry Agent 도구
-- **구현:** ✅ 구현
-- **점검 내용:** Azure MCP의 `require_approval=always`와 활성 Copilot 커넥터의 `requiresEndUserConsent=true`를 확인합니다. 사용자 동의는 실행별 사람 승인과 다릅니다. 비활성·함수·내장 도구는 제외합니다.
-- **비율 평가 기준:** (플랫폼별 승인·동의 조건 충족 도구 수 / MCP 도구 및 활성 Copilot 커넥터 작업 수) × 100. 건수 불일치·잘린 목록은 보류합니다.
-- **Azure Portal 기준(참고):** Azure Portal > Microsoft Foundry > (계정) > Go to Foundry portal > (프로젝트) > Agents > (Agent) > Tools
+| 구분 | 내용 |
+| --- | --- |
+| 충족 분자 | 플랫폼별 승인·동의 조건을 충족한 도구 수 |
+| 측정 분모 | MCP 도구 및 활성 Copilot 커넥터 작업 수 |
+| 확인 근거 | Azure MCP require_approval=always 및 Copilot 커넥터 requiresEndUserConsent |
+| 한계 | 사용자 동의는 실행별 사람 승인과 다름. 비활성·함수·내장 도구 제외. 200개 제한·건수 불일치는 보류 |
 
-![DS-SY-06 확인 화면](portal/imgs/DS-SY-06.png)
+![DS-SY-06 확인 위치](portal/imgs/DS-SY-06.png)
 
-## DS-SY-07 외부 도구 HTTPS 연결 구성
+<a id="ds-sy-07"></a>
+## DS-SY-07 외부 도구·Agent HTTPS 연결 구성
 
-- **영역·제품:** Design / Microsoft Foundry Agent 도구
-- **구현:** ✅ 구현
-- **점검 내용:** 외부 도구 URL의 HTTPS·유효한 서버 주소·URL 내 인증정보 부재를 모두 확인합니다. 경로·쿼리·인증정보는 저장하지 않으며 접속 성공·서버 신뢰성은 평가하지 않습니다.
-- **비율 평가 기준:** (HTTPS·유효한 서버 주소·URL 내 인증정보 없음 조건을 모두 충족한 URL 수 / 명시적으로 설정된 전체 외부 도구 URL 수) × 100.
-- **Azure Portal 기준(참고):** Azure Portal > Microsoft Foundry > (계정) > Go to Foundry portal > (프로젝트) > Agents > (Agent) > Tools(MCP)
+| 구분 | 내용 |
+| --- | --- |
+| 충족 분자 | 유효한 HTTPS·인증정보 없음이 확인된 외부 도구·Agent URL 수 |
+| 측정 분모 | 명시적 외부 도구 URL 및 Snowflake Agent endpoint 수 |
+| 확인 근거 | 도구 server_url·url 또는 Agent 365 정의의 AgentEndpoints.EndpointUrl. 경로·인증값·URL 원문 미저장 |
+| 한계 | 엔드포인트 업무 승인·상대 서버 신뢰·인증 성공을 뜻하지 않음 |
 
-![DS-SY-07 확인 화면](portal/imgs/DS-SY-07.png)
+![DS-SY-07 확인 위치](portal/imgs/DS-SY-07.png)
 
-## BI-SY-08 환경 분리 및 관리형 환경 적용 여부
+<a id="bi-sy-08"></a>
+## BI-SY-08 Agent 등록·게시·배포 상태 기록
 
-- **영역·제품:** Build / Power Platform
-- **구현:** ✅ 구현
-- **점검 내용:** 관리자 내보내기의 `protectionLevel=Standard`를 관리형 환경으로 해석하고 환경 유형을 함께 표시합니다. 개발·테스트·운영의 실제 분리는 평가하지 않습니다.
-- **비율 평가 기준:** (보호 수준이 `Standard`인 환경 수 / 관리자에게 보이는 환경 수) × 100. 보호 수준을 확인하지 못한 환경이 있으면 점수를 보류합니다.
-- **Azure Portal 기준(참고):** 해당 없음 - Power Platform 관리 센터 > 환경 > 관리형 환경
+| 구분 | 내용 |
+| --- | --- |
+| 충족 분자 | 적용 가능한 원본 게시 상태 또는 등록부 배포 상태가 명시된 패키지 수 |
+| 측정 분모 | Agent 365에서 플랫폼이 식별된 Agent 패키지 수 |
+| 확인 근거 | 이기종 PublishedStatus 또는 MS 패키지 deployedTo |
+| 한계 | Published·Draft·미배포 등 상태 기록의 완전성. 원본 관리형 환경·배포 승인·실행 성공과 다름 |
 
+<a id="bi-sy-09"></a>
 ## BI-SY-09 플랫폼별 완료 평가 실행 기록
 
-- **영역·제품:** Build / Microsoft Foundry
-- **구현:** ✅ 구현
-- **점검 내용:** Foundry 완료 평가, Standard Copilot GET의 `Completed`·종료 시각 또는 승인된 실제 검토 화면의 `No evaluation run`을 확인합니다. 다른 하니스는 실제 화면의 평가 없음만 반영하며 새 평가를 실행하지 않습니다.
-- **비율 평가 기준:** (완료 평가를 보유한 대상 수 / Foundry 프로젝트 및 평가 기록 확인 Copilot Agent 수) × 100. 작성 화면은 게시 버전 평가·품질 통과·배포 전 평가 증명이 아닙니다.
-- **Azure Portal 기준(참고):** Azure Portal > Microsoft Foundry > (계정) > Go to Foundry portal > Build > Evaluations
+| 구분 | 내용 |
+| --- | --- |
+| 충족 분자 | 완료된 평가 실행을 보유한 대상 수 |
+| 측정 분모 | Foundry 프로젝트 및 평가 기록 확인 대상 Copilot Agent 수 |
+| 확인 근거 | Foundry 평가 완료 상태, Copilot 공식 기존 평가 GET의 Completed·endTime 또는 승인된 실제 검토 화면의 No evaluation run |
+| 한계 | Standard 기본, 다른 하니스는 직접 증적 필요. 성공한 빈 목록은 0건·실패는 미확인. 새 평가 실행·품질 통과·배포 전 평가 증명 아님 |
 
-![BI-SY-09 확인 화면](portal/imgs/BI-SY-09.png)
+![BI-SY-09 확인 위치](portal/imgs/BI-SY-09.png)
 
-## BI-SY-10 플랫폼별 보안 점검 상태
+<a id="bi-sy-10"></a>
+## BI-SY-10 Agent 관리자 사용 차단 상태 기록
 
-- **영역·제품:** Build / Microsoft Defender for Cloud
-- **구현:** ✅ 구현
-- **점검 내용:** Azure 보안 권고의 `Healthy`와 Copilot 인증·공유·커넥터 자격 증명의 명시적 위험 구성을 확인합니다. API 구성으로 준비 상태 화면이나 스캔 성공을 추론하지 않습니다.
-- **비율 평가 기준:** (플랫폼별 보안 구성 조건 충족 대상 수 / 적용 가능한 Azure 보안 권고 및 Copilot Agent 수) × 100. Azure 권고 없음은 준수가 아닙니다.
-- **Azure Portal 기준(참고):** Azure Portal > Microsoft Defender for Cloud > Recommendations(AI 리소스 필터), Security posture(보안 점수)
+| 구분 | 내용 |
+| --- | --- |
+| 충족 분자 | 관리자 사용 차단 여부가 명시된 패키지 수 |
+| 측정 분모 | Agent 365에서 플랫폼이 식별된 Agent 패키지 수 |
+| 확인 근거 | catalog isBlocked |
+| 한계 | true·false 상태 기록만 확인. 보안 평가·취약점·네이티브 플랫폼 접근 차단의 실효성은 별도 |
 
-![BI-SY-10 확인 화면](portal/imgs/BI-SY-10.png)
-
+<a id="bi-sy-11"></a>
 ## BI-SY-11 콘텐츠 필터 정책 연결
 
-- **영역·제품:** Build / Microsoft Foundry 콘텐츠 필터
-- **구현:** ✅ 구현
-- **점검 내용:** 모델 배포에 연결된 정책의 실재·필터 활성 상태를 확인합니다. 정책명만으로는 충족하지 않으며 실제 차단 효과·필터 강도 승인은 평가하지 않습니다.
-- **비율 평가 기준:** (실제로 존재하고 활성 필터가 확인된 정책에 연결된 모델 배포 수 / 조회한 전체 모델 배포 수) × 100.
-- **Azure Portal 기준(참고):** Azure Portal > Microsoft Foundry > (계정) > Go to Foundry portal > Build > Guardrails(콘텐츠 필터)
+| 구분 | 내용 |
+| --- | --- |
+| 충족 분자 | 활성 필터 정책이 연결된 배포 수 |
+| 측정 분모 | 모델 배포 수 |
+| 확인 근거 | deployments.raiPolicyName과 accounts/raiPolicies의 name·contentFilters.enabled 대조 |
+| 한계 | 필터 실제 차단 효과·강도 승인을 뜻하지 않음 |
 
-![BI-SY-11 확인 화면](portal/imgs/BI-SY-11.png)
+![BI-SY-11 확인 위치](portal/imgs/BI-SY-11.png)
 
+<a id="bi-sy-12"></a>
 ## BI-SY-12 플랫폼별 Agent 버전·게시 기록
 
-- **영역·제품:** Build / Foundry·App Service·컨테이너
-- **구현:** ✅ 구현
-- **점검 내용:** Azure의 버전·런타임·이미지 SHA256과 Copilot의 게시 시각 보유를 확인합니다. 게시 시각은 버전 고정·승인·롤백 기록이 아니며 초안의 미게시를 안전성 실패로 해석하지 않습니다.
-- **비율 평가 기준:** (플랫폼별 버전·게시 기록 보유 대상 수 / Foundry Agent·자체 호스트 및 Copilot Agent 수) × 100.
-- **Azure Portal 기준(참고):** Azure Portal > Microsoft Foundry > (계정) > Go to Foundry portal > 모델 + 엔드포인트(버전 업데이트 정책), App Service > (앱) > Settings > Configuration > Stack settings
+| 구분 | 내용 |
+| --- | --- |
+| 충족 분자 | 플랫폼별 버전·게시 기록을 보유한 대상 수 |
+| 측정 분모 | Foundry Agent·Copilot Agent 및 외부 동기화 패키지 수 |
+| 확인 근거 | Foundry Agent version, Copilot lastPublishedAt, 외부 Agent 365 패키지 version |
+| 한계 | 패키지 버전·Copilot 게시 시각의 존재만 확인. 원본 코드·모델 버전·운영 배포·승인·롤백 아님 |
 
-![BI-SY-12 확인 화면](portal/imgs/BI-SY-12.png)
+![BI-SY-12 확인 위치](portal/imgs/BI-SY-12.png)
 
-## BI-SY-13 플랫폼별 Agent 책임·자산 메타데이터
+<a id="bi-sy-13"></a>
+## BI-SY-13 Agent 설명·실행 지침 메타데이터 기록
 
-- **영역·제품:** Build / Azure 태그·Agent 메타데이터·Copilot 인벤토리
-- **구현:** ✅ 구현
-- **점검 내용:** Azure Agent는 소유자·스폰서·환경·비용센터를 확인하고 Copilot Agent는 인벤토리의 소유자 존재 여부만 확인합니다. 승인·재직·Copilot 비용 정보는 추론하지 않습니다.
-- **비율 평가 기준:** (플랫폼별 필수 정보를 확인한 Agent 수 / Azure와 Copilot Agent 수) × 100. 조건은 플랫폼별로 다릅니다.
-- **Azure Portal 기준(참고):** Azure Portal > Microsoft Foundry 또는 App Service > (리소스) > Tags
+| 구분 | 내용 |
+| --- | --- |
+| 충족 분자 | 설명 또는 적용 가능한 원본 실행 지침이 비어 있지 않은 패키지 수 |
+| 측정 분모 | Agent 365에서 플랫폼이 식별된 Agent 패키지 수 |
+| 확인 근거 | MS shortDescription 존재 여부 또는 이기종 Instructions 존재 여부만 선별 저장 |
+| 한계 | 존재 여부만 저장. 지침 품질·안전성·승인 아님. 소유자는 OE-SY-16에서 평가 |
 
-![BI-SY-13 확인 화면](portal/imgs/BI-SY-13.png)
+<a id="bi-sy-14"></a>
+## BI-SY-14 Agent 조직 배포 범위 구성 기록
 
-## BI-SY-14 AI 리소스 정책 평가 준수
+| 구분 | 내용 |
+| --- | --- |
+| 충족 분자 | 배포 범위와 일부 배포 시 대상 기록이 일관된 패키지 수 |
+| 측정 분모 | Agent 365에서 플랫폼이 식별된 Agent 패키지 수 |
+| 확인 근거 | catalog deployedTo·acquireUsersAndGroups 건수 |
+| 한계 | acquiredForNone도 명시된 구성. Azure Policy 준수·원본 AWS 또는 Snowflake 배포·사용량으로 해석하지 않음 |
 
-- **영역·제품:** Build / Azure Policy
-- **구현:** ✅ 구현
-- **점검 내용:** AI 관련 리소스에 연결된 모든 정책 평가가 `Compliant`인지 확인합니다. 면제·미확인·평가 없음은 준수가 아니며 자동 교정 효과는 평가하지 않습니다.
-- **비율 평가 기준:** (연결된 모든 정책 평가가 준수 상태인 리소스 수 / 정책 평가 대상인 AI 관련 리소스 수) × 100.
-- **Azure Portal 기준(참고):** Azure Portal > Policy > Compliance
+<a id="dp-sy-15"></a>
+## DP-SY-15 플랫폼별 Agent ID·청사진·원본 연결
 
-![BI-SY-14 확인 화면](portal/imgs/BI-SY-14.png)
+| 구분 | 내용 |
+| --- | --- |
+| 충족 분자 | 플랫폼별 청사진 또는 원본 Agent 연결 기록이 확인된 대상 수 |
+| 측정 분모 | Azure·Copilot Studio Agent 및 외부 등록 패키지 수 |
+| 확인 근거 | Azure·Copilot의 실제 청사진 연결 또는 Agent 365 정의의 SourceAgentId·SourceIds.ConnectionId 연결 기록 |
+| 한계 | 외부 원본 연결은 Entra Agent ID·청사진·실행 인증 연결을 뜻하지 않음. Agent Builder 신원 필드 미적용은 제외 |
 
-## DP-SY-15 플랫폼별 Agent ID·청사진 연결
+![DP-SY-15 확인 위치](portal/imgs/DP-SY-15.png)
 
-- **영역·제품:** Deploy / Microsoft Entra Agent ID
-- **구현:** ✅ 구현 - 현재 API 기준 완료, 연결 충족률과 구현 여부는 별개
-- **점검 내용:** Azure Agent·청사진 태그의 정확 대조와 Copilot Studio ID의 실제 Graph Agent ID·청사진 연결을 확인합니다. Agent Builder는 공식 신원 필드 미적용으로 제외합니다.
-- **비율 평가 기준:** (실제 청사진 연결 확인 Agent 수 / Azure 및 Copilot Studio Agent 수) × 100. 호스트 관리 ID·패키지 목록으로 대신 인정하지 않습니다.
-- **Azure Portal 기준(참고):** Microsoft Entra ID > Agent ID.
+<a id="oe-sy-16"></a>
+## OE-SY-16 Agent 책임 주체 지정 기록
 
-![DP-SY-15 확인 화면](portal/imgs/DP-SY-15.png)
+| 구분 | 내용 |
+| --- | --- |
+| 충족 분자 | 소유자가 1개 이상 기록된 패키지 수 |
+| 측정 분모 | Agent 365에서 플랫폼이 식별된 Agent 패키지 수 |
+| 확인 근거 | catalog owners 건수 |
+| 한계 | 명시적 소유자 0개는 미충족. 필드 미확인은 null. 재직·스폰서 지정·업무 책임 승인은 추론하지 않음 |
 
-## OE-SY-16 Agent ID 소유자·스폰서 연결
+<a id="oe-sy-17"></a>
+## OE-SY-17 Agent 허용·배포·공유 대상 구분
 
-- **영역·제품:** Operate / Microsoft Entra Agent ID
-- **구현:** ✅ 구현
-- **점검 내용:** 소유자·스폰서가 각각 1명 이상 연결됐는지 확인합니다. 사람 이름·로그인 ID는 저장하지 않으며 계정 활성·재직 여부는 평가하지 않습니다.
-- **비율 평가 기준:** (소유자와 스폰서가 모두 연결된 Agent ID 수 / 조회한 전체 Agent ID 수) × 100.
-- **Azure Portal 기준(참고):** Azure Portal > Microsoft Entra ID > Agent ID > (에이전트 ID) > 소유자/스폰서
+| 구분 | 내용 |
+| --- | --- |
+| 충족 분자 | 허용·배포·공유 대상 건수와 사용자·그룹 구분이 확인된 패키지 수 |
+| 측정 분모 | Agent 365에서 플랫폼이 식별된 Agent 패키지 수 |
+| 확인 근거 | allowedUsersAndGroups·acquireUsersAndGroups·sharedWithUsersAndGroups의 최소화된 건수 |
+| 한계 | 명시적 빈 목록과 미조회는 구분. 원본 IAM·Snowflake 역할·최소 권한 적정성으로 해석하지 않음 |
 
-![OE-SY-16 확인 화면](portal/imgs/OE-SY-16.png)
+<a id="oe-sy-18"></a>
+## OE-SY-18 Agent 중앙 등록부 변경 이력 추적
 
-## OE-SY-17 Agent ID 앱 역할 읽기 범위
+| 구분 | 내용 |
+| --- | --- |
+| 충족 분자 | 동일 테넌트의 완료된 두 API 스냅샷 사이에서 비교된 패키지 수 |
+| 측정 분모 | Agent 365에서 플랫폼이 식별된 Agent 패키지 수 |
+| 확인 근거 | 이전·현재 API 목록 증적과 등록·변경·목록 제외 비교 기록 |
+| 한계 | 등록부 변경 이력이며 실행 로그·동기화 작업 감사 로그가 아님. 목록 제외는 원본 삭제 증거가 아님 |
 
-- **영역·제품:** Operate / Microsoft Entra Agent ID
-- **구현:** ✅ 구현
-- **점검 내용:** 기준의 쓰기·전체 제어 이름 패턴에 해당하는 앱 역할이 없는 Agent ID를 확인합니다. ARM 역할·위임 권한·앱 내부 권한은 제외합니다.
-- **비율 평가 기준:** (기준의 쓰기·전체 제어 권한 패턴에 해당하는 앱 역할이 없는 Agent ID 수 / 조회한 전체 Agent ID 수) × 100.
-- **Azure Portal 기준(참고):** Azure Portal > Microsoft Entra ID > Agent ID > (에이전트 ID) > 권한
-
-![OE-SY-17 확인 화면](portal/imgs/OE-SY-17.png)
-
-## OE-SY-18 Agent 리소스 실행 로그 연결
-
-- **영역·제품:** Operate / Azure Monitor 진단 설정
-- **구현:** ✅ 구현
-- **점검 내용:** 활성 로그와 Log Analytics 작업 영역 연결을 확인합니다. 구독 활동 로그·실제 유입·테이블별 보존기간은 제외하며 승인 범위 밖 작업 영역의 조회 불가 사유는 유지합니다.
-- **비율 평가 기준:** (로그 수집이 켜져 있고 Log Analytics 작업 영역이 연결된 리소스 수 / 점검 대상 AI 계정·자체 Agent 호스트 수) × 100.
-- **Azure Portal 기준(참고):** Azure Portal > Microsoft Foundry > (계정) > Monitoring > Diagnostic settings, Log Analytics workspaces > (workspace) > Tables(보존 기간)
-
-![OE-SY-18 확인 화면](portal/imgs/OE-SY-18.png)
-
+<a id="oe-sy-19"></a>
 ## OE-SY-19 플랫폼별 인증·권한 구성
 
-- **영역·제품:** Operate / Azure Resource Graph·RBAC·Copilot 인벤토리
-- **구현:** ✅ 구현
-- **점검 내용:** Azure는 관리 ID·직접 역할·키 인증을 확인하고 Copilot은 인벤토리의 인증 방식을 확인합니다. 실제 인증 사용과 정책 승인은 제외합니다.
-- **비율 평가 기준:** (플랫폼별 구성 조건을 충족한 대상 수 / Azure AI 계정·호스트 및 Copilot Agent 수) × 100. 플랫폼별 조건과 대상 단위는 다릅니다.
-- **Azure Portal 기준(참고):** Azure Portal > Microsoft Foundry > (계정) > Resource Management > Identity, Access control (IAM) > Role assignments, Keys and Endpoint
+| 구분 | 내용 |
+| --- | --- |
+| 충족 분자 | 플랫폼별 인증·권한 구성이 확인된 대상 수 |
+| 측정 분모 | AI 계정 및 Copilot 인벤토리 Agent 수 |
+| 확인 근거 | Azure 관리 ID(identity.principalId·type), 동일 구독 roleAssignments, disableLocalAuth 및 Copilot 인벤토리 authentication |
+| 한계 | 플랫폼별 조건·단위가 다름. 타 구독·상속·데이터 평면 역할·로그인 성공 제외 |
 
-![OE-SY-19 확인 화면](portal/imgs/OE-SY-19.png)
+![OE-SY-19 확인 위치](portal/imgs/OE-SY-19.png)
 
+<a id="oe-sy-20"></a>
 ## OE-SY-20 AI 리소스 활성 경보 범위
 
-- **영역·제품:** Operate / Azure Monitor
-- **구현:** ✅ 구현
-- **점검 내용:** 활성 메트릭·로그 검색·활동 로그 경보의 범위를 실제 AI 리소스 ID와 대조합니다. 경보 발생·서비스 목표·실행 추적 유입은 평가하지 않습니다.
-- **비율 평가 기준:** (하나 이상의 활성 경보가 감시하는 리소스 수 / 점검 대상 AI 계정·자체 Agent 호스트 수) × 100.
-- **Azure Portal 기준(참고):** Azure Portal > Monitor > Alerts > Alert rules, Application Insights, Microsoft Foundry > (계정) > Monitoring > Diagnostic settings
+| 구분 | 내용 |
+| --- | --- |
+| 충족 분자 | 활성 경보 범위에 포함된 AI 계정 수 |
+| 측정 분모 | AI 계정 수 |
+| 확인 근거 | metricAlerts·scheduledQueryRules·activityLogAlerts의 enabled와 scopes를 실제 AI 리소스 ID에 대조 |
+| 한계 | 경보 발생·SLO 충족·trace 유입을 뜻하지 않음 |
 
-![OE-SY-20 확인 화면](portal/imgs/OE-SY-20.png)
+![OE-SY-20 확인 위치](portal/imgs/OE-SY-20.png)
 
+<a id="oe-sy-21"></a>
 ## OE-SY-21 AI 경보의 작업 그룹·수신자 연결
 
-- **영역·제품:** Operate / Azure Monitor 작업 그룹
-- **구현:** ✅ 구현
-- **점검 내용:** AI 경보의 활성 상태·실재 작업 그룹·활성 수신자 연결을 확인합니다. 이름·주소는 저장하지 않으며 전달 성공·대응 시간·복구 결과는 평가하지 않습니다.
-- **비율 평가 기준:** (활성 경보·작업 그룹·활성 수신자 연결 조건을 모두 충족한 경보 수 / AI 리소스를 대상으로 하는 전체 경보 수) × 100.
-- **Azure Portal 기준(참고):** Azure Portal > Monitor > Alerts > Action groups
+| 구분 | 내용 |
+| --- | --- |
+| 충족 분자 | 작업 그룹·수신자가 연결된 경보 수 |
+| 측정 분모 | AI 대상 경보 수 |
+| 확인 근거 | 경보 actionGroupId·actionGroups와 email·SMS·webhook·armRole·Function·LogicApp·ITSM receivers |
+| 한계 | 실제 전달 성공·온콜 대응 시간·복구 시험을 뜻하지 않음 |
 
-![OE-SY-21 확인 화면](portal/imgs/OE-SY-21.png)
+![OE-SY-21 확인 위치](portal/imgs/OE-SY-21.png)
 
+<a id="oe-sy-22"></a>
 ## OE-SY-22 플랫폼별 지역·보존 구성 정보
 
-- **영역·제품:** Operate / Azure 리소스·Log Analytics
-- **구현:** ✅ 구현 - 현재 API 기준 완료, 보존 기준 충족률과 구현 여부는 별개
-- **점검 내용:** Azure는 기존 지역·보존 조건을, Copilot은 정확한 environmentId로 연결한 관리 환경의 지역만 확인합니다. Copilot 실제 모델·M365 데이터 처리 지역과 로그 보존 준수를 추론하지 않습니다.
-- **비율 평가 기준:** (플랫폼별 지역·보존 정보 조건 충족 대상 수 / Azure AI 계정·호스트 및 Copilot Agent 수) × 100.
-- **Azure Portal 기준(참고):** Azure Portal > Microsoft Foundry > (계정) > Overview(Location), Log Analytics workspaces > (workspace) > Tables(보존 기간)
+| 구분 | 내용 |
+| --- | --- |
+| 충족 분자 | 플랫폼별 지역·보존 정보 조건을 충족한 대상 수 |
+| 측정 분모 | AI 계정·Copilot Agent 및 Bedrock 등록 패키지 수 |
+| 확인 근거 | Azure 지역·workspace 보존·Copilot 관리자 환경 azureRegion·Agent 365 Bedrock 정의 SourceIds.mac.region |
+| 한계 | Copilot은 관리 환경 지역, Bedrock은 Agent 365 정의의 mac.region만 확인. 실제 모델 처리 지역·로그 보존 준수·법적 삭제 아님 |
 
-![OE-SY-22 확인 화면](portal/imgs/OE-SY-22.png)
+![OE-SY-22 확인 위치](portal/imgs/OE-SY-22.png)
 
-## OT-SY-23 AI 리소스 사용량 관측 범위
+<a id="ot-sy-23"></a>
+## OT-SY-23 Agent 등록정보 생성·갱신 시각 관리
 
-- **영역·제품:** Optimize / Azure Monitor 메트릭
-- **구현:** ✅ 구현
-- **점검 내용:** 기본 30일 내 숫자 메트릭 표본의 존재를 확인합니다. 숫자 0도 관측값이지만 기록 없음은 다릅니다. Agent별 사용자 수·90일 미사용은 평가하지 않습니다.
-- **비율 평가 기준:** (조회 기간에 숫자로 된 메트릭 측정값이 하나 이상 있는 리소스 수 / 점검 대상 AI 계정·자체 Agent 호스트 수) × 100.
-- **Azure Portal 기준(참고):** Azure Portal > Microsoft Foundry > (계정) > Monitoring > Metrics, Logs
+| 구분 | 내용 |
+| --- | --- |
+| 충족 분자 | 생성·최종 수정 시각이 순서에 맞고 API 관측 시각 이내인 패키지 수 |
+| 측정 분모 | Agent 365에서 플랫폼이 식별된 Agent 패키지 수 |
+| 확인 근거 | catalog createdDateTime·lastModifiedDateTime 및 Agent 365 수집 시각 |
+| 한계 | 메타데이터 시각의 기록·일관성만 확인. 실제 사용량·마지막 실행·휴면·정기 동기화를 추론하지 않음 |
 
-![OT-SY-23 확인 화면](portal/imgs/OT-SY-23.png)
-
+<a id="ot-sy-24"></a>
 ## OT-SY-24 AI 비용의 단일 Agent 귀속
 
-- **영역·제품:** Optimize / Azure Cost Management
-- **구현:** ✅ 구현
-- **점검 내용:** 기본 30일의 AI 비용 중 사용일자가 있고 단일 Agent에 귀속되는 금액을 확인합니다. 공유 비용의 임의 배분·중복 계산은 금지하며 통화 혼재·음수 조정·총액 0은 보류합니다.
-- **비율 평가 기준:** (사용일자가 있고 정확히 한 Agent에 연결되는 비용 금액 / 같은 통화로 조회한 전체 AI 관련 양수 비용 금액) × 100. 건수가 아닌 금액 기준입니다.
-- **Azure Portal 기준(참고):** Azure Portal > Cost Management > Cost analysis, Budgets
+| 구분 | 내용 |
+| --- | --- |
+| 충족 분자 | 단일 Agent에 귀속 확인된 비용 금액 |
+| 측정 분모 | 동일 통화의 양수 AI 비용 금액 |
+| 확인 근거 | Cost Management Daily query의 ResourceId·UsageDate·Cost·Currency와 Agent/모델 ID 대조 |
+| 한계 | 공유 모델 비용은 중복 배분하지 않으며 통화 혼재·음수 조정·분모 0은 산출하지 않음 |
 
-![OT-SY-24 확인 화면](portal/imgs/OT-SY-24.png)
+![OT-SY-24 확인 위치](portal/imgs/OT-SY-24.png)
 
+<a id="ot-sy-25"></a>
 ## OT-SY-25 AI 민감 데이터 노출 점검 구성
 
-- **영역·제품:** Optimize / Microsoft Defender for Cloud
-- **구현:** ✅ 구현
-- **점검 내용:** 구독별 AI·Defender CSPM 플랜과 민감 데이터 검색 확장을 확인합니다. 프롬프트 증거·AI 모델 검사 확장은 상태만 기록합니다. 실제 경보·데이터 노출·모든 AI 리소스 적용 여부는 평가하지 않습니다.
-- **비율 평가 기준:** (AI 플랜·CSPM 플랜이 Standard이고 민감 데이터 검색이 활성인 구독 수 / 점검 범위의 전체 승인 구독 수) × 100. 필드를 확인하지 못한 구독이 있으면 점수를 보류합니다.
-- **Azure Portal 기준(참고):** Azure Portal > Microsoft Defender for Cloud > Environment settings > 구독 > Defender plans
+| 구분 | 내용 |
+| --- | --- |
+| 충족 분자 | AI 위협 방지·CSPM·민감 데이터 검색이 활성화된 구독 수 |
+| 측정 분모 | 승인 구독 수 |
+| 확인 근거 | Microsoft.Security pricings의 AI 플랜 pricingTier, CloudPosture 플랜 pricingTier와 SensitiveDataDiscovery 확장 isEnabled |
+| 한계 | Defender 플랜·확장 구성만 확인. 실제 노출·조치·모든 AI 리소스 적용 범위 아님 |
 
+<a id="ot-sy-26"></a>
 ## OT-SY-26 구독 예산·실제·예측 경보 구성
 
-- **영역·제품:** Optimize / Azure Cost Management
-- **구현:** ✅ 구현
-- **점검 내용:** 현재 유효한 양수·무필터 비용 예산에 활성 실제·예측 경보의 임계값과 수신자가 있는지 확인합니다. 구독당 하나 이상이면 충족합니다. Agent별 예산·전달 성공·자동 조치는 평가하지 않습니다.
-- **비율 평가 기준:** (위 예산·실제 비용 경보·예측 비용 경보·수신자 조건을 모두 충족한 구독 수 / 점검 범위의 전체 승인 구독 수) × 100.
-- **Azure Portal 기준(참고):** Azure Portal > Cost Management > Budgets
+| 구분 | 내용 |
+| --- | --- |
+| 충족 분자 | 예산·경보가 구성된 구독 수 |
+| 측정 분모 | 승인 구독 수 |
+| 확인 근거 | budgets amount·category·timePeriod·filter와 활성 notifications의 thresholdType·threshold·수신자 존재 |
+| 한계 | Agent별 예산이나 통보 후 자동 조치·실제 전달 성공을 뜻하지 않음 |
 
-![OT-SY-26 확인 화면](portal/imgs/OT-SY-26.png)
+![OT-SY-26 확인 위치](portal/imgs/OT-SY-26.png)

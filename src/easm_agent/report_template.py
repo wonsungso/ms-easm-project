@@ -6,6 +6,7 @@ import xml.etree.ElementTree as ET
 from copy import deepcopy
 from io import BytesIO
 from pathlib import Path
+from typing import Any
 from xml.sax.saxutils import quoteattr
 from zipfile import ZIP_DEFLATED, ZipFile
 
@@ -14,40 +15,52 @@ from openpyxl import load_workbook
 from openpyxl.utils import range_boundaries
 from openpyxl.workbook.workbook import Workbook
 
+from easm_agent.agent365_grading import REGISTRY_CHECKS
+
 TEMPLATE_NAME = "assessment-result-template.xlsx"
 CRITERIA_SHEET = "4. 질문별 평가 기준"
 RESULT_SHEET = "6. 수집 결과"
 CRITERIA_ROW_HEIGHT = 80
 RESULT_ROW_HEIGHT = 150
 SYSTEM_EVIDENCE_COLOR = "FFEAF3FB"
-COLLECTION_METHODS = {
+_RESOURCE_COLLECTION_METHODS = {
     "DM-SY-01": "Power Platform Admin Center → Environments → 권한",
     "DS-SY-02": "Power Platform Admin Center → Policies → Data policies",
     "DS-SY-03": "Entra → Agents → Agent identities / Blueprints",
-    "DS-SY-04": "Azure → Model deployments / Copilot 인벤토리",
+    "DS-SY-04": "Azure → Model deployments / Copilot 인벤토리 / Agent 365 → 모델 메타데이터",
     "DS-SY-05": "Azure → Networking / Copilot 인증·공유",
     "DS-SY-06": "Foundry → Tools / Copilot 커넥터 구성",
-    "DS-SY-07": "Microsoft Foundry → Agents → Tools",
+    "DS-SY-07": "Foundry → Tools / Agent 365 → Agent endpoint",
     "BI-SY-08": "Power Platform Admin Center → Environments",
     "BI-SY-09": "Foundry → Evaluation / Copilot 평가 GET·검토 화면",
     "BI-SY-10": "Defender → Recommendations / Copilot 위험 구성",
     "BI-SY-11": "Azure → Microsoft Foundry → Content filters",
-    "BI-SY-12": "Azure → Agent versions·런타임 / Copilot 게시 기록",
+    "BI-SY-12": "Foundry → Agent versions / Copilot 게시 기록",
     "BI-SY-13": "Foundry → Agent metadata / Azure → Tags / Copilot 인벤토리",
     "BI-SY-14": "Azure → Policy → Compliance",
-    "DP-SY-15": "Entra → Agent identities·Blueprints / Copilot 인벤토리",
+    "DP-SY-15": "Entra → Agent identities·Blueprints / Copilot 인벤토리 / Agent 365 → 원본 연결",
     "OE-SY-16": "Entra → Agents → Owners / Sponsors",
     "OE-SY-17": "Entra → Agents → Permissions",
     "OE-SY-18": "Azure → Monitor → Diagnostic settings",
     "OE-SY-19": "Azure → Identity / IAM / Copilot 인벤토리",
     "OE-SY-20": "Azure → Monitor → Alerts",
     "OE-SY-21": "Azure → Monitor → Action groups",
-    "OE-SY-22": "Azure → 위치·보존 / Copilot 관리 환경 지역",
+    "OE-SY-22": "Azure → 위치·보존 / Copilot 관리 환경 지역 / Agent 365 → 원본 리전",
     "OT-SY-23": "Azure → Monitor → Metrics",
     "OT-SY-24": "Azure → Cost Management → Cost analysis",
     "OT-SY-25": "Azure → Defender for Cloud → Defender plans",
     "OT-SY-26": "Azure → Cost Management → Budgets",
 }
+COLLECTION_METHODS = {
+    code: "Agent 365 → Registry → Agent 상세·API 스냅샷" if code in REGISTRY_CHECKS else method
+    for code, method in _RESOURCE_COLLECTION_METHODS.items()
+}
+
+
+def collection_method(code: str, definition: dict[str, Any] | None) -> str:
+    return COLLECTION_METHODS[code] if definition and definition.get("registry_check") else _RESOURCE_COLLECTION_METHODS[code]
+
+
 _MAIN = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 _DOC_REL = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
 

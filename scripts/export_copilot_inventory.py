@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
 import uuid
 from contextlib import ExitStack
@@ -53,6 +54,50 @@ PROJECTION = {
 
 
 DelegatedCredential = DelegatedReaderCredential
+
+
+def read_empty_evaluations_cli(
+    executable: Path, project: Path, tenant: str, agent: CopilotInventoryRow,
+) -> CopilotEvaluationRead:
+    def read(*args: str) -> dict:
+        process = subprocess.run(
+            [str(executable), *args, "--json", "--non-interactive"],
+            capture_output=True, text=True, encoding="utf-8", check=False, timeout=120,
+        )
+        if process.returncode:
+            raise ValueError("공식 CLI 평가 읽기 실패")
+        result = json.loads(process.stdout)
+        if result.get("success") is not True or result.get("schemaVersion") != 1:
+            raise ValueError("공식 CLI 평가 응답 형식 오류")
+        return result
+
+    try:
+        auth = read("auth", "status")
+        if auth.get("signedIn") is not True or auth.get("tenantId", "").casefold() != tenant.casefold():
+            raise ValueError("공식 CLI 읽기 테넌트 불일치")
+        local = read("agent", "show", "--project", str(project), "--agent-name", agent.display_name or "")
+        bindings = [
+            row for row in local.get("agents", [])
+            if row.get("mcsAgentId", "").casefold() == agent.agent_id.casefold()
+            and row.get("environmentId", "").casefold() == agent.environment_id.casefold()
+            and row.get("tenantId", "").casefold() == tenant.casefold()
+        ]
+        if len(bindings) != 1:
+            raise ValueError("공식 CLI 평가 대상 연결 불일치")
+        result = read(
+            "agent", "eval", "list", "--project", str(project), "--agent-id", bindings[0]["agentId"],
+            "--environment-id", agent.environment_id,
+        )
+        if result.get("status") != "evaluations-listed" or result.get("truncated") is not False or (
+            result.get("mcsAgentId", "").casefold() != agent.agent_id.casefold()
+            or result.get("environmentId", "").casefold() != agent.environment_id.casefold()
+        ):
+            raise ValueError("공식 CLI 평가 목록의 범위·완전성 불일치")
+        if result.get("runs") != []:
+            return CopilotEvaluationRead(completed=False, reason="feature_unavailable")
+        return CopilotEvaluationRead(completed=True, runs=[])
+    except (ValueError, KeyError, TypeError, OSError, subprocess.TimeoutExpired):
+        return CopilotEvaluationRead(completed=False, reason="error")
 
 
 def connector_operations(payload: Any) -> list[CopilotConnectorOperation] | None:
@@ -179,6 +224,7 @@ def inventory_pages(http: ReaderHTTP) -> list[CopilotInventoryRow]:
 def export_inventory(
     tenant: str, credential: Credential, *, approved: bool, include_evaluations: bool = False,
     evaluation_credential: Credential | None = None,
+    evaluation_cli: Path | None = None, evaluation_project: Path | None = None,
 ) -> CopilotInventoryExport:
     tenant = str(uuid.UUID(tenant))
     if not approved:
@@ -198,6 +244,12 @@ def export_inventory(
             for agent in agents:
                 if agent.harness == "Standard" or evaluation_credential is not None:
                     agent.evaluation_read = read_evaluations(evaluation_http, agent)
+                    if evaluation_cli is not None and evaluation_project is not None and (
+                        not agent.evaluation_read.completed and agent.evaluation_read.reason == "permission_denied"
+                    ):
+                        agent.evaluation_read = read_empty_evaluations_cli(
+                            evaluation_cli, evaluation_project, tenant, agent,
+                        )
     except AccessError as exc:
         reason = exc.reason
         failure_code = "network_error" if str(exc).startswith("network_error") else exc.reason
@@ -235,9 +287,15 @@ def main(argv: list[str] | None = None) -> int:
                         help="기존 평가 목록만 GET 조회 - 새 평가 실행 없음")
     parser.add_argument("--evaluation-client-id", type=lambda value: str(uuid.UUID(value)),
                         help="MakerOperations.Read가 구성된 별도 사용자 위임 읽기 앱 - 기기 코드 로그인")
+    parser.add_argument("--evaluation-cli", type=Path, help="이미 인증된 공식 msagent 실행 파일")
+    parser.add_argument("--evaluation-project", type=Path, help="평가 대상과 연결된 기존 msagent 작업 사본")
     args = parser.parse_args(argv)
     if args.evaluation_client_id and not args.include_evaluations:
         parser.error("--evaluation-client-id에는 --include-evaluations가 필요합니다.")
+    if bool(args.evaluation_cli) != bool(args.evaluation_project) or (
+        args.evaluation_cli and not args.include_evaluations
+    ):
+        parser.error("CLI 평가 읽기는 --include-evaluations·--evaluation-cli·--evaluation-project가 함께 필요합니다.")
     try:
         if args.output.exists():
             raise FileExistsError("기존 내보내기를 덮어쓰지 않습니다.")
@@ -249,6 +307,7 @@ def main(argv: list[str] | None = None) -> int:
             result = export_inventory(
                 args.tenant_id, credential, approved=args.approved, include_evaluations=args.include_evaluations,
                 evaluation_credential=evaluation_credential,
+                evaluation_cli=args.evaluation_cli, evaluation_project=args.evaluation_project,
             )
         args.output.parent.mkdir(parents=True, exist_ok=True)
         with args.output.open("x", encoding="utf-8") as handle:

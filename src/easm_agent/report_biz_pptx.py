@@ -435,21 +435,31 @@ def _scope_pages(slides: list[Slide], data: DeckData) -> None:
         [sum(agent.platform == platform for agent in collection.copilot_agents)
          if collection.facts.get("copilot_inventory_complete") is True else None
          for platform in ("copilot_studio", "agent_builder")]
-        + [len([agent for agent in collection.agents if agent.platform in ("foundry", "langchain", "custom")])
+        + [len([agent for agent in collection.agents if agent.platform == "foundry"])
            if collection.facts.get("agent_inventory_complete") is True else None]
         if collection else [None] * 3
     )
     rows = [["플랫폼", "관측 Agent·후보", "수집 방식", "항목 분해"]]
-    for index, name in enumerate(("Copilot Studio", "Agent Builder", "Foundry·Azure 호스트")):
+    for index, name in enumerate(("Copilot Studio", "Agent Builder", "Foundry")):
         rows.append([name, str(counts[index]) if counts[index] is not None else PENDING,
                      "승인 위임 읽기" if index < 2 else "진단 SP 읽기", PENDING])
-    rows.extend([[name, PENDING, "미지원·별도 원천 필요", PENDING]
-                 for name in ("ChatGPT Enterprise", "Amazon Bedrock", "Salesforce Agentforce", "Claude Enterprise")])
-    rows.append(["관측 MS 합계", str(sum(counts)) if all(value is not None for value in counts) else PENDING,
+    external_total = 0
+    external_complete = not collection or not collection.facts.get("agent365_requested")
+    for name, provider in (("ChatGPT Enterprise", None), ("Amazon Bedrock", "AmazonBedrock"),
+                           ("Snowflake Cortex", "SnowflakeAI"), ("Claude Enterprise", None)):
+        if provider and collection and collection.facts.get("agent365_registry_complete") is True:
+            packages = [package for package in collection.agent365_packages if package.platform == provider]
+            external_total += len(packages)
+            external_complete = True
+            rows.append([name, str(len(packages)), "Agent 365 API", "항목별 원천 조건"])
+        else:
+            rows.append([name, PENDING, "미지원·별도 원천 필요", PENDING])
+    rows.append(["통합 관측 합계", str(sum(counts) + external_total)
+                 if all(value is not None for value in counts) and external_complete else PENDING,
                  "전사 전체 수가 아님", "API 26개"])
     _table(slides[14], 12, rows)
     _table(slides[14], 16, [["코드·항목", "관측 범위", "측정 상태·한계", "정보 확인"]] + [
-        [item.code + " " + story.TOPIC.get(item.code, ""), item.metric or PENDING,
+        [item.code + " " + story.topic(data, item.code), item.metric or PENDING,
          "API 분모별 확인", "확인" if item.score is not None else PENDING]
         for item in list(data.items.values())[:7]
     ])
@@ -492,7 +502,7 @@ def _system_pages(slides: list[Slide], data: DeckData) -> None:
         items = [item for item in data.scored if item.area == prefix]
         lowest = min(items, key=lambda item: (item.score, item.code)) if items else None
         rows.append([f"{english} ({korean})", _number(data.assessment.areas[prefix].system),
-                     story.TOPIC.get(lowest.code, lowest.title) if lowest else PENDING,
+                     story.topic(data, lowest.code) if lowest else PENDING,
                      ((lowest.metric or PENDING) + " (" + data.level(lowest.code) + ")") if lowest else PENDING])
     _table(slide, 3, rows)
 
@@ -508,7 +518,7 @@ def _system_pages(slides: list[Slide], data: DeckData) -> None:
     for index in range(13):
         values = []
         for item in (records[index], records[index + 13]):
-            values.extend([item.code + " " + story.TOPIC.get(item.code, item.title),
+            values.extend([item.code + " " + story.topic(data, item.code),
                            item.metric or PENDING, f"L{item.score}" if item.score is not None else PENDING])
         rows.append(values)
     _table(slide, 3, rows)
@@ -705,7 +715,7 @@ def populate_business_deck(slides: list[Slide], data: DeckData, workbook: Path) 
     })
     candidates = sorted(data.scored, key=lambda item: (item.score, item.code))[:5]
     _table(slides[25], 7, [["대상 영역", "관측 근거", "API 수준", "검토 단계"]] + [
-        [story.TOPIC.get(item.code, item.title), (item.metric or PENDING) + " / " + (data.fraction(item.code) or PENDING), f"L{item.score}", "고객 협의"]
+        [story.topic(data, item.code), (item.metric or PENDING) + " / " + (data.fraction(item.code) or PENDING), f"L{item.score}", "고객 협의"]
         for item in candidates
     ] + [[PENDING, PENDING, PENDING, "고객 협의"]] * max(0, 5-len(candidates)))
     for page, identifier, bottom, size in (
@@ -752,6 +762,13 @@ def populate_minimal_deck(slides: list[Slide], data: DeckData, workbook: Path) -
             11: "System Evidence만 저장 API 관측으로 갱신. 인터뷰·문서·인용은 제공 Excel 입력 유지.\n"
                 "설명·제언·업무 목표는 원문 참고 자료이며 API 검증 결과가 아님. 미관측 값은 확인 중.",
         })
+        if data.registry_codes:
+            _replace(slides[0], {
+                11: "Agent 365 기반 26개 항목\n"
+                    "등록부·플랫폼 API 구성·기록 평가\n"
+                    "인터뷰·문서: 제공 Excel 입력 유지\n"
+                    "실제 실행 성공·보안 효과와 구분",
+            })
         if data.name != DEFAULT_CUSTOMER:
             target = shape(slides[0], 4)
             replace_text(target, target.text.replace("OOO", data.name))
@@ -949,6 +966,18 @@ def populate_minimal_deck(slides: list[Slide], data: DeckData, workbook: Path) -
         })
         _replace(slides[26], dict.fromkeys((60, 44161, 44166, 44171), PENDING))
         _remove(slides[26], (46102, 46284, 46482, 46696))
+        _replace(slides[23], {
+            47: data.fact("BI-SY-10") + "\n" + data.fact("OT-SY-25"),
+            54: _measured_text(data, "OT-SY-24") + "\n" + data.fact("OT-SY-26"),
+            61: data.fact("BI-SY-13") + "\n" + data.fact("OE-SY-16"),
+            45252: data.fact("DM-SY-01") + "\n" + data.fact("BI-SY-08"),
+        })
+        candidates = sorted(data.scored, key=lambda item: (item.score, item.code))[:5]
+        _table(slides[25], 7, [["대상 영역", "관측 근거", "API 수준", "검토 단계"]] + [
+            [story.topic(data, item.code), data.fact(item.code), f"L{item.score}", "고객 협의"]
+            for item in candidates
+        ] + [[PENDING, PENDING, PENDING, "고객 협의"]] * max(0, 5-len(candidates)))
+        _fit_table(slides[25], 7, 3.38, 8.5)
         matrix = _table_shape(slides[16], 3)
         for row in matrix.table.rows:
             row.height = (Inches(6.45)-matrix.top)//len(matrix.table.rows)

@@ -15,6 +15,7 @@ output/
 *.pem
 *.pfx
 *.key
+*.p8
 demo/main.json
 demo/foundry.json
 demo/host.json

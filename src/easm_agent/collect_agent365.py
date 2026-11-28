@@ -1,15 +1,18 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import math
 import re
 import time
 import uuid
 from datetime import datetime
 from typing import Any, Literal
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 from azure.core.exceptions import ClientAuthenticationError
 
+from easm_agent.agent365_grading import CONNECTED_PLATFORMS
 from easm_agent.api_grading import agent_has_entra_identity
 from easm_agent.azure import MSGRAPH, MSGRAPH_SCOPE, AccessError, EvidenceStore, ReaderHTTP, issue
 from easm_agent.models import (
@@ -17,10 +20,14 @@ from easm_agent.models import (
     Agent365Crosscheck,
     Agent365Package,
     Collection,
+    ConnectedAgentMetadata,
     FieldStatus,
 )
 
 REGISTRY_URL = MSGRAPH + "/v1.0/copilot/admin/catalog/packages"
+TOOLS_URL = REGISTRY_URL + "?$filter=" + quote(
+    "elementTypes/any(e:e eq 'AgentConnectors' or e eq 'AgentSkills')", safe="",
+)
 DETAIL_FIELDS = {
     "active_users_30d": "activeUsers",
     "total_sessions_30d": "totalSessions",
@@ -39,13 +46,14 @@ ALL_METADATA_FIELDS = (*METADATA_FIELDS, *DERIVED_METADATA_FIELDS)
 CATALOG_METADATA_FIELDS = tuple(field for field in METADATA_FIELDS if field not in ("categories", "sensitivity"))
 # This is a local privacy allowlist of documented examples, not an API enumeration.
 SAFE_METADATA_LABELS = {
-    "package_type": frozenset(("microsoft", "external", "shared", "custom")),
+    "package_type": frozenset(("microsoft", "external", "shared", "custom", "lob")),
     "supported_hosts": frozenset((
         "teams", "outlook", "sharepoint", "word", "excel", "powerpoint", "copilot", "m365",
     )),
     "element_types": frozenset((
         "bot", "bots", "declarativeagent", "customengineagent", "officeaddin", "officeaddins",
         "agentconnectors", "agentskills", "declarativecopilots", "customenginecopilots",
+        "agentmetadatas",
     )),
     "categories": frozenset(("development", "productivity", "tools")),
     "sensitivity": frozenset(("general",)),
@@ -162,22 +170,163 @@ def metadata_projection(package: Agent365Package, fields: set[str]) -> dict[str,
     }
 
 
+def read_connected_metadata(payload: dict[str, Any]) -> ConnectedAgentMetadata:
+    """Project observed connector metadata; never retain definitions or source credentials."""
+    result = ConnectedAgentMetadata()
+    fields = (
+        "model_identifier", "region", "source_agent_id_sha256", "connection_id_sha256", "endpoint_https",
+        "published_status", "source_version", "source_status", "agent_subtype", "created_at", "modified_at",
+        "registration_type", "registration_provider", "origin_store",
+    )
+
+    def missing(field: str, reason: Literal["not_found", "error"] = "not_found") -> None:
+        result.field_status[field] = FieldStatus(
+            reason=reason, detail="Agent 365 연결 메타데이터 누락·형식 변경 - 정의 원문 미저장",
+        )
+
+    details = payload.get("elementDetails")
+    definitions = []
+    if isinstance(details, list) and len(details) <= 64:
+        for group in details:
+            if not isinstance(group, dict) or group.get("elementType") not in ("AgentMetadatas", "AgentMetadata"):
+                continue
+            elements = group.get("elements")
+            if not isinstance(elements, list) or len(elements) > 64:
+                break
+            definitions.extend(item.get("definition") for item in elements if isinstance(item, dict))
+    if len(definitions) != 1 or not isinstance(definitions[0], str) or len(definitions[0]) > 524288:
+        for field in fields:
+            missing(field, "not_found" if not definitions else "error")
+        return result
+    try:
+        definition = json.loads(definitions[0])
+    except (json.JSONDecodeError, RecursionError):
+        definition = None
+    if not isinstance(definition, dict) or not isinstance(definition.get("SourceIds"), dict):
+        for field in fields:
+            missing(field, "error")
+        return result
+    sources = definition["SourceIds"]
+    for key in (
+        "ConnectionId", "mac.agentId", "mac.agentSubType", "mac.agentRuntimeId", "mac.agentRuntimeArn",
+        "mac.region", "mac.version", "mac.externalStatus", "mac.agentRegistrationType",
+        "mac.agentRegistrationProviderType", "mac.originatingStore", "agentX.originatingStore",
+        "mac.modelInfo", "mac.awsAccountId", "mac.engineId", "mac.projectId",
+        "mac.snowflakeDatabase", "mac.snowflakeSchema",
+    ):
+        value = sources.get(key)
+        result.source_field_inventory[key] = (
+            "not_found" if value is None else "empty" if value == "" else
+            "present" if isinstance(value, str) else "error"
+        )
+    for key in ("SourceAgentId", "ManagedBy", "Instructions", "Description", "AgentLocation", "Url"):
+        value = definition.get(key)
+        result.content_presence[key + "_present"] = bool(value.strip()) if isinstance(value, str) else None
+    for key in (
+        "mac.agentId", "mac.agentRuntimeId", "mac.agentRuntimeArn", "mac.engineId",
+        "mac.projectId", "mac.snowflakeDatabase", "mac.snowflakeSchema",
+    ):
+        value = sources.get(key)
+        if isinstance(value, str) and value.strip() and len(value) <= 1024:
+            result.identifiers_sha256[key] = hashlib.sha256(value.encode()).hexdigest()
+    published = definition.get("PublishedStatus")
+    if published in ("Published", "Unpublished", "Draft"):
+        result.published_status = published
+    else:
+        missing("published_status", "not_found" if published in (None, "") else "error")
+    for field, key in (
+        ("source_version", "mac.version"), ("source_status", "mac.externalStatus"),
+        ("agent_subtype", "mac.agentSubType"),
+        ("registration_type", "mac.agentRegistrationType"),
+        ("registration_provider", "mac.agentRegistrationProviderType"),
+        ("origin_store", "agentX.originatingStore"),
+    ):
+        value = sources.get(key)
+        if value in (None, ""):
+            missing(field)
+        elif isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", value):
+            setattr(result, field, value)
+        else:
+            missing(field, "error")
+    for field, key in (("created_at", "CreatedDateTime"), ("modified_at", "LastModifiedDateTime")):
+        value = definition.get(key)
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00")) if isinstance(value, str) else None
+        except ValueError:
+            parsed = None
+        if parsed is not None and parsed.tzinfo is not None:
+            setattr(result, field, parsed)
+        else:
+            missing(field, "not_found" if value in (None, "") else "error")
+    for field, value, pattern in (
+        ("model_identifier", sources.get("mac.modelInfo"), r"[a-z0-9][a-z0-9._:/-]{0,159}"),
+        ("region", sources.get("mac.region"), r"[a-z]{2}(?:-[a-z]+)+-\d+"),
+        ("source_agent_id_sha256", definition.get("SourceAgentId"), r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,511}"),
+    ):
+        if value is None or value == "":
+            missing(field)
+        elif not isinstance(value, str) or not re.fullmatch(pattern, value):
+            missing(field, "error")
+        else:
+            setattr(result, field, hashlib.sha256(value.encode()).hexdigest() if field.endswith("sha256") else value)
+    connection = sources.get("ConnectionId")
+    if not connection:
+        missing("connection_id_sha256")
+    else:
+        try:
+            normalized = str(uuid.UUID(connection)) if isinstance(connection, str) else None
+        except ValueError:
+            normalized = None
+        if normalized is None:
+            missing("connection_id_sha256", "error")
+        else:
+            result.connection_id_sha256 = hashlib.sha256(normalized.encode()).hexdigest()
+    endpoints = definition.get("AgentEndpoints")
+    if endpoints is None or endpoints == []:
+        missing("endpoint_https")
+    elif not isinstance(endpoints, list) or len(endpoints) > 64:
+        missing("endpoint_https", "error")
+    else:
+        flags = []
+        for endpoint in endpoints:
+            value = endpoint.get("EndpointUrl") if isinstance(endpoint, dict) else None
+            try:
+                url = urlsplit(value) if isinstance(value, str) and value.strip() and len(value) <= 4096 else None
+                valid = bool(url and url.hostname and url.scheme in ("http", "https"))
+                if valid:
+                    flags.append(url.scheme == "https" and url.username is None and url.password is None)
+            except ValueError:
+                valid = False
+            if not valid:
+                missing("endpoint_https", "error")
+                break
+        else:
+            result.endpoint_https = flags
+    return result
+
+
 class Agent365Collector:
     """Read catalog references and documented aggregate usage, never agent content."""
 
     required_roles = ("CopilotPackages.Read.All",)
 
-    def __init__(self, http: ReaderHTTP, now: datetime, store: EvidenceStore | None = None) -> None:
+    def __init__(
+        self, http: ReaderHTTP, now: datetime, store: EvidenceStore | None = None,
+        *, include_tools: bool = False, tool_catalog: bool = False,
+    ) -> None:
         if http.store is not None:
             raise ValueError("Agent 365 원본 응답은 최소 필드 선별 전에 저장할 수 없습니다.")
         self.http, self.now, self.store = http, now, store
+        self.include_tools, self.tool_catalog = include_tools, tool_catalog
 
     def discover(self) -> Collection:
         result = Collection(collected_at=self.now, facts={
             "agent365_requested": True, "agent365_registry_complete": False,
+            "agent365_collected_at": self.now.isoformat(),
         })
         try:
-            rows = self.http.list_graph(REGISTRY_URL)
+            catalog_url = TOOLS_URL if self.tool_catalog else REGISTRY_URL
+            rows = self.http.list_graph(catalog_url)
             packages = []
             seen = set()
             for row in rows:
@@ -245,6 +394,14 @@ class Agent365Collector:
                     manifest_id=row.get("manifestId"), request_type=row.get("requestType"), last_modified_at=modified,
                 )
                 read_metadata(package, row, "catalog")
+                elements = row.get("elementTypes")
+                if isinstance(elements, list) and len(elements) <= 64 and all(isinstance(item, str) for item in elements):
+                    package.catalog_tool_types = [
+                        kind for kind in ("AgentConnectors", "AgentSkills")
+                        if any(item.casefold() == kind.casefold() for item in elements)
+                    ]
+                if self.tool_catalog and not package.catalog_tool_types:
+                    raise AccessError("error", "도구 필터 응답에 확인된 MCP·Skill 요소가 없음")
                 for field in (
                     "agent_identity_id", "version", *text_fields, "is_blocked", "created_at", "request_status",
                     "governance", "owner_count", "last_modified_at",
@@ -263,7 +420,7 @@ class Agent365Collector:
                 packages.append(package)
             refs = []
             if self.store:
-                refs = [self.store.save(REGISTRY_URL, {
+                refs = [self.store.save(catalog_url, {
                     "value": [
                         {
                             "id": p.package_id, "agentIdentityId": p.agent_identity_id, "version": p.version,
@@ -274,6 +431,7 @@ class Agent365Collector:
                             "requestType": p.request_type, "manifestId": p.manifest_id,
                             "lastModifiedDateTime": p.last_modified_at.isoformat() if p.last_modified_at else None,
                             "ownerCount": p.owner_count,
+                            "catalogToolTypes": p.catalog_tool_types,
                             "metadata": metadata_projection(p, set(p.metadata_field_sources)),
                             **({"fieldErrors": {"governanceMetadata": "error"}}
                                if p.field_status.get("governance")
@@ -302,7 +460,7 @@ class Agent365Collector:
             if malformed:
                 self.http.last_ref = refs[0] if refs else None
                 result.issues.append(issue(
-                    self.http, "agent365_registry", REGISTRY_URL,
+                    self.http, "agent365_registry", catalog_url,
                     AccessError(
                         "error", f"governanceMetadata {malformed}건의 문서상 문자열 형식 불일치 - "
                         "해당 필드는 null, 목록 페이지는 완료",
@@ -310,13 +468,33 @@ class Agent365Collector:
                 ))
         except AccessError as exc:
             self.http.last_ref = (
-                self.store.save(REGISTRY_URL, {"reason": exc.reason, "detail": str(exc)})
+                self.store.save(catalog_url, {"reason": exc.reason, "detail": str(exc)})
                 if self.store else None
             )
             result.issues.append(issue(
-                self.http, "agent365_registry", REGISTRY_URL, exc, self.required_roles,
+                self.http, "agent365_registry", catalog_url, exc, self.required_roles,
             ))
         self.collect_details(result)
+        if self.include_tools and not self.tool_catalog:
+            try:
+                tools = Agent365Collector(self.http, self.now, self.store, tool_catalog=True).discover()
+            except (ClientAuthenticationError, ValueError, KeyError, TypeError) as exc:
+                tools = Collection(collected_at=self.now, facts={"agent365_registry_complete": False})
+                error = AccessError(
+                    "permission_denied" if isinstance(exc, ClientAuthenticationError) else "error",
+                    "Agent 365 도구 조회 인증·응답 오류 - 원문 미저장",
+                )
+                self.http.last_ref = self.store.save(TOOLS_URL, {"reason": error.reason}) if self.store else None
+                tools.issues.append(issue(self.http, "agent365_tools", TOOLS_URL, error, self.required_roles))
+            result.agent365_tools = tools.agent365_packages
+            result.facts["agent365_tools_requested"] = True
+            result.facts["agent365_tools_complete"] = tools.facts.get("agent365_registry_complete") is True
+            result.facts["agent365_tools_collected_at"] = self.now.isoformat()
+            result.facts["agent365_tools_detail_collection"] = tools.facts.get("agent365_detail_collection")
+            result.facts["agent365_tools_refs"] = tools.facts.get("agent365_registry_refs", [])
+            for entry in tools.issues:
+                entry.collector = "agent365_tools"
+            result.issues.extend(tools.issues)
         return result
 
     def collect_details(self, result: Collection) -> None:
@@ -326,6 +504,13 @@ class Agent365Collector:
         stop_cause = None
         skipped = []
         for package in result.agent365_packages:
+            package.detail_read_completed = False
+            package.connected_metadata = ConnectedAgentMetadata()
+            package.audience_counts = {}
+            package.audience_type_counts = {}
+            package.detail_field_inventory = {}
+            package.description_present = None
+            package.field_status.pop("description_present", None)
             for field in DETAIL_FIELDS:
                 setattr(package, field, None)
                 package.field_status.pop(field, None)
@@ -373,6 +558,69 @@ class Agent365Collector:
                     and payload["version"] != package.version
                 ):
                     raise AccessError("error", "목록과 상세 패키지 버전 불일치")
+                package.detail_read_completed = True
+                description = payload.get("shortDescription")
+                if isinstance(description, str):
+                    package.description_present = bool(description.strip())
+                elif description is not None:
+                    package.field_status["description_present"] = FieldStatus(
+                        reason="error", detail="설명 존재 여부를 확인할 수 없는 응답 형식 - 원문 미저장",
+                    )
+                if "elementTypes" in payload:
+                    elements = payload["elementTypes"]
+                    package.catalog_tool_types = [
+                        kind for kind in ("AgentConnectors", "AgentSkills")
+                        if isinstance(elements, list) and len(elements) <= 64
+                        and all(isinstance(item, str) for item in elements)
+                        and any(item.casefold() == kind.casefold() for item in elements)
+                    ]
+                if package.platform in CONNECTED_PLATFORMS:
+                    package.connected_metadata = read_connected_metadata(payload)
+                for field in ("allowedUsersAndGroups", "acquireUsersAndGroups", "sharedWithUsersAndGroups"):
+                    members = payload.get(field)
+                    valid = (
+                        isinstance(members, list) and all(isinstance(item, dict) for item in members)
+                        and not any(key.startswith(field + "@odata.") for key in payload)
+                    )
+                    package.audience_counts[field] = len(members) if valid else None
+                    package.field_status.pop("audience." + field, None)
+                    package.field_status.pop("audience_types." + field, None)
+                    package.audience_type_counts[field] = None
+                    if valid and all(member.get("resourceType") in ("user", "group") for member in members):
+                        package.audience_type_counts[field] = {
+                            kind: sum(member["resourceType"] == kind for member in members)
+                            for kind in ("user", "group")
+                        }
+                    elif valid:
+                        package.field_status["audience_types." + field] = FieldStatus(
+                            reason="feature_unavailable", detail="대상 유형 미확인 - 사용자·그룹으로 추정하지 않음",
+                        )
+                    if not valid:
+                        package.field_status["audience." + field] = FieldStatus(
+                            reason="not_found" if members is None else "error",
+                            detail="대상 목록 미확인 - 사람·그룹 식별자는 저장하지 않음",
+                        )
+                documented = {
+                    "id", "displayName", "type", "appId", "assetId", "availableTo", "deployedTo",
+                    "version", "manifestId", "manifestVersion", "platform", "publisher",
+                    "createdDateTime", "lastModifiedDateTime", "agentIdentityId", "isBlocked",
+                    "requestStatus", "requestType", "governanceMetadata", "supportedHosts", "elementTypes",
+                    "activeUsers", "totalSessions", "totalRunTimeInHours", "exceptionRate", "lastUsedDateTime",
+                    "categories", "sensitivity", "owners", "allowedUsersAndGroups", "acquireUsersAndGroups",
+                    "sharedWithUsersAndGroups", "elementDetails", "longDescription", "shortDescription", "zipFile",
+                }
+                for field in documented:
+                    value = payload.get(field)
+                    package.detail_field_inventory[field] = (
+                        "not_found" if field not in payload or value is None else
+                        "content_excluded" if field in (
+                            "longDescription", "shortDescription", "zipFile", "publisher", "assetId",
+                        ) else
+                        "projected_only" if field in (
+                            "owners", "allowedUsersAndGroups", "acquireUsersAndGroups",
+                            "sharedWithUsersAndGroups", "elementDetails",
+                        ) else "empty" if value in ("", []) else "present"
+                    )
                 consecutive_failures = 0
                 metadata_updated = read_metadata(package, payload, "detail")
                 for field, source in DETAIL_FIELDS.items():
@@ -449,10 +697,18 @@ class Agent365Collector:
                         for field in DETAIL_FIELDS if field in package.field_status
                     },
                     "detail_complete": package.detail_complete,
+                    "detail_read_completed": package.detail_read_completed,
                     "metadata": metadata_projection(package, metadata_updated),
                     "metadata_complete": package.metadata_complete,
-                    "projection": "documented package aggregate usage and allowlisted metadata only; no users, contacts, "
-                    "audiences, element definitions, descriptions or request metadata",
+                    "catalog_tool_types": package.catalog_tool_types,
+                    **({"connected_metadata": package.connected_metadata.model_dump()}
+                       if package.platform in CONNECTED_PLATFORMS else {}),
+                    "audience_counts": package.audience_counts,
+                    "audience_type_counts": package.audience_type_counts,
+                    "detail_field_inventory": package.detail_field_inventory,
+                    "description_present": package.description_present,
+                    "projection": "aggregate usage, allowlisted metadata, audience counts and minimized connector "
+                    "projection only; no people, audience identities, definitions, descriptions or request metadata",
                     **({"reason": error.reason, "detail": str(error)} if error else {}),
                 })]
             package.detail_evidence_refs = refs
@@ -508,16 +764,23 @@ class Agent365Collector:
 def crosscheck_agent365(data: Collection, criteria: dict[str, Any]) -> list[Agent365Crosscheck]:
     records = []
     for code in criteria["items"]:
+        if criteria["items"][code].get("registry_check"):
+            records.append(Agent365Crosscheck(
+                se_code=code, status="not_comparable", scope="Agent 365 공통 등록부 본평가",
+                detail="등록부 구성·기록을 본평가에 사용. 네이티브 통제와의 독립 교차 대사는 아님",
+                evidence_refs=sorted({ref for package in data.agent365_packages for ref in package.evidence_refs}),
+            ))
+            continue
         if code in LIMITS:
             records.append(Agent365Crosscheck(
                 se_code=code, status="not_comparable", scope="공개 등록 정보",
-                detail=LIMITS[code] + ". 기존 등급 유지",
+                detail=LIMITS[code] + ". 평가 등급과 별도의 참고 관측",
             ))
             continue
         if code not in ("DS-SY-03", "DP-SY-15"):
             records.append(Agent365Crosscheck(
                 se_code=code, status="not_comparable", scope="공개 등록 정보",
-                detail="이 항목의 독립 비교 필드가 검증되지 않음. 기존 등급 유지",
+                detail="이 항목의 독립 비교 필드가 검증되지 않음. 평가 등급과 별도의 참고 관측",
             ))
             continue
         record = Agent365Crosscheck(
@@ -525,7 +788,7 @@ def crosscheck_agent365(data: Collection, criteria: dict[str, Any]) -> list[Agen
                 "등록부 agentIdentityId와 Graph Agent ID·Blueprint 참조의 연결"
                 if code == "DS-SY-03" else
                 "명시적 Blueprint 태그로 식별된 Azure Agent와 등록부 agentIdentityId의 연결"
-            ), detail="등급 조건 전체가 아닌 명시적 ID 연결만 대조. 기존 등급 유지",
+            ), detail="등급 조건 전체가 아닌 명시적 ID 연결만 대조. 평가 등급과 별도의 참고 관측",
         )
         refs = set(data.facts.get("agent365_registry_refs", []))
         refs.update(ref for package in data.agent365_packages for ref in package.evidence_refs)

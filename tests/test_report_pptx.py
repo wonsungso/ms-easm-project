@@ -123,7 +123,7 @@ def collect(tmp_path: Path) -> Path:
     with patch("easm_agent.cli.DefaultAzureCredential", side_effect=AssertionError("No Azure calls")):
         assert main(["collect", "--config", str(ROOT / "config" / "custom-config.yaml"),
                      "--fixture", str(FIXTURE), "--output-dir", str(tmp_path)]) == 0
-    return next(tmp_path.rglob("report-*.xlsx"))
+    return next(tmp_path.rglob("AI Agent Governance Readiness*.xlsx"))
 
 
 def level_for(ratio: float) -> int:
@@ -790,7 +790,7 @@ def test_template_titles_headings_labels_and_table_headers_are_kept_verbatim() -
 
 def test_run_preserves_static_package_parts_and_replaces_all_sample_results(tmp_path: Path) -> None:
     workbook = collect(tmp_path)
-    deck = next(workbook.parent.glob("EASM-report-*.pptx"))
+    deck = next(workbook.parent.glob("AI Agent Governance Readiness*.pptx"))
     presentation = Presentation(deck)
     assert len(presentation.slides) == 12
     text = deck_text(deck)
@@ -829,7 +829,7 @@ def test_run_preserves_static_package_parts_and_replaces_all_sample_results(tmp_
 
 def test_template_shapes_keep_their_geometry_when_only_text_changes(tmp_path: Path) -> None:
     workbook = collect(tmp_path)
-    output = Presentation(next(workbook.parent.glob("EASM-report-*.pptx")))
+    output = Presentation(next(workbook.parent.glob("AI Agent Governance Readiness*.pptx")))
     source = Presentation(presentation_template_path())
     footers = set(FOOTERS.values())
     for page in (0, 1, 2, 3, 11):
@@ -984,7 +984,7 @@ def test_deck_command_uses_workbook_interviews_without_rewriting_other_sheets(tm
         originals = {name: archive.read(name) for name in archive.namelist()
                      if name.startswith("xl/worksheets/") and name != "xl/worksheets/sheet6.xml"}
     assert main(["deck", "--output-dir", str(tmp_path), "--customer", "Fabrikam"]) == 0
-    text = deck_text(next(tmp_path.rglob("EASM-report-*.pptx")))
+    text = deck_text(next(tmp_path.rglob("AI Agent Governance Readiness*.pptx")))
     assert "Fabrikam AI Agent Governance Readiness 진단" in text
     assert "4.0" in text
     updated = load_workbook(workbook)[RESULT_SHEET]

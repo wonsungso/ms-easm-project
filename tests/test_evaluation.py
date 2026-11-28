@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from functools import cache
+from pathlib import Path
 from typing import Literal
 
 import pytest
 
-from easm_agent.api_grading import Measurement, measurements, targets
+from easm_agent.api_grading import Measurement, measurements
 from easm_agent.collect_admin_evidence import ENVIRONMENTS_URL
-from easm_agent.evaluation import evaluate, matches
+from easm_agent.evaluation import evaluate, matches, readiness
 from easm_agent.models import (
     DEFAULT_TAGS,
     AdminEnvironment,
@@ -31,6 +32,7 @@ from easm_agent.models import (
     LogSetting,
     ModelDeployment,
     ProposalObservation,
+    Settings,
 )
 from easm_agent.models import (
     load_criteria as read_criteria,
@@ -39,7 +41,7 @@ from easm_agent.models import (
 
 @cache
 def load_criteria() -> dict:
-    return read_criteria()
+    return read_criteria(Settings(criteria_file=Path(__file__).parent / "fixtures" / "resource-criteria.yaml"))
 
 
 NOW = datetime(2026, 11, 9, tzinfo=UTC)
@@ -55,19 +57,30 @@ def grade(data: Collection, criteria: dict | None = None, facts: dict | None = N
     return {row.se_code: row for row in evaluate(data, criteria or load_criteria(), DEFAULT_TAGS, facts)}
 
 
-def test_custom_host_uses_same_grading_scope_as_langchain_host(data: Collection) -> None:
-    data.agents[0].platform = "langchain"
-    baseline = {code: row.model_dump(exclude={"measurement"}) for code, row in grade(data).items()}
-    baseline_targets = targets(data)
-    baseline_measurements = measurements(data, load_criteria(), DEFAULT_TAGS)
-    data.agents[0].platform = "custom"
-    assert targets(data) == baseline_targets
-    assert data.agents[0].resource_id.lower() in targets(data)
-    updated = measurements(data, load_criteria(), DEFAULT_TAGS)
-    assert {code: row.ratio for code, row in updated.items()} == {
-        code: row.ratio for code, row in baseline_measurements.items()
-    }
-    assert {code: row.model_dump(exclude={"measurement"}) for code, row in grade(data).items()} == baseline
+@pytest.mark.parametrize("platform", ["langchain", "custom"])
+def test_host_candidates_are_excluded_from_all_assessment_targets(data: Collection, platform: str) -> None:
+    data.agents[0].platform = platform
+    host_id = data.agents[0].agent_id
+    results = grade(data)
+    assert data.agents == []
+    assert data.facts["excluded_host_candidates"]["count"] == 1
+    assert all(
+        target.subject != host_id and host_id not in target.observed.get("matching_agent_ids", [])
+        for finding in results.values() for target in finding.measurement.targets
+    )
+
+
+def test_cost_completeness_excludes_only_confirmed_empty_inventory_scopes():
+    data = Collection(collected_at=NOW, subscriptions=[SID, "empty"],
+                      completed_subscriptions=[SID, "empty"], facts={
+        "inventory_complete": True, "cost_complete_subscriptions": [SID],
+        "signal_scope_exclusions": [{"collector": "cost", "subscription_id": "empty", "status": "excluded"}],
+    })
+    config = {"complete_subscriptions": ["cost_complete_subscriptions"]}
+    assert readiness(data, config) is None
+    data.resources.append({"subscriptionId": "empty", "type": "Microsoft.CognitiveServices/accounts",
+                           "kind": "AIServices"})
+    assert readiness(data, config) is not None
 
 
 def test_control_evidence_is_specific_and_target_decisions_reconcile(data: Collection) -> None:

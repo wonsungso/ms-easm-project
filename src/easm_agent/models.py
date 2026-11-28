@@ -23,7 +23,7 @@ from pydantic import (
 Reason = Literal["permission_denied", "feature_unavailable", "license_missing", "not_found", "error"]
 Platform = Literal["foundry", "langchain", "custom", "other", "manual"]
 HOSTED_AGENT_PLATFORMS = ("langchain", "custom")
-AZURE_AGENT_PLATFORMS = ("foundry", *HOSTED_AGENT_PLATFORMS)
+AZURE_AGENT_PLATFORMS = ("foundry",)
 
 
 class EvidenceModel(BaseModel):
@@ -355,6 +355,27 @@ class Issue(EvidenceModel):
     evidence_refs: list[str] = Field(default_factory=list)
 
 
+class ConnectedAgentMetadata(EvidenceModel):
+    model_identifier: StrictStr | None = None
+    region: StrictStr | None = None
+    source_agent_id_sha256: StrictStr | None = None
+    connection_id_sha256: StrictStr | None = None
+    endpoint_https: list[StrictBool] | None = Field(default=None, max_length=64)
+    published_status: Literal["Published", "Unpublished", "Draft"] | None = None
+    source_version: StrictStr | None = None
+    source_status: StrictStr | None = None
+    agent_subtype: StrictStr | None = None
+    created_at: AwareDatetime | None = None
+    modified_at: AwareDatetime | None = None
+    identifiers_sha256: dict[str, StrictStr] = Field(default_factory=dict)
+    content_presence: dict[str, StrictBool | None] = Field(default_factory=dict)
+    source_field_inventory: dict[str, str] = Field(default_factory=dict)
+    registration_type: StrictStr | None = None
+    registration_provider: StrictStr | None = None
+    origin_store: StrictStr | None = None
+    field_status: dict[str, FieldStatus] = Field(default_factory=dict)
+
+
 class Agent365Package(EvidenceModel):
     package_id: str
     manifest_id: str | None = None
@@ -381,6 +402,7 @@ class Agent365Package(EvidenceModel):
     app_id: StrictStr | None = None
     supported_hosts: list[StrictStr] | None = Field(default=None, max_length=64)
     element_types: list[StrictStr] | None = Field(default=None, max_length=64)
+    catalog_tool_types: list[Literal["AgentConnectors", "AgentSkills"]] = Field(default_factory=list)
     categories: list[StrictStr] | None = Field(default=None, max_length=64)
     category_count: StrictInt | None = Field(default=None, ge=0)
     sensitivity: StrictStr | None = None
@@ -389,7 +411,13 @@ class Agent365Package(EvidenceModel):
     metadata_field_sources: dict[str, Literal["catalog", "detail", "not_requested"]] = Field(default_factory=dict)
     metadata_evidence_refs: dict[str, list[str]] = Field(default_factory=dict)
     detail_complete: bool = False
+    detail_read_completed: bool = False
     detail_evidence_refs: list[str] = Field(default_factory=list)
+    connected_metadata: ConnectedAgentMetadata = Field(default_factory=ConnectedAgentMetadata)
+    audience_counts: dict[str, StrictInt | None] = Field(default_factory=dict)
+    audience_type_counts: dict[str, dict[str, StrictInt] | None] = Field(default_factory=dict)
+    detail_field_inventory: dict[str, str] = Field(default_factory=dict)
+    description_present: StrictBool | None = None
     field_status: dict[str, FieldStatus] = Field(default_factory=dict)
     evidence_refs: list[str] = Field(default_factory=list)
 
@@ -769,6 +797,7 @@ class Collection(EvidenceModel):
     entra_blueprints: list[EntraBlueprint] = Field(default_factory=list)
     entra_agent_identities: list[EntraAgentIdentity] = Field(default_factory=list)
     agent365_packages: list[Agent365Package] = Field(default_factory=list)
+    agent365_tools: list[Agent365Package] = Field(default_factory=list)
     agent365_crosschecks: list[Agent365Crosscheck] = Field(default_factory=list)
     admin_evidence: list[AdminReadResult] = Field(default_factory=list)
     # Legacy result input only; these diagnostics are no longer collected or exported.
@@ -784,6 +813,63 @@ class Collection(EvidenceModel):
     evidence_sources: list[EvidenceSource] = Field(default_factory=list)
     assessment_provenance: AssessmentProvenance | None = None
     facts: dict[str, Any] = Field(default_factory=dict)
+
+    def exclude_host_candidates(self) -> bool:
+        hosts = [agent for agent in self.agents if agent.platform in HOSTED_AGENT_PLATFORMS]
+        if not hosts:
+            return False
+        retained = [agent for agent in self.agents if agent.platform not in HOSTED_AGENT_PLATFORMS]
+        retained_ids = {
+            value.casefold() for agent in retained
+            for value in (agent.resource_id, agent.model_resource_id, *agent.cost_resource_ids) if value
+        }
+        excluded_ids = {
+            value.casefold() for agent in hosts
+            for value in (agent.resource_id, *agent.cost_resource_ids) if value
+        } - retained_ids
+        excluded_subjects = excluded_ids | {agent.agent_id.casefold() for agent in hosts}
+        self.agents = retained
+        self.costs = [row for row in self.costs if row.resource_id.casefold() not in excluded_ids]
+        self.logs = [row for row in self.logs if row.resource_id.casefold() not in excluded_ids]
+        self.proposal_observations = [
+            row for row in self.proposal_observations
+            if row.kind != "agent_host" and row.subject.casefold() not in excluded_subjects
+        ]
+        for summary in self.proposal_observations:
+            if summary.kind == "policy_state" and summary.subscription_id in {
+                agent.subscription_id for agent in hosts
+            }:
+                rows = [
+                    row for row in self.proposal_observations
+                    if row.kind == "policy_resource" and row.subscription_id == summary.subscription_id
+                ]
+                summary.values["resources"] = sum(
+                    summary.values["state"] in row.values["evaluation_states"] for row in rows
+                )
+                summary.values["definitions"] = None
+                summary.values["definitions_reason"] = "not_found"
+        self.resources = [
+            row for row in self.resources if str(row.get("id", "")).casefold() not in excluded_ids
+        ]
+        self.issues = [row for row in self.issues if row.target.casefold() not in excluded_subjects]
+        for dataset in self.report_evidence:
+            if isinstance(dataset, CostHistoryEvidence):
+                dataset.records = [
+                    row for row in dataset.records
+                    if not set(value.casefold() for value in row.evidence_ids) & excluded_ids
+                ]
+        for key in ("resource_metrics", "target_property_evidence", "inventory_evidence", "log_scope_exclusions"):
+            if key in self.facts:
+                self.facts[key] = [
+                    row for row in self.facts[key] if row["resource_id"].casefold() not in excluded_ids
+                ]
+        self.facts["excluded_host_candidates"] = {
+            "count": len(hosts),
+            "reason": "태그·이름 기반 자체 호스트 후보는 Agent 집계·26개 평가 대상에서 제외",
+        }
+        # Cached summaries cannot be reused after changing the population.
+        self.proposals = []
+        return True
 
 
 class Finding(EvidenceModel):
@@ -874,6 +960,7 @@ class Settings(BaseModel):
     report_evidence_files: list[Path] = Field(default_factory=list)
     report_cost_history: bool = False
     agent365_registry: bool = False
+    agent365_tools_enabled: bool = True
     allowed_models: list[AllowedModel] = Field(default_factory=list)
     tags: dict[str, StrictStr] = Field(default_factory=dict)
     tag_conventions: dict[str, Any] = Field(default_factory=dict)
